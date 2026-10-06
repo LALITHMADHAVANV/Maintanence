@@ -23,6 +23,7 @@ import {
   BadgeCheck,
   UserCheck,
   LogIn,
+  Zap,
 } from 'lucide-react';
 import { UserProfile, UserRole } from '@/types/cmms';
 import { useAuth } from '@/context/AuthContext';
@@ -98,6 +99,16 @@ export default function UserManagementPage() {
         setNewTitle('Industrial Sewing Machine Mechanic');
         setNewDepartment('Sewing Floor');
         setNewPassword('mechanic123');
+        break;
+      case 'SENIOR_ELECTRICIAN':
+        setNewTitle('Senior Electrical Engineer & Power Systems Lead');
+        setNewDepartment('Electrical & Power Services');
+        setNewPassword('senior123');
+        break;
+      case 'ELECTRICIAN':
+        setNewTitle('Industrial Electrician & Wiring Technician');
+        setNewDepartment('Electrical & Power Services');
+        setNewPassword('electrician123');
         break;
       case 'STORE_PERSON':
         setNewTitle('Tool Crib & Store In-Charge');
@@ -251,6 +262,20 @@ export default function UserManagementPage() {
           icon: Wrench,
           avatarBg: 'bg-emerald-600',
         };
+      case 'SENIOR_ELECTRICIAN':
+        return {
+          label: 'Senior Electrician',
+          color: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+          icon: Zap,
+          avatarBg: 'bg-cyan-600',
+        };
+      case 'ELECTRICIAN':
+        return {
+          label: 'Industrial Electrician',
+          color: 'bg-amber-100 text-amber-800 border-amber-300',
+          icon: Zap,
+          avatarBg: 'bg-amber-600',
+        };
       case 'STORE_PERSON':
         return {
           label: 'Tool Crib Custodian',
@@ -377,6 +402,8 @@ export default function UserManagementPage() {
             <option value="ADMIN">Plant Administrators</option>
             <option value="SENIOR_MECHANIC">Senior Mechanics</option>
             <option value="MECHANIC">Line Mechanics</option>
+            <option value="SENIOR_ELECTRICIAN">Senior Electricians</option>
+            <option value="ELECTRICIAN">Junior Electricians</option>
             <option value="STORE_PERSON">Store Custodians</option>
             <option value="CEO">Chief Executive</option>
           </select>
@@ -500,7 +527,7 @@ export default function UserManagementPage() {
                               showToast(`Switched active session to ${u.name} (${u.role})`, 'info');
                               if (u.role === 'CEO') router.push('/dashboard/messages');
                               else if (u.role === 'STORE_PERSON') router.push('/dashboard/store-inbox');
-                              else if (u.role === 'MECHANIC' || u.role === 'SENIOR_MECHANIC') router.push('/dashboard/calendar');
+                              else if (u.role === 'MECHANIC' || u.role === 'SENIOR_MECHANIC' || u.role === 'ELECTRICIAN' || u.role === 'SENIOR_ELECTRICIAN') router.push('/dashboard/calendar');
                               else router.push('/dashboard/machines');
                             } catch (err: unknown) {
                               const msg = err instanceof Error ? err.message : String(err);
@@ -558,8 +585,8 @@ export default function UserManagementPage() {
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                   Select Role &amp; Access Level *
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {(['MECHANIC', 'SENIOR_MECHANIC', 'STORE_PERSON', 'ADMIN'] as UserRole[]).map(
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {(['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'STORE_PERSON', 'ADMIN'] as UserRole[]).map(
                     (r) => {
                       const isSelected = newRole === r;
                       const badge = getRoleBadge(r);

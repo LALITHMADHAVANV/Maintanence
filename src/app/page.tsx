@@ -52,6 +52,12 @@ export default function LoginPage() {
         } else if (lower.startsWith('admin@') || lower.startsWith('adm@')) {
           email = 'admin@textech.garments';
           targetRoute = '/dashboard/machines';
+        } else if (lower.startsWith('seniorelectrician@')) {
+          email = 'seniorelectrician@textech.garments';
+          targetRoute = '/dashboard/calendar';
+        } else if (lower.startsWith('electrician@')) {
+          email = 'electrician@textech.garments';
+          targetRoute = '/dashboard/calendar';
         } else if (lower.startsWith('senior') || lower.startsWith('seniormechanic@')) {
           email = 'seniormechanic@textech.garments';
           targetRoute = '/dashboard/calendar';
@@ -73,6 +79,12 @@ export default function LoginPage() {
         } else if (lower.includes('admin') || lower.includes('adm')) {
           email = 'admin@textech.garments';
           targetRoute = '/dashboard/machines';
+        } else if (lower.includes('senior elec') || lower.includes('seniorelectrician') || lower.includes('elec-01') || lower.includes('anand')) {
+          email = 'seniorelectrician@textech.garments';
+          targetRoute = '/dashboard/calendar';
+        } else if (lower.includes('electrician') || lower.includes('elec') || lower.includes('elec-02') || lower.includes('rajesh')) {
+          email = 'electrician@textech.garments';
+          targetRoute = '/dashboard/calendar';
         } else if (lower.includes('senior') || lower.includes('mec-01') || lower.includes('ramesh')) {
           email = 'seniormechanic@textech.garments';
           targetRoute = '/dashboard/calendar';
@@ -130,7 +142,7 @@ export default function LoginPage() {
                   value={emailOrId}
                   onChange={(e) => setEmailOrId(e.target.value)}
                   className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition text-slate-800"
-                  placeholder="e.g. admin@textech.garments, ceo, MEC-01"
+                  placeholder="e.g. admin@textech.garments, ceo, MEC-01, ELEC-01"
                   autoComplete="username"
                   disabled={isLoading}
                 />

@@ -272,11 +272,14 @@ export function AssetHistoryModal({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3.5">
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 gap-3.5 max-h-[480px] overflow-y-auto pr-1 scrollbar-thin"
+                  style={{ maxHeight: '480px' }}
+                >
                   {filteredRepairs.map((ticket) => (
                     <div
                       key={ticket.id}
-                      className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition space-y-3"
+                      className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition space-y-3 flex flex-col justify-between"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -315,9 +318,20 @@ export function AssetHistoryModal({
                         <div className="text-slate-600">
                           <b>Reported Issue:</b> {ticket.faultDetails}
                         </div>
-                        {ticket.actionTaken && (
-                          <div className="text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                            <b>Resolution / Action Taken:</b> {ticket.actionTaken}
+                        {ticket.actionTaken ? (
+                          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 text-xs space-y-1">
+                            <div className="flex items-center gap-1.5 font-bold text-emerald-950 text-[11px] uppercase tracking-wide">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Technical Work Done In Past &amp; Resolution:</span>
+                            </div>
+                            <p className="text-emerald-900 leading-relaxed pl-5 text-[11px]">
+                              {ticket.actionTaken}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-900 flex items-center gap-2">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Service ticket currently active on floor.</span>
                           </div>
                         )}
                       </div>

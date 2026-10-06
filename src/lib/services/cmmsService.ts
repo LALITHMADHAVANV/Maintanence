@@ -564,7 +564,8 @@ export async function resolveRepairTicket(
 
 export async function assignRepairTicket(
   ticketId: string,
-  mechanicName: string
+  mechanicName: string,
+  assignedBy?: string
 ): Promise<void> {
   const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
   const updatedRepairs = currentRepairs.map((r) =>
@@ -572,7 +573,8 @@ export async function assignRepairTicket(
       ? {
           ...r,
           attendedBy: mechanicName,
-          status: (r.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS') as RepairTicket['status'],
+          assignedBy: assignedBy || r.assignedBy || 'Senior Mechanic',
+          status: (r.status === 'COMPLETED' ? 'COMPLETED' : 'ASSIGNED') as RepairTicket['status'],
         }
       : r
   );
@@ -583,7 +585,8 @@ export async function assignRepairTicket(
     try {
       await supabase.from('repair_tickets').update({
         attendedBy: mechanicName,
-        status: 'IN_PROGRESS',
+        assignedBy: assignedBy || 'Senior Mechanic',
+        status: 'ASSIGNED',
       }).eq('id', ticketId);
     } catch (e) {
       console.error('Supabase assignRepairTicket error:', e);
@@ -634,8 +637,9 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
     faultCategory: input.taskTitle,
     faultDetails: input.shift ? `[${input.shift}] ${input.faultDetails}` : input.faultDetails,
     urgency: input.urgency,
-    status: 'IN_PROGRESS',
+    status: 'ASSIGNED',
     attendedBy: input.assignedTo,
+    assignedBy: input.assignedBy,
     resolvedAt: null,
     downtimeMinutes: 0,
     actionTaken: `Assigned by ${input.assignedBy} to ${input.assignedTo}`,

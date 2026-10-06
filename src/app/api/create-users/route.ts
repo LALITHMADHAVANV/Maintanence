@@ -18,6 +18,8 @@ export async function GET() {
     { email: 'admin@textech.garments', password: 'password123', uid: 'ADM-01', name: 'V. Sundaram', role: 'ADMIN', title: 'Plant Administrator' },
     { email: 'seniormechanic@textech.garments', password: 'password123', uid: 'MEC-01', name: 'Ramesh Kumar', role: 'SENIOR_MECHANIC', title: 'Senior Mechanic' },
     { email: 'mechanic@textech.garments', password: 'password123', uid: 'MEC-08', name: 'Suresh Babu', role: 'MECHANIC', title: 'Line Mechanic' },
+    { email: 'seniorelectrician@textech.garments', password: 'password123', uid: 'ELEC-01', name: 'Anand Kumar', role: 'SENIOR_ELECTRICIAN', title: 'Senior Electrician & Servo Specialist' },
+    { email: 'electrician@textech.garments', password: 'password123', uid: 'ELEC-02', name: 'Rajesh G.', role: 'ELECTRICIAN', title: 'Industrial Plant Electrician' },
     { email: 'stores@textech.garments', password: 'password123', uid: 'STR-01', name: 'M. Arumugam', role: 'STORE_PERSON', title: 'Store In-Charge' },
   ];
 

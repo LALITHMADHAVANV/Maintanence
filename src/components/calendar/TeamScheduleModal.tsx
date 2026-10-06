@@ -54,9 +54,22 @@ export function TeamScheduleModal({
   onOpenResolveModal,
 }: TeamScheduleModalProps) {
   const { showToast } = useToast();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
 
   const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
+
+  // Filter technicians based on role (Senior Electrician sees junior electricians; Senior Mechanic sees mechanics)
+  const relevantTechnicians = React.useMemo(() => {
+    if (role === 'SENIOR_ELECTRICIAN') {
+      return FACTORY_MECHANICS_ROSTER.filter(
+        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      );
+    }
+    if (role === 'SENIOR_MECHANIC') {
+      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+    }
+    return FACTORY_MECHANICS_ROSTER;
+  }, [role]);
 
   if (!isOpen) return null;
 
@@ -111,7 +124,7 @@ export function TeamScheduleModal({
   );
 
   // Group work by mechanic
-  const mechanicWorkData = FACTORY_MECHANICS_ROSTER.map((mech) => {
+  const mechanicWorkData = relevantTechnicians.map((mech) => {
     // Tickets attended or assigned to this mechanic
     const assignedTickets = dayRepairs.filter(
       (r) => r.attendedBy && r.attendedBy.toLowerCase().includes(mech.name.toLowerCase())
@@ -147,8 +160,10 @@ export function TeamScheduleModal({
   // Reassign ticket to another mechanic
   const handleReassign = async (ticketId: string, targetMechanicName: string) => {
     try {
-      await assignRepairTicket(ticketId, targetMechanicName);
-      showToast(`Work ticket ${ticketId} reassigned to ${targetMechanicName}!`, 'success');
+      const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
+      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
+      await assignRepairTicket(ticketId, targetMechanicName, assignerName);
+      showToast(`Work ticket ${ticketId} assigned to ${targetMechanicName}!`, 'success');
     } catch (e) {
       console.error(e);
       showToast('Error reassigning work ticket.', 'error');
@@ -526,17 +541,27 @@ export function TeamScheduleModal({
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span
-                                      className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                                        isDone
-                                          ? 'bg-emerald-100 text-emerald-800'
-                                          : isCrit
-                                          ? 'bg-rose-100 text-rose-800'
-                                          : 'bg-amber-100 text-amber-800'
-                                      }`}
-                                    >
-                                      {isDone ? 'RESOLVED' : t.urgency} • {t.faultCategory}
-                                    </span>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span
+                                        className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                                          isDone
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : t.status === 'ASSIGNED'
+                                            ? 'bg-violet-100 text-violet-800 border border-violet-200'
+                                            : isCrit
+                                            ? 'bg-rose-100 text-rose-800'
+                                            : 'bg-amber-100 text-amber-800'
+                                        }`}
+                                      >
+                                        {isDone ? 'RESOLVED' : t.status === 'ASSIGNED' ? 'ASSIGNED' : t.urgency} • {t.faultCategory}
+                                      </span>
+                                      {t.status === 'ASSIGNED' && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                                          <UserCheck className="w-2.5 h-2.5 text-violet-600" />
+                                          <span>Assigned by {t.assignedBy || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic')}</span>
+                                        </span>
+                                      )}
+                                    </div>
                                     <span className="text-[10px] text-slate-400 font-mono">
                                       #{t.id}
                                     </span>
@@ -577,35 +602,45 @@ export function TeamScheduleModal({
                                       ) : (
                                         <span />
                                       )}
-                                      <span className="text-slate-500 font-semibold flex items-center gap-1 ml-auto">
-                                        <ArrowRightLeft className="w-3 h-3 text-indigo-500" />
-                                        <span>Move to:</span>
-                                      </span>
+                                      {t.assignedBy ? (
+                                        <span className="text-violet-700 font-bold bg-violet-50 px-2 py-0.5 rounded border border-violet-200/70 ml-auto">
+                                          Assigned by {t.assignedBy}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 font-semibold flex items-center gap-1 ml-auto">
+                                          <ArrowRightLeft className="w-3 h-3 text-indigo-500" />
+                                          <span>Move to:</span>
+                                        </span>
+                                      )}
                                     </div>
 
                                     {/* Direct 1-Click Move Buttons (Myself + Mechanics) */}
                                     <div className="flex flex-wrap items-center gap-1.5">
                                       {/* 1. Move to Myself Button */}
-                                      <button
-                                        onClick={() => handleReassign(t.id, user?.name || 'Ramesh Kumar')}
-                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                          mechanic.name.toLowerCase().includes('ramesh')
-                                            ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold cursor-default'
-                                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                        }`}
-                                        title="Assign task directly to myself"
-                                      >
-                                        <UserCheck className="w-3 h-3" />
-                                        <span>
-                                          {mechanic.name.toLowerCase().includes('ramesh')
-                                            ? '✓ With Myself'
-                                            : 'Assign to Myself'}
-                                        </span>
-                                      </button>
+                                      {(() => {
+                                        const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
+                                        const isSelf = mechanic.name.toLowerCase().includes(selfName.toLowerCase());
+                                        return (
+                                          <button
+                                            onClick={() => handleReassign(t.id, selfName)}
+                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                              isSelf
+                                                ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold cursor-default'
+                                                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                            }`}
+                                            title="Assign task directly to myself"
+                                          >
+                                            <UserCheck className="w-3 h-3" />
+                                            <span>
+                                              {isSelf ? '✓ With Myself' : 'Assign to Myself'}
+                                            </span>
+                                          </button>
+                                        );
+                                      })()}
 
                                       {/* 2. Move to Someone Else Buttons */}
-                                      {FACTORY_MECHANICS_ROSTER.filter(
-                                        (m) => !m.name.toLowerCase().includes('ramesh')
+                                      {relevantTechnicians.filter(
+                                        (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
                                       ).map((mech) => {
                                         const isCurrent = mechanic.name.toLowerCase().includes(mech.name.toLowerCase());
                                         const firstName = mech.name.split(' ')[0];

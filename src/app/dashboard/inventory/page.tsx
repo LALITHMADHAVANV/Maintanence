@@ -61,7 +61,7 @@ export default function InventoryPage() {
   const { user, role } = useAuth();
 
   const isStorePersonOrAdmin = role === 'STORE_PERSON' || role === 'ADMIN' || role === 'ASSET_MANAGER';
-  const isMechanicOrAdmin = role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ADMIN' || role === 'ASSET_MANAGER';
+  const isMechanicOrAdmin = role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN' || role === 'ASSET_MANAGER';
 
   // Strict authorization matrix: only authorized executives/admin can approve critical needs
   const isAuthorizedToApproveCritical = role === 'CEO' || role === 'ADMIN' || role === 'ASSET_MANAGER';
@@ -73,15 +73,31 @@ export default function InventoryPage() {
   // Mechanic Custody details state
   const [selectedMechanic, setSelectedMechanic] = useState<MechanicDuty | null>(null);
   const [isMechCustodyOpen, setIsMechCustodyOpen] = useState(false);
-  const [activeMechanicId, setActiveMechanicId] = useState<string>(FACTORY_MECHANICS_ROSTER[0].id);
+  const [activeMechanicId, setActiveMechanicId] = useState<string>('ELEC-02');
   const [showFullPartsTable, setShowFullPartsTable] = useState(false);
 
+  // For Senior Electrician, ONLY show junior electricians
   const visibleMechanics = useMemo(() => {
+    if (role === 'SENIOR_ELECTRICIAN') {
+      return FACTORY_MECHANICS_ROSTER.filter(
+        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      );
+    }
+    if (role === 'SENIOR_MECHANIC') {
+      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+    }
     return FACTORY_MECHANICS_ROSTER;
-  }, []);
+  }, [role]);
+
+  // Sync active selected mechanic
+  useEffect(() => {
+    if (visibleMechanics.length > 0 && !visibleMechanics.some((m) => m.id === activeMechanicId)) {
+      setActiveMechanicId(visibleMechanics[0].id);
+    }
+  }, [visibleMechanics, activeMechanicId]);
 
   const currentMechanicData = useMemo(
-    () => visibleMechanics.find((m) => m.id === activeMechanicId) || visibleMechanics[0],
+    () => visibleMechanics.find((m) => m.id === activeMechanicId) || visibleMechanics[0] || FACTORY_MECHANICS_ROSTER[0],
     [activeMechanicId, visibleMechanics]
   );
 
@@ -190,8 +206,38 @@ export default function InventoryPage() {
     [parts]
   );
 
-  // User-scoped requisitions: for mechanics, strictly filter to only their own indents & requisitions
+  // User-scoped requisitions:
+  // For Senior Electrician, strictly filter to ONLY junior electricians and their indents
   const displayedRequisitions = useMemo(() => {
+    if (role === 'SENIOR_ELECTRICIAN') {
+      return requisitions.filter((r) => {
+        const reqName = (r.requestedBy || '').trim().toLowerCase();
+        const reqRole = (r.requestedByRole || '').trim().toLowerCase();
+        // Matches junior electricians (Rajesh G., Karthik M., or non-senior electrician)
+        return (
+          reqName.includes('rajesh') ||
+          reqName.includes('karthik') ||
+          (reqRole.includes('electrician') && !reqRole.includes('senior') && !reqRole.includes('lead')) ||
+          reqRole.includes('junior')
+        );
+      });
+    }
+
+    if (role === 'ELECTRICIAN') {
+      const currentUserName = (user?.name || '').trim().toLowerCase();
+      return requisitions.filter((r) => {
+        const reqName = (r.requestedBy || '').trim().toLowerCase();
+        if (currentUserName) {
+          const userParts = currentUserName.split(' ').filter((p) => p.length > 2);
+          const hasMatch = userParts.some((p) => reqName.includes(p));
+          if (hasMatch || reqName.includes(currentUserName) || currentUserName.includes(reqName)) {
+            return true;
+          }
+        }
+        return reqName.includes('rajesh') || reqName.includes('karthik') || reqName.includes('electrician');
+      });
+    }
+
     if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC') {
       const currentUserName = (user?.name || '').trim().toLowerCase();
       return requisitions.filter((r) => {
@@ -804,22 +850,32 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* MECHANIC TOOL CUSTODY SECTION - Hidden from line mechanics; accessible to Senior Mechanic & Store In-Charge */}
-          {role !== 'MECHANIC' && (
+          {/* MECHANIC & ELECTRICIAN TOOL CUSTODY SECTION */}
+          {role !== 'MECHANIC' && role !== 'ELECTRICIAN' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Wrench className="w-4 h-4 text-indigo-600" />
-                    <span>Mechanic Tool Custody</span>
+                    {role === 'SENIOR_ELECTRICIAN' ? (
+                      <Zap className="w-4 h-4 text-cyan-600" />
+                    ) : (
+                      <Wrench className="w-4 h-4 text-indigo-600" />
+                    )}
+                    <span>
+                      {role === 'SENIOR_ELECTRICIAN'
+                        ? 'Junior Electricians Tool Custody'
+                        : 'Mechanic Tool Custody'}
+                    </span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Click any mechanic below to see the tools and spare parts they are currently handling.
+                    {role === 'SENIOR_ELECTRICIAN'
+                      ? 'Click any junior electrician below to see the calibration tools and electrical components in their custody.'
+                      : 'Click any mechanic below to see the tools and spare parts they are currently handling.'}
                   </p>
                 </div>
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {FACTORY_MECHANICS_ROSTER.length} Mechanics On Duty
+                  {visibleMechanics.length} {role === 'SENIOR_ELECTRICIAN' ? 'Junior Electricians' : 'Technicians On Duty'}
                 </span>
                 <button
                   type="button"
@@ -1306,18 +1362,29 @@ export default function InventoryPage() {
           </div>
 
           {/* Filter Bar with separated Critical, Urgent, and Monthly List */}
-          {(role === 'MECHANIC' || role === 'SENIOR_MECHANIC') && (
+          {role === 'SENIOR_ELECTRICIAN' ? (
+            <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-cyan-900">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-cyan-600 animate-pulse shrink-0" />
+                <span className="font-bold">Junior Electrician Indents Filter:</span>
+                <span>Showing only requisitions and monthly indents raised by Junior Electricians.</span>
+              </div>
+              <span className="font-mono font-bold bg-white px-2.5 py-0.5 rounded-lg border border-cyan-200 text-cyan-700 shrink-0 self-start sm:self-auto">
+                {displayedRequisitions.length} Indent{displayedRequisitions.length === 1 ? '' : 's'}
+              </span>
+            </div>
+          ) : (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN') ? (
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-indigo-900">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
                 <span className="font-bold">Personal Indents Filter:</span>
-                <span>Showing only requisitions and monthly indents raised by {user?.name || (role === 'SENIOR_MECHANIC' ? 'Ramesh Kumar' : role === 'MECHANIC' ? 'Suresh Babu' : 'Mechanic')}.</span>
+                <span>Showing only requisitions and monthly indents raised by {user?.name || (role === 'SENIOR_MECHANIC' ? 'Ramesh Kumar' : role === 'MECHANIC' ? 'Suresh Babu' : 'Staff')}.</span>
               </div>
               <span className="font-mono font-bold bg-white px-2.5 py-0.5 rounded-lg border border-indigo-200 text-indigo-700 shrink-0 self-start sm:self-auto">
                 {displayedRequisitions.length} Indent{displayedRequisitions.length === 1 ? '' : 's'}
               </span>
             </div>
-          )}
+          ) : null}
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
@@ -1329,7 +1396,12 @@ export default function InventoryPage() {
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                {role === 'MECHANIC' || role === 'SENIOR_MECHANIC' ? 'My Indents' : 'All Requests'} ({displayedRequisitions.length})
+                {role === 'SENIOR_ELECTRICIAN'
+                  ? 'Junior Electricians Indents'
+                  : role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN'
+                  ? 'My Indents'
+                  : 'All Requests'}{' '}
+                ({displayedRequisitions.length})
               </button>
 
               {/* Critical (CEO) */}

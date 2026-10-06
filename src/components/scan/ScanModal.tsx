@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { QrCode, X, AlertTriangle, ArrowRightLeft, Radio, Camera } from 'lucide-react';
 import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
 import { subscribeMachines, createBreakdownTicket, relocateMachine } from '@/lib/services/cmmsService';
@@ -38,19 +38,30 @@ export function ScanModal({
   const [relocateReason, setRelocateReason] = useState<string>('');
 
   const { showToast } = useToast();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+
+  const isMechanicRole = role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN';
+
+  // Only show machines (category === 'MACHINE') as assets for mechanic roles
+  const visibleMachines = useMemo(() => {
+    if (isMechanicRole) {
+      return machines.filter((m) => m.category === 'MACHINE');
+    }
+    return machines;
+  }, [machines, isMechanicRole]);
 
   useEffect(() => {
     const unsub = subscribeMachines((data) => {
       setMachines(data);
+      const filtered = isMechanicRole ? data.filter((m) => m.category === 'MACHINE') : data;
       if (preselectedMachineId) {
         setSelectedMachineId(preselectedMachineId);
-      } else if (data.length > 0 && !selectedMachineId) {
-        setSelectedMachineId(data[0].id);
+      } else if (filtered.length > 0 && !selectedMachineId) {
+        setSelectedMachineId(filtered[0].id);
       }
     });
     return () => unsub();
-  }, [preselectedMachineId, selectedMachineId]);
+  }, [preselectedMachineId, selectedMachineId, isMechanicRole]);
 
   useEffect(() => {
     if (preselectedMachineId) {
@@ -60,7 +71,7 @@ export function ScanModal({
 
   if (!isOpen) return null;
 
-  const currentMachine = machines.find((m) => m.id === selectedMachineId) || machines[0];
+  const currentMachine = visibleMachines.find((m) => m.id === selectedMachineId) || visibleMachines[0];
 
   const handleBreakdownSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,7 +178,7 @@ export function ScanModal({
               onChange={(e) => setSelectedMachineId(e.target.value)}
               className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
             >
-              {machines.map((m) => (
+              {visibleMachines.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.id} - {m.brand} {m.model} ({m.currentLine})
                 </option>

@@ -808,7 +808,7 @@ export default function FloorTrackerPage() {
     setSearchQuery('');
   };
 
-  if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC') {
+  if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-white rounded-3xl border border-slate-200 shadow-sm max-w-xl mx-auto space-y-5 my-8">
         <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shadow-xs">
@@ -822,7 +822,7 @@ export default function FloorTrackerPage() {
             Floor Workstations Restricted
           </h2>
           <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-            Floor layouts, workstation matrix, and departmental infrastructure are managed by <strong>Plant Administrators</strong>. Mechanics attend machine tickets and monthly maintenance routines.
+            Floor layouts, workstation matrix, and departmental infrastructure are managed by <strong>Plant Administrators</strong>. Technicians attend machine tickets and monthly maintenance routines.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">

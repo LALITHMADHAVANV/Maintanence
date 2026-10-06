@@ -36,6 +36,10 @@ function getDefaultTitle(role: UserRole): string {
       return 'Senior Master Technician & PPM Lead';
     case 'MECHANIC':
       return 'Industrial Sewing Machine Mechanic';
+    case 'SENIOR_ELECTRICIAN':
+      return 'Senior Plant Electrician & Power Specialist';
+    case 'ELECTRICIAN':
+      return 'Industrial Plant Electrician';
     case 'STORE_PERSON':
       return 'Tool Crib & Inventory Custodian';
     default:

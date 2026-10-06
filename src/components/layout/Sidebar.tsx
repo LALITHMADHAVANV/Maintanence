@@ -17,6 +17,8 @@ import {
   X,
   ChevronRight,
   ClipboardList,
+  Users,
+  Zap,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -155,27 +157,41 @@ export function Sidebar() {
       },
     ];
   } else {
-    // Mechanic, Senior Mechanic: Focused strictly on tickets, tool crib & indents, and history
+    // Mechanic, Senior Mechanic, Electrician, Senior Electrician
+    const isElectricianRole = role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN';
     navItems = [
       {
-        label: 'Maintenance & Tickets',
+        label: isElectricianRole ? 'Electrical & Tickets' : 'Maintenance & Tickets',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-rose-500 text-white',
       },
-      {
-        label: 'Tool Crib & Indents',
-        href: '/dashboard/inventory',
-        icon: Boxes,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-amber-500 text-slate-900',
-      },
+      ...(!isElectricianRole
+        ? [
+            {
+              label: 'Tool Crib & Indents',
+              href: '/dashboard/inventory',
+              icon: Boxes,
+              badge: lowStockCount > 0 ? lowStockCount : null,
+              badgeColor: 'bg-amber-500 text-slate-900',
+            },
+          ]
+        : []),
       {
         label: 'Service History',
         href: '/dashboard/history',
         icon: History,
       },
+      ...((role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN')
+        ? [
+            {
+              label: role === 'SENIOR_ELECTRICIAN' ? 'Electrician Roster' : 'Team Work Roster',
+              href: '/dashboard/mechanic-roster',
+              icon: Users,
+            },
+          ]
+        : []),
     ];
   }
 
@@ -188,8 +204,12 @@ export function Sidebar() {
         return 'bg-indigo-600 text-white';
       case 'SENIOR_MECHANIC':
         return 'bg-blue-600 text-white';
+      case 'SENIOR_ELECTRICIAN':
+        return 'bg-cyan-600 text-white font-bold';
       case 'MECHANIC':
         return 'bg-amber-500 text-slate-950 font-bold';
+      case 'ELECTRICIAN':
+        return 'bg-amber-400 text-slate-950 font-bold';
       case 'STORE_PERSON':
         return 'bg-emerald-600 text-white';
       default:

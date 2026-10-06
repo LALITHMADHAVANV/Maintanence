@@ -68,8 +68,9 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<'month' | 'agenda'>('month');
   const [filterType, setFilterType] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
 
-  // Senior Mechanic has authority to schedule new PPM overhauls
-  const canSchedulePPM = role === 'SENIOR_MECHANIC';
+  // Senior Mechanic and Senior Electrician have authority to schedule new PPM overhauls
+  const canSchedulePPM = role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN';
+  const isMechanicRole = role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN';
 
   // Resolve Repair modal state
   const [isResolveOpen, setIsResolveOpen] = useState(false);
@@ -91,11 +92,13 @@ export default function CalendarPage() {
   // Senior Mechanic Team Work Schedule Pop-up state
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
 
-  // Senior Mechanic Direct Inline Dispatch State (No popups)
+  // Senior Mechanic / Electrician Direct Inline Dispatch State (No popups)
   const [isInlineDispatchOpen, setIsInlineDispatchOpen] = useState(false);
   const [inlineMachineId, setInlineMachineId] = useState('');
   const [inlineTaskTitle, setInlineTaskTitle] = useState('');
-  const [inlineAssignee, setInlineAssignee] = useState('Ramesh Kumar');
+  const [inlineAssignee, setInlineAssignee] = useState(() =>
+    role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'
+  );
   const [inlineUrgency, setInlineUrgency] = useState<RepairUrgency>('WARNING');
   const [isSubmittingInline, setIsSubmittingInline] = useState(false);
 
@@ -114,15 +117,39 @@ export default function CalendarPage() {
     };
   }, []);
 
+  // Map of all machines by ID
+  const machineMap = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
+
+  // In mechanic pages, ONLY show the machines (category === 'MACHINE') as assets
+  const displayMachines = useMemo(() => {
+    if (isMechanicRole) {
+      return machines.filter((m) => m.category === 'MACHINE');
+    }
+    return machines;
+  }, [machines, isMechanicRole]);
+
+  // For Senior Electrician, ONLY show junior electricians; for Senior Mechanic, show mechanics
+  const relevantTechnicians = useMemo(() => {
+    if (role === 'SENIOR_ELECTRICIAN') {
+      return FACTORY_MECHANICS_ROSTER.filter(
+        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      );
+    }
+    if (role === 'SENIOR_MECHANIC') {
+      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+    }
+    return FACTORY_MECHANICS_ROSTER;
+  }, [role]);
+
   // Set default machine for PPM and inline dispatch once machines load
   useEffect(() => {
-    if (machines.length > 0 && !newPPMMachineId) {
-      setNewPPMMachineId(machines[0].id);
+    if (displayMachines.length > 0 && !newPPMMachineId) {
+      setNewPPMMachineId(displayMachines[0].id);
     }
-    if (machines.length > 0 && !inlineMachineId) {
-      setInlineMachineId(machines[0].id);
+    if (displayMachines.length > 0 && !inlineMachineId) {
+      setInlineMachineId(displayMachines[0].id);
     }
-  }, [machines, newPPMMachineId, inlineMachineId]);
+  }, [displayMachines, newPPMMachineId, inlineMachineId]);
 
   // Sync modal date when selectedDate changes
   useEffect(() => {
@@ -141,6 +168,27 @@ export default function CalendarPage() {
 
   const todayKey = useMemo(() => toDateKey(new Date()), []);
 
+  // Filter repairs and PPMs for mechanics to only include machines
+  const scopedRepairs = useMemo(() => {
+    if (isMechanicRole) {
+      return repairs.filter((r) => {
+        const m = machineMap.get(r.machineId);
+        return !m || m.category === 'MACHINE';
+      });
+    }
+    return repairs;
+  }, [repairs, machineMap, isMechanicRole]);
+
+  const scopedPpmSchedules = useMemo(() => {
+    if (isMechanicRole) {
+      return ppmSchedules.filter((p) => {
+        const m = machineMap.get(p.machineId);
+        return !m || m.category === 'MACHINE';
+      });
+    }
+    return ppmSchedules;
+  }, [ppmSchedules, machineMap, isMechanicRole]);
+
   // Events grouped by date string ('YYYY-MM-DD')
   const eventsByDate = useMemo(() => {
     const map = new Map<string, { repairs: RepairTicket[]; ppms: PPMSchedule[] }>();
@@ -153,7 +201,7 @@ export default function CalendarPage() {
     };
 
     // Index repairs by reportedAt and resolvedAt
-    for (const r of repairs) {
+    for (const r of scopedRepairs) {
       const dateKey = r.reportedAt?.slice(0, 10);
       if (dateKey) {
         getBucket(dateKey).repairs.push(r);
@@ -168,7 +216,7 @@ export default function CalendarPage() {
     }
 
     // Index PPMs by nextDue
-    for (const ppm of ppmSchedules) {
+    for (const ppm of scopedPpmSchedules) {
       const dateKey = ppm.nextDue?.slice(0, 10);
       if (dateKey) {
         getBucket(dateKey).ppms.push(ppm);
@@ -176,7 +224,7 @@ export default function CalendarPage() {
     }
 
     return map;
-  }, [repairs, ppmSchedules]);
+  }, [scopedRepairs, scopedPpmSchedules]);
 
   // Monthly KPI Statistics
   const stats = useMemo(() => {
@@ -434,12 +482,14 @@ export default function CalendarPage() {
   // Direct 1-Click Move Task to Mechanic or Myself (No popup)
   const handleDirectMoveTask = async (ticketId: string, targetMechanicName: string) => {
     try {
-      await assignRepairTicket(ticketId, targetMechanicName);
+      const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
+      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
+      await assignRepairTicket(ticketId, targetMechanicName, assignerName);
       const isSelf = targetMechanicName.toLowerCase().includes((user?.name || 'ramesh').toLowerCase());
       showToast(
         isSelf
-          ? `Work Order #${ticketId} moved directly to yourself (${targetMechanicName})!`
-          : `Work Order #${ticketId} moved directly to ${targetMechanicName}!`,
+          ? `Work Order #${ticketId} assigned directly to yourself (${targetMechanicName})!`
+          : `Work Order #${ticketId} assigned directly to ${targetMechanicName}!`,
         'success'
       );
     } catch (err) {
@@ -461,15 +511,17 @@ export default function CalendarPage() {
     setIsSubmittingInline(true);
     try {
       const targetMachine = machines.find((m) => m.id === targetMachineId);
+      const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
+      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
       const ticketId = await assignMechanicTask({
         machineId: targetMachineId,
         machineType: targetMachine?.typeName || targetMachine?.type || 'Sewing Machine',
         line: targetMachine?.currentLine || 'Line 01',
         taskTitle: taskText,
-        faultDetails: `Direct dispatch from Senior Mechanic. Scheduled for ${selectedDate}.`,
+        faultDetails: `Direct dispatch from ${assignedByTitle}. Scheduled for ${selectedDate}.`,
         urgency: inlineUrgency,
-        assignedTo: inlineAssignee || user?.name || 'Ramesh Kumar',
-        assignedBy: `${user?.name || 'Ramesh Kumar'} (Senior Mechanic)`,
+        assignedTo: inlineAssignee || user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'),
+        assignedBy: assignerName,
         scheduledDate: selectedDate,
         shift: 'Shift A (07:00 - 15:30)',
       });
@@ -823,20 +875,31 @@ export default function CalendarPage() {
                           </div>
                         ))}
 
-                      {/* 2. Warning / Routine Repair Chips */}
+                      {/* 2. Warning / Routine / Assigned Repair Chips */}
                       {displayRepairs
                         .filter((r) => r.urgency !== 'CRITICAL' && r.status !== 'COMPLETED')
                         .slice(0, 2)
-                        .map((r) => (
-                          <div
-                            key={r.id}
-                            className="bg-amber-50 text-amber-900 border border-amber-200 rounded px-1.5 py-0.5 text-[10px] font-semibold truncate flex items-center gap-1"
-                            title={`${r.machineId}: ${r.faultCategory}`}
-                          >
-                            <Wrench className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                            <span className="truncate">{r.machineId}</span>
-                          </div>
-                        ))}
+                        .map((r) => {
+                          const isAssigned = r.status === 'ASSIGNED';
+                          return (
+                            <div
+                              key={r.id}
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold truncate flex items-center gap-1 ${
+                                isAssigned
+                                  ? 'bg-violet-100 text-violet-900 border border-violet-300 font-bold'
+                                  : 'bg-amber-50 text-amber-900 border border-amber-200'
+                              }`}
+                              title={`${r.machineId}: ${r.faultCategory}${isAssigned ? ` (Assigned to ${r.attendedBy || 'Technician'})` : ''}`}
+                            >
+                              {isAssigned ? (
+                                <UserCheck className="w-2.5 h-2.5 text-violet-600 shrink-0" />
+                              ) : (
+                                <Wrench className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                              )}
+                              <span className="truncate">{r.machineId}</span>
+                            </div>
+                          );
+                        })}
 
                       {/* 3. PPM Schedule Chips */}
                       {displayPpms.slice(0, 2).map((ppm) => (
@@ -887,6 +950,10 @@ export default function CalendarPage() {
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded bg-amber-400" />
                   <span className="font-semibold text-slate-700">Routine Repair</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded bg-violet-500" />
+                  <span className="font-semibold text-slate-700">Assigned Work</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded bg-blue-500" />
@@ -960,7 +1027,7 @@ export default function CalendarPage() {
                             onChange={(e) => setInlineMachineId(e.target.value)}
                             className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none focus:ring-1 focus:ring-emerald-500"
                           >
-                            {machines.map((m) => (
+                            {displayMachines.map((m) => (
                               <option key={m.id} value={m.id}>
                                 {m.id} — {m.brand} {m.model} ({m.currentLine})
                               </option>
@@ -1003,9 +1070,9 @@ export default function CalendarPage() {
                           <div className="flex flex-wrap gap-1.5">
                             <button
                               type="button"
-                              onClick={() => setInlineAssignee(user?.name || 'Ramesh Kumar')}
+                              onClick={() => setInlineAssignee(user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                inlineAssignee.toLowerCase().includes('ramesh')
+                                inlineAssignee === (user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))
                                   ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500'
                                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
                               }`}
@@ -1013,9 +1080,16 @@ export default function CalendarPage() {
                               <UserCheck className="w-3 h-3" />
                               <span>Assign to Myself</span>
                             </button>
-                            {FACTORY_MECHANICS_ROSTER.filter(
-                              (m) => !m.name.toLowerCase().includes('ramesh')
-                            ).map((m) => (
+                            {FACTORY_MECHANICS_ROSTER.filter((m) => {
+                              if (role === 'SENIOR_ELECTRICIAN') {
+                                // For Senior Electrician, ONLY show junior electricians
+                                return m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior');
+                              }
+                              if (role === 'SENIOR_MECHANIC') {
+                                return m.trade === 'MECHANIC' && m.id !== 'MEC-01';
+                              }
+                              return m.name !== (user?.name || 'Ramesh Kumar');
+                            }).map((m) => (
                               <button
                                 key={m.id}
                                 type="button"
@@ -1107,17 +1181,27 @@ export default function CalendarPage() {
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span
-                              className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                                isCompleted
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : isCritical
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
-                            >
-                              {isCompleted ? 'RESOLVED' : t.urgency} • {t.faultCategory}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                                  isCompleted
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : t.status === 'ASSIGNED'
+                                    ? 'bg-violet-100 text-violet-800 border border-violet-200'
+                                    : isCritical
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {isCompleted ? 'RESOLVED' : t.status === 'ASSIGNED' ? 'ASSIGNED' : t.urgency} • {t.faultCategory}
+                              </span>
+                              {t.status === 'ASSIGNED' && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                                  <UserCheck className="w-2.5 h-2.5 text-violet-600" />
+                                  <span>Assigned by {t.assignedBy || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic')}</span>
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[10px] text-slate-400 font-mono">
                               #{t.id}
                             </span>
@@ -1167,28 +1251,37 @@ export default function CalendarPage() {
                               </span>
                               <span className="text-[10px] text-slate-500">
                                 Assigned: <strong className="text-slate-800 font-bold">{t.attendedBy || 'Unassigned'}</strong>
+                                {t.assignedBy && (
+                                  <span className="text-violet-700 font-medium ml-1">({t.assignedBy})</span>
+                                )}
                               </span>
                             </div>
 
                             {canSchedulePPM && !isCompleted && (
                               <div className="flex flex-wrap items-center gap-1.5">
                                 {/* 1. Move to Myself Button */}
-                                <button
-                                  onClick={() => handleDirectMoveTask(t.id, user?.name || 'Ramesh Kumar')}
-                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                    t.attendedBy?.toLowerCase().includes('ramesh')
-                                      ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
-                                      : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                  }`}
-                                  title="Assign task directly to myself"
-                                >
-                                  <UserCheck className="w-3 h-3" />
-                                  <span>{t.attendedBy?.toLowerCase().includes('ramesh') ? '✓ With Myself' : 'Assign to Myself'}</span>
-                                </button>
+                                {(() => {
+                                  const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
+                                  const isSelf = t.attendedBy?.toLowerCase().includes(selfName.toLowerCase());
+                                  return (
+                                    <button
+                                      onClick={() => handleDirectMoveTask(t.id, selfName)}
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                        isSelf
+                                          ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
+                                          : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                      }`}
+                                      title="Assign task directly to myself"
+                                    >
+                                      <UserCheck className="w-3 h-3" />
+                                      <span>{isSelf ? '✓ With Myself' : 'Assign to Myself'}</span>
+                                    </button>
+                                  );
+                                })()}
 
                                 {/* 2. Move to Someone Else Buttons */}
-                                {FACTORY_MECHANICS_ROSTER.filter(
-                                  (m) => !m.name.toLowerCase().includes('ramesh')
+                                {relevantTechnicians.filter(
+                                  (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
                                 ).map((mech) => {
                                   const isCurrent = t.attendedBy?.toLowerCase().includes(mech.name.toLowerCase());
                                   const firstName = mech.name.split(' ')[0];
@@ -1342,17 +1435,27 @@ export default function CalendarPage() {
                             }`}
                           >
                             <div className="flex items-center justify-between text-xs">
-                              <span
-                                className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                                  isDone
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : isCritical
-                                    ? 'bg-rose-100 text-rose-800'
-                                    : 'bg-amber-100 text-amber-800'
-                                }`}
-                              >
-                                {isDone ? 'RESOLVED' : r.urgency} • {r.faultCategory}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span
+                                  className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                                    isDone
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : r.status === 'ASSIGNED'
+                                      ? 'bg-violet-100 text-violet-800 border border-violet-200'
+                                      : isCritical
+                                      ? 'bg-rose-100 text-rose-800'
+                                      : 'bg-amber-100 text-amber-800'
+                                  }`}
+                                >
+                                  {isDone ? 'RESOLVED' : r.status === 'ASSIGNED' ? 'ASSIGNED' : r.urgency} • {r.faultCategory}
+                                </span>
+                                {r.status === 'ASSIGNED' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                                    <UserCheck className="w-2.5 h-2.5 text-violet-600" />
+                                    <span>Assigned by {r.assignedBy || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic')}</span>
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[10px] text-slate-400 font-mono">#{r.id}</span>
                             </div>
 
@@ -1389,28 +1492,37 @@ export default function CalendarPage() {
                                 </span>
                                 <span className="text-[10px] text-slate-500">
                                   Assigned: <strong className="text-slate-800 font-bold">{r.attendedBy || 'Unassigned'}</strong>
+                                  {r.assignedBy && (
+                                    <span className="text-violet-700 font-medium ml-1">({r.assignedBy})</span>
+                                  )}
                                 </span>
                               </div>
 
                               {canSchedulePPM && !isDone && (
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {/* 1. Move to Myself Button */}
-                                  <button
-                                    onClick={() => handleDirectMoveTask(r.id, user?.name || 'Ramesh Kumar')}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                      r.attendedBy?.toLowerCase().includes('ramesh')
-                                        ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
-                                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                    }`}
-                                    title="Assign task directly to myself"
-                                  >
-                                    <UserCheck className="w-3 h-3" />
-                                    <span>{r.attendedBy?.toLowerCase().includes('ramesh') ? '✓ With Myself' : 'Assign to Myself'}</span>
-                                  </button>
+                                  {(() => {
+                                    const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
+                                    const isSelf = r.attendedBy?.toLowerCase().includes(selfName.toLowerCase());
+                                    return (
+                                      <button
+                                        onClick={() => handleDirectMoveTask(r.id, selfName)}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                          isSelf
+                                            ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
+                                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                        }`}
+                                        title="Assign task directly to myself"
+                                      >
+                                        <UserCheck className="w-3 h-3" />
+                                        <span>{isSelf ? '✓ With Myself' : 'Assign to Myself'}</span>
+                                      </button>
+                                    );
+                                  })()}
 
                                   {/* 2. Move to Someone Else Buttons */}
-                                  {FACTORY_MECHANICS_ROSTER.filter(
-                                    (m) => !m.name.toLowerCase().includes('ramesh')
+                                  {relevantTechnicians.filter(
+                                    (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
                                   ).map((mech) => {
                                     const isCurrent = r.attendedBy?.toLowerCase().includes(mech.name.toLowerCase());
                                     const firstName = mech.name.split(' ')[0];
@@ -1499,7 +1611,7 @@ export default function CalendarPage() {
             </div>
 
             <form onSubmit={handleResolveSubmit} className="p-5 space-y-4">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
                 <div className="flex justify-between font-bold text-slate-800">
                   <span>{selectedTicket.machineId} ({selectedTicket.machineType})</span>
                   <span className="text-rose-600">{selectedTicket.faultCategory}</span>
@@ -1507,6 +1619,17 @@ export default function CalendarPage() {
                 <div className="text-[11px] text-slate-500">
                   Location: {selectedTicket.line} • {selectedTicket.faultDetails}
                 </div>
+                {selectedTicket.status === 'ASSIGNED' && (
+                  <div className="pt-2 mt-1 border-t border-slate-200 flex items-center justify-between text-[11px] bg-violet-50/80 px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-900">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-violet-600" />
+                      <span>Status: ASSIGNED ({selectedTicket.attendedBy || 'Technician'})</span>
+                    </span>
+                    <span className="font-semibold text-violet-700">
+                      Assigned by: <strong>{selectedTicket.assignedBy || 'Senior Mechanic'}</strong>
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1647,7 +1770,7 @@ export default function CalendarPage() {
                   onChange={(e) => setNewPPMMachineId(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
                 >
-                  {machines.map((m) => (
+                  {displayMachines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.id} - {m.brand} {m.model} ({m.currentLine})
                     </option>

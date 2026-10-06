@@ -339,7 +339,6 @@ export function MechanicCustodyModal({
               )}
             </div>
           )}
-
           {/* TAB 3: TOOLBOX INVENTORY */}
           {activeTab === 'TOOLBOX' && (
             <div className="space-y-4 animate-in fade-in duration-100">

@@ -54,7 +54,20 @@ export default function MechanicRosterPage() {
   const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
 
   const isSeniorMechanicOrAdmin =
-    role === 'SENIOR_MECHANIC' || role === 'ADMIN' || role === 'ASSET_MANAGER';
+    role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN' || role === 'ASSET_MANAGER';
+
+  // For Senior Electrician, ONLY show junior electricians
+  const relevantTechnicians = React.useMemo(() => {
+    if (role === 'SENIOR_ELECTRICIAN') {
+      return FACTORY_MECHANICS_ROSTER.filter(
+        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      );
+    }
+    if (role === 'SENIOR_MECHANIC') {
+      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+    }
+    return FACTORY_MECHANICS_ROSTER;
+  }, [role]);
 
   useEffect(() => {
     const unsubR = subscribeRepairs((data) => setRepairs(data));
@@ -106,8 +119,8 @@ export default function MechanicRosterPage() {
     (r) => !r.attendedBy || r.attendedBy.trim() === ''
   );
 
-  // Group work by mechanic
-  const mechanicWorkData = FACTORY_MECHANICS_ROSTER.map((mech) => {
+  // Group work by technician (filtered to relevantTechnicians)
+  const mechanicWorkData = relevantTechnicians.map((mech) => {
     const assignedTickets = dayRepairs.filter(
       (r) => r.attendedBy && r.attendedBy.toLowerCase().includes(mech.name.toLowerCase())
     );
@@ -131,8 +144,10 @@ export default function MechanicRosterPage() {
 
   const handleReassign = async (ticketId: string, targetMechanicName: string) => {
     try {
-      await assignRepairTicket(ticketId, targetMechanicName);
-      showToast(`Work ticket ${ticketId} reassigned to ${targetMechanicName}!`, 'success');
+      const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
+      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
+      await assignRepairTicket(ticketId, targetMechanicName, assignerName);
+      showToast(`Work ticket ${ticketId} assigned to ${targetMechanicName}!`, 'success');
     } catch (e) {
       console.error(e);
       showToast('Error reassigning work ticket.', 'error');
@@ -159,15 +174,21 @@ export default function MechanicRosterPage() {
               TexTech Apparel Group &bull; Unit 03 Coimbatore
             </div>
             <h1 className="text-xl font-black text-slate-950 uppercase tracking-tight mt-0.5">
-              Daily Master Mechanic Duty Allocation &amp; Floor Shift Sheet
+              {role === 'SENIOR_ELECTRICIAN'
+                ? 'Daily Plant Electrical Shift Sheet & Junior Electrician Allocation'
+                : 'Daily Master Mechanic Duty Allocation & Floor Shift Sheet'}
             </h1>
             <p className="text-xs text-slate-600 mt-0.5">
-              Maintenance &amp; Mechanical Engineering Division &bull; Notice Board Release
+              {role === 'SENIOR_ELECTRICIAN'
+                ? 'Plant Electrical Engineering & Substation Division • Notice Board Release'
+                : 'Maintenance & Mechanical Engineering Division • Notice Board Release'}
             </p>
           </div>
           <div className="text-right text-xs">
             <div className="font-bold text-slate-950 font-mono">Date: {formattedDate}</div>
-            <div className="text-[10px] text-slate-600">Supervisor: {user?.name || 'Ramesh Kumar (Master Tech)'}</div>
+            <div className="text-[10px] text-slate-600">
+              Supervisor: {user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar (Lead Electrician)' : 'Ramesh Kumar (Master Tech)')}
+            </div>
             <span className="inline-block mt-1 px-2 py-0.5 text-[9px] font-black bg-slate-900 text-white rounded uppercase">
               Shift: Day (08:00 - 17:30)
             </span>
@@ -188,15 +209,21 @@ export default function MechanicRosterPage() {
                 <span>Back to Monthly Calendar</span>
               </Link>
               <span className="text-xs text-slate-500 font-mono font-medium">
-                {user?.name || 'Ramesh Kumar'} ({role || 'SENIOR_MECHANIC'})
+                {user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} ({role || 'SENIOR_MECHANIC'})
               </span>
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2.5 text-slate-900">
               <Users className="w-7 h-7 text-indigo-600" />
-              <span>Senior Mechanic Duty Roster &amp; Work Allocation</span>
+              <span>
+                {role === 'SENIOR_ELECTRICIAN'
+                  ? 'Junior Electricians Duty Roster & Work Allocation'
+                  : 'Senior Mechanic Duty Roster & Work Allocation'}
+              </span>
             </h1>
             <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-              Inspect everyone&apos;s scheduled work for any date. Track breakdown job allocations, rebalance floor load, and supervise preventive overhauls.
+              {role === 'SENIOR_ELECTRICIAN'
+                ? 'Supervise scheduled maintenance, breakdown responses, and electrical shift load across Junior Electricians.'
+                : 'Inspect everyone\'s scheduled work for any date. Track breakdown job allocations, rebalance floor load, and supervise preventive overhauls.'}
             </p>
           </div>
 
@@ -251,14 +278,20 @@ export default function MechanicRosterPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500">Filter Mechanic:</span>
+          <span className="text-xs font-semibold text-slate-500">
+            {role === 'SENIOR_ELECTRICIAN' ? 'Filter Electrician:' : 'Filter Staff:'}
+          </span>
           <select
             value={selectedMechanicFilter}
             onChange={(e) => setSelectedMechanicFilter(e.target.value)}
             className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
           >
-            <option value="ALL">All 5 Factory Technicians</option>
-            {FACTORY_MECHANICS_ROSTER.map((m) => (
+            <option value="ALL">
+              {role === 'SENIOR_ELECTRICIAN'
+                ? `All ${relevantTechnicians.length} Junior Electricians`
+                : `All ${relevantTechnicians.length} Technicians`}
+            </option>
+            {relevantTechnicians.map((m) => (
               <option key={m.id} value={m.name}>
                 {m.name} ({m.role.split(' ')[0]})
               </option>
@@ -278,7 +311,7 @@ export default function MechanicRosterPage() {
               </span>
             </div>
             <span className="text-[11px] font-bold text-rose-700">
-              Move directly to a mechanic or yourself:
+              Move directly to a technician or yourself:
             </span>
           </div>
 
@@ -293,14 +326,14 @@ export default function MechanicRosterPage() {
                 <span className="text-slate-500">({r.faultCategory})</span>
                 <div className="flex flex-wrap items-center gap-1.5 ml-auto">
                   <button
-                    onClick={() => handleReassign(r.id, user?.name || 'Ramesh Kumar')}
+                    onClick={() => handleReassign(r.id, user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))}
                     className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                     title="Assign task directly to myself"
                   >
                     <UserCheck className="w-3 h-3" />
                     <span>Assign to Myself</span>
                   </button>
-                  {FACTORY_MECHANICS_ROSTER.filter((m) => !m.name.toLowerCase().includes('ramesh')).map((mech) => {
+                  {relevantTechnicians.map((mech) => {
                     const firstName = mech.name.split(' ')[0];
                     return (
                       <button
@@ -472,17 +505,27 @@ export default function MechanicRosterPage() {
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span
-                              className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                                isDone
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : isCrit
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
-                            >
-                              {isDone ? 'RESOLVED' : t.urgency} • {t.faultCategory}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                                  isDone
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : t.status === 'ASSIGNED'
+                                    ? 'bg-violet-100 text-violet-800 border border-violet-200'
+                                    : isCrit
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {isDone ? 'RESOLVED' : t.status === 'ASSIGNED' ? 'ASSIGNED' : t.urgency} • {t.faultCategory}
+                              </span>
+                              {t.status === 'ASSIGNED' && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                                  <UserCheck className="w-2.5 h-2.5 text-violet-600" />
+                                  <span>Assigned by {t.assignedBy || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic')}</span>
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[10px] text-slate-400 font-mono">
                               #{t.id}
                             </span>
@@ -513,30 +556,42 @@ export default function MechanicRosterPage() {
                           <div className="pt-2 border-t border-slate-200/50 space-y-1.5">
                             <div className="flex items-center justify-between text-[10px]">
                               <span className="text-slate-400 font-semibold">Reported by: {t.reportedBy}</span>
-                              <span className="text-slate-500 font-medium flex items-center gap-1">
-                                <ArrowRightLeft className="w-3 h-3 text-indigo-500" />
-                                <span>Move to:</span>
-                              </span>
+                              {t.assignedBy ? (
+                                <span className="text-violet-700 font-bold bg-violet-50 px-2 py-0.5 rounded border border-violet-200/70">
+                                  Assigned by {t.assignedBy}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 font-medium flex items-center gap-1">
+                                  <ArrowRightLeft className="w-3 h-3 text-indigo-500" />
+                                  <span>Move to:</span>
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex flex-wrap items-center gap-1.5">
                               {/* 1. Move to Myself Button */}
-                              <button
-                                onClick={() => handleReassign(t.id, user?.name || 'Ramesh Kumar')}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                  mechanic.name.toLowerCase().includes('ramesh')
-                                    ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
-                                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                }`}
-                                title="Assign task directly to myself"
-                              >
-                                <UserCheck className="w-3 h-3" />
-                                <span>{mechanic.name.toLowerCase().includes('ramesh') ? '✓ With Myself' : 'Assign to Myself'}</span>
-                              </button>
+                              {(() => {
+                                const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
+                                const isSelf = mechanic.name.toLowerCase().includes(selfName.toLowerCase());
+                                return (
+                                  <button
+                                    onClick={() => handleReassign(t.id, selfName)}
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                      isSelf
+                                        ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
+                                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                    }`}
+                                    title="Assign task directly to myself"
+                                  >
+                                    <UserCheck className="w-3 h-3" />
+                                    <span>{isSelf ? '✓ With Myself' : 'Assign to Myself'}</span>
+                                  </button>
+                                );
+                              })()}
 
                               {/* 2. Move to Someone Else Buttons */}
-                              {FACTORY_MECHANICS_ROSTER.filter(
-                                (m) => !m.name.toLowerCase().includes('ramesh')
+                              {relevantTechnicians.filter(
+                                (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
                               ).map((mech) => {
                                 const isCurrent = mechanic.name.toLowerCase().includes(mech.name.toLowerCase());
                                 const firstName = mech.name.split(' ')[0];

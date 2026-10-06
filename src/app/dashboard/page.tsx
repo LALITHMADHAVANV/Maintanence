@@ -19,7 +19,7 @@ export default function DashboardIndexPage() {
       router.replace('/dashboard/messages');
     } else if (role === 'STORE_PERSON') {
       router.replace('/dashboard/store-inbox');
-    } else if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC') {
+    } else if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN') {
       router.replace('/dashboard/calendar');
     } else {
       router.replace('/dashboard/machines');

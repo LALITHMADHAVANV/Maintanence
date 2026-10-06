@@ -163,7 +163,7 @@ export interface SparePart {
 }
 
 export type RepairUrgency = 'CRITICAL' | 'WARNING';
-export type RepairStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+export type RepairStatus = 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED';
 
 export interface RepairPartUsage {
   partId: string;
@@ -184,6 +184,7 @@ export interface RepairTicket {
   urgency: RepairUrgency;
   status: RepairStatus;
   attendedBy: string | null;
+  assignedBy?: string | null;
   resolvedAt: string | null;
   downtimeMinutes: number;
   actionTaken: string;
@@ -209,6 +210,8 @@ export type UserRole =
   | 'ADMIN'
   | 'SENIOR_MECHANIC'
   | 'MECHANIC'
+  | 'SENIOR_ELECTRICIAN'
+  | 'ELECTRICIAN'
   | 'STORE_PERSON'
   | 'ASSET_MANAGER';
 

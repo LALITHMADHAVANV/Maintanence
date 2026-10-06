@@ -16,6 +16,7 @@ import {
   Package,
   Users,
   UserPlus,
+  Zap,
 } from 'lucide-react';
 import { LiveClock } from './LiveClock';
 import { useAuth } from '@/context/AuthContext';
@@ -125,48 +126,62 @@ export function Navbar() {
         badgeColor: 'bg-rose-500 text-white',
       },
     ];
-  } else if (role === 'MECHANIC') {
-    // 🦺 LINE MECHANIC: Monthly work calendar, attend & fix, and spare parts/indents request
+  } else if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
+    // 🦺 LINE MECHANIC / ELECTRICIAN: Monthly work calendar
     navTabs = [
       {
-        label: '📅 Mechanic Work Calendar',
+        label: role === 'ELECTRICIAN' ? '⚡ Electrician Work Calendar' : '📅 Mechanic Work Calendar',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
         highlight: true,
       },
-      {
-        label: 'Tool Crib & Monthly Indents',
-        href: '/dashboard/inventory',
-        icon: Boxes,
-      },
+      ...(role !== 'ELECTRICIAN'
+        ? [
+            {
+              label: 'Tool Crib & Monthly Indents',
+              href: '/dashboard/inventory',
+              icon: Boxes,
+            },
+          ]
+        : [
+            {
+              label: 'Machine History & Services',
+              href: '/dashboard/history',
+              icon: History,
+            },
+          ]),
     ];
-  } else if (role === 'SENIOR_MECHANIC') {
-    // 🔧 SENIOR MECHANIC: Monthly cloud calendar (PPM), parts, history, team roster
+  } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
+    // 🔧 SENIOR MECHANIC / SENIOR ELECTRICIAN: Monthly cloud calendar (PPM), history, team roster
     navTabs = [
       {
-        label: '📅 Monthly Calendar & PPM',
+        label: role === 'SENIOR_ELECTRICIAN' ? '⚡ Monthly Calendar & PPM' : '📅 Monthly Calendar & PPM',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
         highlight: true,
       },
-      {
-        label: 'Tool Crib & Indents',
-        href: '/dashboard/inventory',
-        icon: Boxes,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
+      ...(role !== 'SENIOR_ELECTRICIAN'
+        ? [
+            {
+              label: 'Tool Crib & Indents',
+              href: '/dashboard/inventory',
+              icon: Boxes,
+              badge: lowStockCount > 0 ? lowStockCount : null,
+              badgeColor: 'bg-rose-500 text-white',
+            },
+          ]
+        : []),
       {
         label: 'Machine History & PPM',
         href: '/dashboard/history',
         icon: History,
       },
       {
-        label: '👥 Team Work Roster',
+        label: role === 'SENIOR_ELECTRICIAN' ? '👥 Electrician & Team Roster' : '👥 Team Work Roster',
         href: '/dashboard/mechanic-roster',
         icon: Users,
         highlight: true,
@@ -217,8 +232,12 @@ export function Navbar() {
         return 'bg-blue-600 text-white';
       case 'SENIOR_MECHANIC':
         return 'bg-indigo-600 text-white';
+      case 'SENIOR_ELECTRICIAN':
+        return 'bg-cyan-600 text-white';
       case 'MECHANIC':
         return 'bg-amber-500 text-slate-950';
+      case 'ELECTRICIAN':
+        return 'bg-amber-400 text-slate-950 font-bold';
       case 'STORE_PERSON':
         return 'bg-emerald-600 text-white';
       default:
@@ -234,7 +253,7 @@ export function Navbar() {
           <div className="flex items-center justify-between h-16">
             {/* Brand Logo & Name */}
             <Link
-              href={role === 'CEO' ? '/dashboard/messages' : (role === 'MECHANIC' || role === 'SENIOR_MECHANIC') ? '/dashboard/calendar' : '/dashboard/machines'}
+              href={role === 'CEO' ? '/dashboard/messages' : (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN') ? '/dashboard/calendar' : '/dashboard/machines'}
               className="flex items-center space-x-3 group"
             >
               <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-xs text-white font-bold text-lg group-hover:scale-105 transition">
@@ -305,6 +324,8 @@ export function Navbar() {
                     <Crown className="w-3.5 h-3.5 text-amber-600" />
                   ) : role === 'STORE_PERSON' ? (
                     <Package className="w-3.5 h-3.5 text-white" />
+                  ) : role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN' ? (
+                    <Zap className="w-3.5 h-3.5 text-amber-300" />
                   ) : (
                     user?.name?.charAt(0) || 'M'
                   )}

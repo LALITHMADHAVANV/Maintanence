@@ -12,6 +12,8 @@ export const ROLE_PASSWORDS: Record<UserRole, string> = {
   ASSET_MANAGER: 'admin123',
   SENIOR_MECHANIC: 'senior123',
   MECHANIC: 'mechanic123',
+  SENIOR_ELECTRICIAN: 'senior123',
+  ELECTRICIAN: 'electrician123',
   STORE_PERSON: 'stores123',
 };
 
@@ -34,6 +36,10 @@ function resolveUserRole(email: string): UserRole {
   const lower = email.toLowerCase();
   if (lower.includes('ceo')) return 'CEO';
   if (lower.includes('admin') || lower.includes('mgr') || lower.includes('manager')) return 'ADMIN';
+  if (lower.includes('electrician') || lower.includes('elec')) {
+    if (lower.includes('senior') || lower.includes('chief') || lower.includes('lead')) return 'SENIOR_ELECTRICIAN';
+    return 'ELECTRICIAN';
+  }
   if (lower.includes('senior')) return 'SENIOR_MECHANIC';
   if (lower.includes('store')) return 'STORE_PERSON';
   return 'MECHANIC';
@@ -48,6 +54,10 @@ function resolveUserTitle(role: UserRole): string {
       return 'Plant Administrator & Asset Director';
     case 'SENIOR_MECHANIC':
       return 'Senior Sewing Master Mechanic';
+    case 'SENIOR_ELECTRICIAN':
+      return 'Senior Plant Electrician & Automation Lead';
+    case 'ELECTRICIAN':
+      return 'Industrial Plant Electrician';
     case 'STORE_PERSON':
       return 'Tool Crib & Store In-Charge';
     case 'MECHANIC':
@@ -185,6 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'ceo123',
           'senior123',
           'mechanic123',
+          'electrician123',
           'stores123',
         ].filter((p) => p && p !== pass);
 
@@ -244,6 +255,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? SEED_USERS[1]
         : targetRole === 'SENIOR_MECHANIC'
         ? SEED_USERS[2]
+        : targetRole === 'SENIOR_ELECTRICIAN'
+        ? (SEED_USERS.find((u) => u.role === 'SENIOR_ELECTRICIAN') || SEED_USERS[2])
+        : targetRole === 'ELECTRICIAN'
+        ? (SEED_USERS.find((u) => u.role === 'ELECTRICIAN') || SEED_USERS[3])
         : targetRole === 'STORE_PERSON'
         ? SEED_USERS[4]
         : SEED_USERS[3]);

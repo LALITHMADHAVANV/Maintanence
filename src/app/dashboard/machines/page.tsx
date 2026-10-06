@@ -423,7 +423,7 @@ export default function MachinesPage() {
   ]);
 
 
-  if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC') {
+  if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-white rounded-3xl border border-slate-200 shadow-sm max-w-xl mx-auto space-y-5 my-8">
         <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shadow-xs">
@@ -437,7 +437,7 @@ export default function MachinesPage() {
             Asset Registry &amp; QR Module Restricted
           </h2>
           <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-            Machine asset registration, relocation, and QR tag generation are reserved for <strong>Plant Administrators</strong>. Mechanics manage daily maintenance tickets, preventative schedules, and spare parts indents.
+            Machine asset registration, relocation, and QR tag generation are reserved for <strong>Plant Administrators</strong>. Technicians manage daily maintenance tickets, preventative schedules, and spare parts indents.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
