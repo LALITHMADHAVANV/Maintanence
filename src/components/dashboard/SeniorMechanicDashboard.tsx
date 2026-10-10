@@ -54,6 +54,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
+import { MaintenanceMilestonesAndTasks } from './MaintenanceMilestonesAndTasks';
 
 interface SeniorMechanicDashboardProps {
   machines: Machine[];
@@ -608,7 +609,22 @@ export function SeniorMechanicDashboard({
         </div>
       )}
 
-      {/* ─── 4. MAIN WORKSPACE GRID: TICKETS & ROSTER (65% / 35%) ──────── */}
+      {/* ─── 4. DELIVERY SCHEDULE, MY TASKS & ATTENDANCE TODAY (FOR SENIORS) ─── */}
+      <MaintenanceMilestonesAndTasks
+        repairs={repairs}
+        ppmSchedules={ppmSchedules}
+        machines={machines}
+        userName={user?.name || (isElectrician ? 'Senior Electrician' : 'Senior Mechanic')}
+        role={role || (isElectrician ? 'SENIOR_ELECTRICIAN' : 'SENIOR_MECHANIC')}
+        onOpenResolve={(t) => {
+          setSelectedTicketForAssign(t);
+          setIsAssignModalOpen(true);
+        }}
+        onCompletePPM={(ppmId, machineId) => handleQuickCompletePPM(ppmId, machineId)}
+        onOpenCalendarDate={(dStr) => router.push(`/dashboard/calendar?date=${dStr}`)}
+      />
+
+      {/* ─── 5. MAIN WORKSPACE GRID: TICKETS & ROSTER (65% / 35%) ──────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Team Work Orders (8 cols = ~66%) */}
         <div className="lg:col-span-8 space-y-4">

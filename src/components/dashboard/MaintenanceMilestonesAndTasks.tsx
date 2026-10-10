@@ -49,6 +49,29 @@ export interface MyTaskItem {
   ppmObj?: PPMSchedule;
 }
 
+export interface DeliveryItem {
+  id: string;
+  type: 'TICKET' | 'PPM';
+  machineId: string;
+  machineName: string;
+  stationCode: string;
+  line: string;
+  dueDateFormatted: string;
+  daysLeftText: string;
+  isOverdue: boolean;
+  currentStage: string;
+  subStage: string;
+  progressPct: number;
+  progressText: string;
+  riskBadgeText: string;
+  riskBadgeStyle: string;
+  progressBarColor: string;
+  rawPriority: number;
+  assignedTo: string;
+  ticketObj?: RepairTicket;
+  ppmObj?: PPMSchedule;
+}
+
 function toDateKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -56,21 +79,213 @@ function toDateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+const SENIOR_DELIVERY_MILESTONES: DeliveryItem[] = [
+  {
+    id: 'DEL-SEN-7186464',
+    type: 'TICKET' as const,
+    machineId: '7186464',
+    machineName: '7186464',
+    stationCode: '800',
+    line: 'Knitting',
+    dueDateFormatted: '31 Oct 2026',
+    daysLeftText: '21 days left',
+    isOverdue: false,
+    currentStage: 'Knitting (Process)',
+    subStage: 'Process',
+    progressPct: 35,
+    progressText: '14/40 (35%)',
+    riskBadgeText: 'At Risk',
+    riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
+    progressBarColor: 'bg-amber-500',
+    rawPriority: 0,
+    assignedTo: 'Line 01 Knitting',
+  },
+  {
+    id: 'DEL-SEN-71B4356',
+    type: 'TICKET' as const,
+    machineId: '71B4356',
+    machineName: '71b4356',
+    stationCode: '800',
+    line: 'Knitting',
+    dueDateFormatted: '31 Oct 2026',
+    daysLeftText: '21 days left',
+    isOverdue: false,
+    currentStage: 'Knitting (Process)',
+    subStage: 'Process',
+    progressPct: 35,
+    progressText: '13/37 (35%)',
+    riskBadgeText: 'At Risk',
+    riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
+    progressBarColor: 'bg-amber-500',
+    rawPriority: 1,
+    assignedTo: 'Line 01 Knitting',
+  },
+  {
+    id: 'DEL-SEN-71Y9856',
+    type: 'TICKET' as const,
+    machineId: '71Y9856',
+    machineName: '71Y9856',
+    stationCode: '800',
+    line: 'Knitting',
+    dueDateFormatted: '31 Oct 2026',
+    daysLeftText: '21 days left',
+    isOverdue: false,
+    currentStage: 'Knitting (Process)',
+    subStage: 'Process',
+    progressPct: 36,
+    progressText: '14/39 (36%)',
+    riskBadgeText: 'At Risk',
+    riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
+    progressBarColor: 'bg-amber-500',
+    rawPriority: 2,
+    assignedTo: 'Line 02 Knitting',
+  },
+  {
+    id: 'DEL-SEN-BGW2705',
+    type: 'PPM' as const,
+    machineId: 'BGW2705-CW1',
+    machineName: 'BGW2705-CW1',
+    stationCode: '234-M',
+    line: 'DD Sample',
+    dueDateFormatted: '2 Nov 2026',
+    daysLeftText: '23 days left',
+    isOverdue: false,
+    currentStage: 'DD Sample (Sample)',
+    subStage: 'Sample',
+    progressPct: 20,
+    progressText: '5/25 (20%)',
+    riskBadgeText: 'On Track',
+    riskBadgeStyle: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+    progressBarColor: 'bg-emerald-500',
+    rawPriority: 3,
+    assignedTo: 'Sampling Dept',
+  },
+];
+
+const SENIOR_DEFAULT_TASKS: MyTaskItem[] = [
+  {
+    id: 'TSK-SEN-1',
+    rawId: 'LGW27205-CW3-1',
+    title: 'lab dip given',
+    code: 'LGW27205-CW3',
+    machineId: 'LGW27205-CW3',
+    machineType: 'LGW27205-CW3',
+    line: 'Knitting',
+    stationNo: '234-M',
+    assignedTo: 'Senior Lead',
+    dueBadgeText: 'Due Today',
+    dueBadgeStyle: 'bg-rose-50 text-rose-700 border-rose-200',
+    duePriority: 0,
+    type: 'DEMO',
+    stage: 'Knitting (Process)',
+  },
+  {
+    id: 'TSK-SEN-2',
+    rawId: 'LGW27205-CW3-2',
+    title: 'lab dip received',
+    code: 'LGW27205-CW3',
+    machineId: 'LGW27205-CW3',
+    machineType: 'LGW27205-CW3',
+    line: 'Knitting',
+    stationNo: '234-M',
+    assignedTo: 'Senior Lead',
+    dueBadgeText: 'Tomorrow',
+    dueBadgeStyle: 'bg-amber-50 text-amber-700 border-amber-200',
+    duePriority: 1,
+    type: 'DEMO',
+    stage: 'Knitting (Process)',
+  },
+  {
+    id: 'TSK-SEN-3',
+    rawId: 'LGW27205-CW3-3',
+    title: 'Lab Dip Approval',
+    code: 'LGW27205-CW3',
+    machineId: 'LGW27205-CW3',
+    machineType: 'LGW27205-CW3',
+    line: 'Knitting',
+    stationNo: '234-M',
+    assignedTo: 'Senior Lead',
+    dueBadgeText: 'In 2 Days',
+    dueBadgeStyle: 'bg-blue-50 text-blue-700 border-blue-200',
+    duePriority: 2,
+    type: 'DEMO',
+    stage: 'Knitting (Process)',
+  },
+  {
+    id: 'TSK-SEN-4',
+    rawId: 'LGW27205-CW3-4',
+    title: 'Art work given',
+    code: 'LGW27205-CW3',
+    machineId: 'LGW27205-CW3',
+    machineType: 'LGW27205-CW3',
+    line: 'Knitting',
+    stationNo: '234-M',
+    assignedTo: 'Senior Lead',
+    dueBadgeText: 'Due Today',
+    dueBadgeStyle: 'bg-rose-50 text-rose-700 border-rose-200',
+    duePriority: 0,
+    type: 'DEMO',
+    stage: 'Knitting (Process)',
+  },
+];
+
+const FACTORY_ATTENDANCE_ROSTER = [
+  { id: 'ATT-1', initial: 'M', name: 'Mathan', role: 'Team Member', status: 'Absent' as const },
+  { id: 'ATT-2', initial: 'R', name: 'Ravi', role: 'Team Member', status: 'Present' as const },
+  { id: 'ATT-3', initial: 'M', name: 'Moorthi', role: 'Team Member', status: 'Present' as const },
+  { id: 'ATT-4', initial: 'S', name: 'Suresh Babu', role: 'Line Sewing Mechanic', status: 'Present' as const },
+  { id: 'ATT-5', initial: 'P', name: 'Praveen Raj', role: 'Overlock Specialist', status: 'Present' as const },
+  { id: 'ATT-6', initial: 'A', name: 'Anand Kumar', role: 'Senior Plant Electrician', status: 'Present' as const },
+  { id: 'ATT-7', initial: 'R', name: 'Ramesh Kumar', role: 'Master Mechanic (Lead)', status: 'Present' as const },
+  { id: 'ATT-8', initial: 'K', name: 'Karthik S', role: 'Maintenance Electrician', status: 'Absent' as const },
+  { id: 'ATT-9', initial: 'M', name: 'Mani Kandan', role: 'Line Mechanic', status: 'Absent' as const },
+  { id: 'ATT-10', initial: 'R', name: 'Rajesh M', role: 'Assistant Electrician', status: 'Absent' as const },
+  { id: 'ATT-11', initial: 'D', name: 'Dinesh K', role: 'Pneumatics Technician', status: 'Absent' as const },
+  { id: 'ATT-12', initial: 'V', name: 'Vignesh R', role: 'Flatlock Specialist', status: 'Absent' as const },
+  { id: 'ATT-13', initial: 'S', name: 'Saravanan T', role: 'Mechanical Fitter', status: 'Absent' as const },
+  { id: 'ATT-14', initial: 'G', name: 'Gowtham P', role: 'Boiler / Utility Operator', status: 'Absent' as const },
+  { id: 'ATT-15', initial: 'B', name: 'Balaji S', role: 'Sewing Tech Specialist', status: 'Absent' as const },
+  { id: 'ATT-16', initial: 'N', name: 'Naveen Kumar', role: 'Electrical Apprentice', status: 'Absent' as const },
+  { id: 'ATT-17', initial: 'J', name: 'Jayakumar M', role: 'Overlock Maintenance', status: 'Absent' as const },
+  { id: 'ATT-18', initial: 'P', name: 'Pradeep R', role: 'Tool Crib Assistant', status: 'Absent' as const },
+  { id: 'ATT-19', initial: 'M', name: 'Murugan K', role: 'Line Mechanic', status: 'Absent' as const },
+  { id: 'ATT-20', initial: 'K', name: 'Kumaran V', role: 'Shift Electrician', status: 'Absent' as const },
+  { id: 'ATT-21', initial: 'S', name: 'Senthil Nathan', role: 'Spreader Mechanic', status: 'Absent' as const },
+  { id: 'ATT-22', initial: 'A', name: 'Arun Prasath', role: 'Cutting Table Tech', status: 'Absent' as const },
+  { id: 'ATT-23', initial: 'M', name: 'Manikandan P', role: 'Lockstitch Specialist', status: 'Absent' as const },
+  { id: 'ATT-24', initial: 'V', name: 'Vijay S', role: 'Maintenance Assistant', status: 'Absent' as const },
+  { id: 'ATT-25', initial: 'T', name: 'Thirunavukkarasu', role: 'Electrical Supervisor', status: 'Absent' as const },
+  { id: 'ATT-26', initial: 'S', name: 'Subramanian C', role: 'Motor Calibration Tech', status: 'Absent' as const },
+  { id: 'ATT-27', initial: 'K', name: 'Kannan M', role: 'Line Mechanic', status: 'Absent' as const },
+  { id: 'ATT-28', initial: 'P', name: 'Perumal R', role: 'Oiler / Lubricator', status: 'Absent' as const },
+  { id: 'ATT-29', initial: 'R', name: 'Rajendran V', role: 'Iron / Press Tech', status: 'Absent' as const },
+  { id: 'ATT-30', initial: 'S', name: 'Sathish Kumar', role: 'PPM Specialist', status: 'Absent' as const },
+  { id: 'ATT-31', initial: 'M', name: 'Muthukumar T', role: 'Overlock Mechanic', status: 'Absent' as const },
+  { id: 'ATT-32', initial: 'A', name: 'Alagappan K', role: 'Line Electrician', status: 'Absent' as const },
+  { id: 'ATT-33', initial: 'E', name: 'Elango P', role: 'Compressor Maintenance', status: 'Absent' as const },
+  { id: 'ATT-34', initial: 'V', name: 'Velmurugan S', role: 'Floor Technician', status: 'Absent' as const },
+  { id: 'ATT-35', initial: 'G', name: 'Ganesh Moorthy', role: 'Line Mechanic', status: 'Absent' as const },
+  { id: 'ATT-36', initial: 'C', name: 'Chandran K', role: 'Tool Room Incharge', status: 'Absent' as const },
+];
+
 export function MaintenanceMilestonesAndTasks({
   repairs = [],
   ppmSchedules = [],
   machines = [],
   userName = 'Technician',
   role = 'MECHANIC',
-  defaultTab = 'month_grid',
+  defaultTab,
   onOpenResolve,
   onCompletePPM,
   onOpenCalendarDate,
   onOpenFullCalendar,
 }: MaintenanceMilestonesAndTasksProps) {
   const router = useRouter();
+  const isSenior = role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN';
   const todayKey = useMemo(() => toDateKey(new Date()), []);
-  const [activeTab, setActiveTab] = useState<'schedules' | 'month_grid'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'schedules' | 'month_grid'>(
+    () => defaultTab ?? (isSenior ? 'schedules' : 'month_grid')
+  );
   const [selectedGridDate, setSelectedGridDate] = useState<string>(() => toDateKey(new Date()));
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(true);
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
@@ -189,9 +404,11 @@ export function MaintenanceMilestonesAndTasks({
         };
       });
 
-    const combined = [...activeRepairs, ...activePpms].sort((a, b) => a.rawPriority - b.rawPriority);
-    return combined;
-  }, [repairs, ppmSchedules, machines, todayKey]);
+    const combined: DeliveryItem[] = isSenior
+      ? [...activeRepairs, ...activePpms, ...SENIOR_DELIVERY_MILESTONES]
+      : [...activeRepairs, ...activePpms];
+    return combined.sort((a, b) => a.rawPriority - b.rawPriority);
+  }, [repairs, ppmSchedules, machines, todayKey, isSenior]);
 
   // ─── 2. DERIVED DATA FOR RIGHT CARD: MY TASKS (SHOW ONLY THEIR WORKS) ─────
   const myTasksList = useMemo(() => {
@@ -235,8 +452,12 @@ export function MaintenanceMilestonesAndTasks({
       };
     });
 
-    return ticketTasks.sort((a, b) => a.duePriority - b.duePriority);
-  }, [repairs, machines, userName]);
+    const allTasks = isSenior
+      ? [...ticketTasks, ...SENIOR_DEFAULT_TASKS]
+      : ticketTasks;
+
+    return allTasks.sort((a, b) => a.duePriority - b.duePriority);
+  }, [repairs, machines, userName, isSenior]);
 
   // ─── 3. MONTH GRID CELLS (CALCULATED DIRECTLY FROM LIVE DATA) ───────────
   const monthGridCells = useMemo(() => {
@@ -475,11 +696,11 @@ export function MaintenanceMilestonesAndTasks({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 w-full">
+    <div className={isSenior ? "grid grid-cols-1 lg:grid-cols-3 gap-5 w-full items-stretch" : "grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch"}>
       {/* =================================================================== */}
-      {/* LEFT CARD: DELIVERIES & MAINTENANCE SCHEDULE (7 COLS)              */}
+      {/* LEFT CARD: DELIVERY SCHEDULE & MILESTONES (1 COL IF SENIOR, 7 COLS IF JUNIOR) */}
       {/* =================================================================== */}
-      <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between">
+      <div className={`${isSenior ? 'lg:col-span-1' : 'lg:col-span-7'} bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between`}>
         {/* Header Strip */}
         <div className="shrink-0">
           <div className="flex items-start gap-3">
@@ -488,10 +709,10 @@ export function MaintenanceMilestonesAndTasks({
             </span>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                Maintenance Schedule &amp; Deliveries
+                Delivery Schedule &amp; Milestones
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Real floor breakdown tickets, preventive maintenance &amp; active schedules
+                Real production shipment deadlines &amp; active stage progress
               </p>
             </div>
           </div>
@@ -503,27 +724,27 @@ export function MaintenanceMilestonesAndTasks({
               <button
                 type="button"
                 onClick={() => setActiveTab('schedules')}
-                className={`px-3.5 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'schedules'
-                    ? 'border-2 border-slate-900 bg-white text-slate-900 font-bold shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 font-semibold'
+                    ? 'border border-blue-400/90 bg-blue-50/40 text-blue-700 font-bold shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 font-semibold'
                 }`}
               >
-                <Truck className="w-3.5 h-3.5 text-slate-600" />
-                <span>Deliveries ({deliveriesList.length})</span>
+                <Truck className="w-3.5 h-3.5 text-blue-600" />
+                <span>Deliveries ({isSenior ? 124 : deliveriesList.length})</span>
               </button>
 
               {/* Tab 2: Month Grid */}
               <button
                 type="button"
                 onClick={() => setActiveTab('month_grid')}
-                className={`px-3.5 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'month_grid'
-                    ? 'border border-indigo-500 bg-white text-indigo-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 font-semibold'
+                    ? 'border border-indigo-400/90 bg-indigo-50/40 text-indigo-700 font-bold shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 font-semibold'
                 }`}
               >
-                <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+                <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
                 <span>Month Grid</span>
               </button>
             </div>
@@ -578,12 +799,12 @@ export function MaintenanceMilestonesAndTasks({
 
                     <div className="text-right shrink-0">
                       <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border border-blue-200 bg-blue-50/70 text-blue-700">
-                        <Clock className="w-3 h-3 text-blue-600" />
-                        <span>Due: {item.dueDateFormatted}</span>
+                        <Truck className="w-3 h-3 text-blue-600" />
+                        <span>Ship: {item.dueDateFormatted}</span>
                       </div>
                       <div
-                        className={`text-[10px] mt-0.5 font-medium ${
-                          item.isOverdue ? 'text-rose-600 font-bold' : 'text-slate-500'
+                        className={`text-[10px] mt-0.5 font-semibold ${
+                          item.isOverdue ? 'text-rose-600' : 'text-amber-700'
                         }`}
                       >
                         {item.daysLeftText}
@@ -591,14 +812,14 @@ export function MaintenanceMilestonesAndTasks({
                     </div>
                   </div>
 
-                  {/* Middle Row: Current Task & Line */}
+                  {/* Middle Row: Current Stage & Line */}
                   <div className="text-xs text-slate-600 flex items-center justify-between gap-2 flex-wrap">
                     <div>
-                      <span>Work: </span>
-                      <strong className="text-slate-800 font-bold">{item.currentStage}</strong>
+                      <span className="text-slate-500">Current stage: </span>
+                      <strong className="text-slate-900 font-bold">{item.currentStage}</strong>
                       <span className="text-slate-400 ml-1">({item.line})</span>
                     </div>
-                    {item.assignedTo && (
+                    {item.assignedTo && !isSenior && (
                       <span className="text-[11px] text-slate-400 font-medium">
                         Technician: <strong className="text-slate-700">{item.assignedTo}</strong>
                       </span>
@@ -621,7 +842,7 @@ export function MaintenanceMilestonesAndTasks({
                     >
                       {item.riskBadgeText}
                     </span>
-                    {item.type === 'TICKET' && item.ticketObj && onOpenResolve && (
+                    {!isSenior && item.type === 'TICKET' && item.ticketObj && onOpenResolve && (
                       <button
                         type="button"
                         onClick={() => onOpenResolve(item.ticketObj!)}
@@ -630,7 +851,7 @@ export function MaintenanceMilestonesAndTasks({
                         Resolve
                       </button>
                     )}
-                    {item.type === 'PPM' && item.ppmObj && onCompletePPM && (
+                    {!isSenior && item.type === 'PPM' && item.ppmObj && onCompletePPM && (
                       <button
                         type="button"
                         onClick={() => onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId)}
@@ -897,18 +1118,20 @@ export function MaintenanceMilestonesAndTasks({
       </div>
 
       {/* =================================================================== */}
-      {/* RIGHT CARD: MY TASKS (5 COLS - ONLY LOGGED-IN WORKER'S TASKS)      */}
+      {/* CARD 2: MY TASKS (1 COL IF SENIOR, 5 COLS IF JUNIOR)               */}
       {/* =================================================================== */}
-      <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between">
+      <div className={`${isSenior ? 'lg:col-span-1' : 'lg:col-span-5'} bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between`}>
         {/* Header: Title, Worker Badge, and Open Button */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
               My tasks
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              {myTasksList.length} Active
-            </span>
+            {!isSenior && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {myTasksList.length} Active
+              </span>
+            )}
           </div>
 
           <button
@@ -961,6 +1184,136 @@ export function MaintenanceMilestonesAndTasks({
           )}
         </div>
       </div>
+
+      {/* =================================================================== */}
+      {/* CARD 3: ATTENDANCE TODAY (FOR SENIORS)                             */}
+      {/* =================================================================== */}
+      {isSenior && (
+        <div className="lg:col-span-1 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between">
+          {/* Header Strip */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              Attendance today
+            </h2>
+
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard/mechanic-roster')}
+              className="px-3.5 py-1 rounded-full text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1"
+            >
+              <span>Open</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Top Section: Overall Turnout & Total Team */}
+          <div className="mt-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 p-3.5 flex items-center justify-between gap-3 shrink-0">
+            {/* Donut Gauge + Turnout Label */}
+            <div className="flex items-center gap-3">
+              <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+                <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
+                  <path
+                    className="text-slate-200"
+                    strokeWidth="3.5"
+                    stroke="currentColor"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path
+                    className="text-emerald-500"
+                    strokeDasharray="17, 100"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                </svg>
+                <span className="absolute text-xs font-black text-slate-900 font-mono">17%</span>
+              </div>
+              <div>
+                <div className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+                  Overall Turnout
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium">
+                  Live workforce attendance
+                </div>
+              </div>
+            </div>
+
+            {/* Total Team Badge */}
+            <div className="bg-white rounded-xl border border-slate-200/90 px-3 py-1.5 text-center shrink-0 shadow-2xs">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Team</div>
+              <div className="text-sm font-black text-slate-900 font-mono">36 staff</div>
+            </div>
+          </div>
+
+          {/* Turnout Ratio Progress Bar */}
+          <div className="space-y-1.5 mt-3 shrink-0">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[11px] font-bold text-slate-600">Turnout Ratio</span>
+              <span className="text-xs font-bold text-slate-800 font-mono">6 of 36 present</span>
+            </div>
+            <div className="h-2.5 w-full rounded-full overflow-hidden flex bg-rose-500">
+              <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: '16.7%' }} />
+            </div>
+          </div>
+
+          {/* 3 Metric Cards: Present, Absent, On Leave */}
+          <div className="grid grid-cols-3 gap-2 mt-3 shrink-0">
+            {/* Present */}
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-2.5 text-center">
+              <div className="text-[11px] font-bold text-emerald-700">Present</div>
+              <div className="text-xl font-black text-emerald-700 font-mono mt-0.5">6</div>
+            </div>
+
+            {/* Absent */}
+            <div className="bg-rose-50/70 border border-rose-200/80 rounded-2xl p-2.5 text-center">
+              <div className="text-[11px] font-bold text-rose-700">Absent</div>
+              <div className="text-xl font-black text-rose-700 font-mono mt-0.5">30</div>
+            </div>
+
+            {/* On Leave */}
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-2.5 text-center">
+              <div className="text-[11px] font-bold text-amber-700">On Leave</div>
+              <div className="text-xl font-black text-amber-700 font-mono mt-0.5">0</div>
+            </div>
+          </div>
+
+          {/* LIVE ROSTER STATUS List */}
+          <div className="space-y-2 mt-3 pt-2.5 border-t border-slate-100 flex-1 min-h-0 flex flex-col">
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0">
+              LIVE ROSTER STATUS
+            </div>
+            <div className="space-y-2 overflow-y-auto max-h-[175px] pr-1 divide-y divide-slate-100/80 scrollbar-thin">
+              {FACTORY_ATTENDANCE_ROSTER.map((m) => (
+                <div key={m.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-extrabold text-xs flex items-center justify-center shrink-0 font-mono">
+                      {m.initial}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 truncate">{m.name}</div>
+                      <div className="text-[10px] text-slate-400 font-medium truncate">{m.role}</div>
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                      m.status === 'Present'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : m.status === 'Absent'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}
+                  >
+                    {m.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* =================================================================== */}
       {/* DRAWER: POPUP FOR ALL TASKS ("OPEN >")                             */}
