@@ -4,16 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import {
-  Wrench,
-  ShieldAlert,
-  Package,
-  Crown,
-  Layers,
-  Sparkles,
-  Users,
-  Eye,
-} from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition, UserRole } from '@/types/cmms';
 import { PlantOperationsDashboard } from '@/components/dashboard/PlantOperationsDashboard';
 import { SeniorMechanicDashboard } from '@/components/dashboard/SeniorMechanicDashboard';
@@ -34,9 +24,6 @@ export default function DashboardPage() {
   const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-
-  // ─── Admin / Supervisor Role Preview Switcher ─────────────────────────
-  const [previewRole, setPreviewRole] = useState<UserRole | null>(null);
 
   // ─── Fetch all data ──────────────────────────────────────────────────
   const fetchAllData = async () => {
@@ -68,50 +55,11 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, user]);
 
-  // Determine active dashboard view: Preview role override or user's real role
-  const activeRole: UserRole = previewRole || role || 'ADMIN';
-  const isAdminOrManager = role === 'ADMIN' || role === 'ASSET_MANAGER';
+  // Determine active dashboard view based on user's role
+  const activeRole: UserRole = role || 'ADMIN';
 
   return (
     <div className="space-y-4">
-      {/* ─── ADMIN ROLE SWITCHER STRIP (Only visible to Admin & Asset Manager) ─── */}
-      {isAdminOrManager && (
-        <div className="bg-white rounded-2xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs border border-slate-200/90 text-slate-700">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="p-1 rounded-md bg-indigo-50 text-indigo-600">
-              <Eye className="w-3.5 h-3.5" />
-            </span>
-            <span className="font-bold text-slate-800">Admin Perspective:</span>
-            <span className="text-slate-500">Preview role-specific dashboards:</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            {[
-              { r: null, label: '🏭 Plant Operations' },
-              { r: 'SENIOR_MECHANIC' as UserRole, label: '👨‍🔧 Senior Mechanic' },
-              { r: 'MECHANIC' as UserRole, label: '🦺 Junior Mechanic' },
-              { r: 'STORE_PERSON' as UserRole, label: '📦 Store In-Charge' },
-              { r: 'CEO' as UserRole, label: '👑 CEO Executive' },
-            ].map((tab) => {
-              const isSelected = previewRole === tab.r || (tab.r === null && previewRole === null);
-              return (
-                <button
-                  key={tab.label}
-                  onClick={() => setPreviewRole(tab.r)}
-                  className={`px-3 py-1 rounded-xl font-semibold transition cursor-pointer text-xs ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ─── DYNAMIC ROLE-BASED DASHBOARD RENDER ───────────────────────── */}
       {activeRole === 'SENIOR_MECHANIC' || activeRole === 'SENIOR_ELECTRICIAN' ? (
         <SeniorMechanicDashboard
