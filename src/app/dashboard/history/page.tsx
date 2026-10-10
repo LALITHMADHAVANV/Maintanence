@@ -1511,31 +1511,6 @@ export default function HistoryPage() {
   if (historySection === 'PERSONNEL') {
     return (
       <div className="space-y-4 pt-0 animate-in fade-in duration-200">
-        {/* Top Section Mode Toggle */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-2 sm:p-2.5 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80">
-            <button
-              type="button"
-              onClick={() => setHistorySection('PERSONNEL')}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition cursor-pointer bg-indigo-600 text-white shadow-xs"
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>Personnel Work History (Table Form)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setHistorySection('ASSETS')}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition cursor-pointer text-slate-600 hover:text-slate-900 hover:bg-white/60"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Asset Maintenance &amp; Lifecycle Matrix</span>
-            </button>
-          </div>
-          <div className="text-[11px] text-slate-500 font-medium px-2 hidden md:block">
-            Comprehensive audit log of all maintenance actions, repairs &amp; parts replaced by technicians
-          </div>
-        </div>
-
         {/* The Table Form View */}
         <PersonnelWorkHistoryTable />
       </div>
@@ -2178,31 +2153,6 @@ export default function HistoryPage() {
   // =========================================================================
   return (
     <div className="space-y-4 pt-0">
-      {/* Top Section Mode Toggle */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-2 sm:p-2.5 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80">
-          <button
-            type="button"
-            onClick={() => setHistorySection('PERSONNEL')}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition cursor-pointer text-slate-600 hover:text-slate-900 hover:bg-white/60"
-          >
-            <User className="w-3.5 h-3.5" />
-            <span>Personnel Work History (Table Form)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setHistorySection('ASSETS')}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition cursor-pointer bg-indigo-600 text-white shadow-xs"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Asset Maintenance &amp; Lifecycle Matrix</span>
-          </button>
-        </div>
-        <div className="text-[11px] text-slate-500 font-medium px-2 hidden md:block">
-          Plant asset lifecycle, overhaul stages and transfer movements
-        </div>
-      </div>
-
       {/* 1. Page Header & Status Legend */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
