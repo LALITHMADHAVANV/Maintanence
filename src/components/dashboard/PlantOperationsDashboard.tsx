@@ -91,13 +91,23 @@ function describeDonutSlice(
   startAngle: number,
   endAngle: number
 ) {
-  const delta = Math.min(endAngle - startAngle, 359.999);
-  const effectiveEndAngle = startAngle + delta;
+  const delta = endAngle - startAngle;
+  if (delta >= 359.9) {
+    return [
+      `M ${x} ${y - rOut}`,
+      `A ${rOut} ${rOut} 0 1 1 ${x} ${y + rOut}`,
+      `A ${rOut} ${rOut} 0 1 1 ${x} ${y - rOut}`,
+      `M ${x} ${y - rIn}`,
+      `A ${rIn} ${rIn} 0 1 0 ${x} ${y + rIn}`,
+      `A ${rIn} ${rIn} 0 1 0 ${x} ${y - rIn}`,
+      'Z',
+    ].join(' ');
+  }
 
-  const startOut = polarToCartesian(x, y, rOut, effectiveEndAngle);
+  const startOut = polarToCartesian(x, y, rOut, endAngle);
   const endOut = polarToCartesian(x, y, rOut, startAngle);
   const startIn = polarToCartesian(x, y, rIn, startAngle);
-  const endIn = polarToCartesian(x, y, rIn, effectiveEndAngle);
+  const endIn = polarToCartesian(x, y, rIn, endAngle);
 
   const largeArcFlag = delta <= 180 ? 0 : 1;
 
@@ -124,7 +134,7 @@ export function PlantOperationsDashboard({
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
   const [activeCostCategory, setActiveCostCategory] = useState<string | null>(null);
   const [cardMode, setCardMode] = useState<'cost' | 'risk'>('cost');
-  const [costTab, setCostTab] = useState<'cost' | 'buyer'>('cost');
+  const [costTab, setCostTab] = useState<'cost' | 'line'>('cost');
   const [hoveredPieKey, setHoveredPieKey] = useState<string | null>(null);
   const [drillDownState, setDrillDownState] = useState<{
     isOpen: boolean;
@@ -400,41 +410,154 @@ export function PlantOperationsDashboard({
     };
   }, [repairs, ppmSchedules]);
 
-  // ─── Cost Analysis Pie Chart Data (Matching Screenshot Style) ────────
-  const costPieItems = useMemo(() => [
-    { key: 'CHAIR', label: 'Chairs & Seating', sub: '222', count: 10, color: '#7c3aed', catKey: 'FURNITURE' },
-    { key: 'TABLE', label: 'Work Tables', sub: '800', count: 16, color: '#2563eb', catKey: 'FURNITURE' },
-    { key: 'MACHINE', label: 'Sewing Machines', sub: '234-M', count: 69, color: '#0d9488', catKey: 'MACHINE' },
-    { key: 'UTILITY', label: 'Plant Utilities', sub: '900-K', count: 9, color: '#d97706', catKey: 'UTILITY' },
-    { key: 'ELECTRICAL', label: 'Electrical & Drives', sub: '900-0-7Y', count: 12, color: '#dc2626', catKey: 'MACHINE' },
-    { key: 'VEHICLE', label: 'Vehicles & Trolleys', sub: '977-L', count: 7, color: '#64748b', catKey: 'VEHICLE' },
-  ], []);
+  // ─── Cost Analysis Pie Chart Data (Dynamic Live Data from machines) ──
+  const liveCategoryData = useMemo(() => {
+    // 1. Sewing & Industrial Machinery
+    const sewingMachines = machines.filter((m) => !m.category || m.category === 'MACHINE');
+    const sewingCost = sewingMachines.reduce((sum, m) => sum + (m.cost || 45000), 0);
 
-  const buyerPieItems = useMemo(() => [
-    { key: '222', label: '222', sub: 'Buyer 222', count: 10, color: '#7c3aed', catKey: 'MACHINE' },
-    { key: '800', label: '800', sub: 'Buyer 800', count: 16, color: '#2563eb', catKey: 'MACHINE' },
-    { key: '234-M', label: '234-M', sub: 'Buyer 234-M', count: 69, color: '#0d9488', catKey: 'MACHINE' },
-    { key: '900-K', label: '900-K', sub: 'Buyer 900-K', count: 9, color: '#d97706', catKey: 'MACHINE' },
-    { key: '900-0-7Y', label: '900-0-7Y', sub: 'Buyer 900-0-7Y', count: 12, color: '#dc2626', catKey: 'MACHINE' },
-    { key: '977-L', label: '977-L', sub: 'Buyer 977-L', count: 7, color: '#64748b', catKey: 'VEHICLE' },
-  ], []);
+    // 2. Work & Cutting Tables
+    const tableMachines = machines.filter(
+      (m) =>
+        m.category === 'TABLE' ||
+        (m.category === 'FURNITURE' &&
+          (m.type?.includes('TABLE') ||
+            m.name?.toLowerCase().includes('table') ||
+            m.model?.toLowerCase().includes('desk') ||
+            m.model?.toLowerCase().includes('table')))
+    );
+    const tableCost = tableMachines.reduce((sum, m) => sum + (m.cost || 15000), 0);
 
-  const activePieList = costTab === 'cost' ? costPieItems : buyerPieItems;
-  const totalPieCount = activePieList.reduce((sum, item) => sum + item.count, 0) || 123;
+    // 3. Chairs & Seating
+    const chairMachines = machines.filter(
+      (m) =>
+        m.category === 'CHAIR' ||
+        (m.category === 'FURNITURE' &&
+          !(
+            m.type?.includes('TABLE') ||
+            m.name?.toLowerCase().includes('table') ||
+            m.model?.toLowerCase().includes('desk') ||
+            m.model?.toLowerCase().includes('table')
+          ))
+    );
+    const chairCost = chairMachines.reduce((sum, m) => sum + (m.cost || 8000), 0);
+
+    // 4. Plant Utilities
+    const utilityMachines = machines.filter(
+      (m) =>
+        m.category === 'UTILITY' ||
+        m.type?.includes('UTILITY') ||
+        m.type?.includes('COMPRESSOR') ||
+        m.type?.includes('BOILER')
+    );
+    const utilityCost = utilityMachines.reduce((sum, m) => sum + (m.cost || 14000), 0);
+
+    // 5. Lighting & Ventilation
+    const lightMachines = machines.filter(
+      (m) =>
+        m.category === 'LIGHT' ||
+        m.category === 'FAN' ||
+        m.type?.includes('LIGHT') ||
+        m.type?.includes('FAN')
+    );
+    const lightCost = lightMachines.reduce((sum, m) => sum + (m.cost || 9000), 0);
+
+    // 6. Vehicles & Transport
+    const vehicleMachines = machines.filter(
+      (m) => m.category === 'VEHICLE' || m.type?.includes('VEHICLE')
+    );
+    const vehicleCost = vehicleMachines.reduce((sum, m) => sum + (m.cost || 65000), 0);
+
+    return [
+      {
+        key: 'MACHINE',
+        label: 'Sewing Machinery',
+        count: sewingMachines.length,
+        cost: sewingCost,
+        color: '#0d9488', // Teal
+        catKey: 'MACHINE',
+      },
+      {
+        key: 'TABLE',
+        label: 'Work Tables',
+        count: tableMachines.length,
+        cost: tableCost,
+        color: '#2563eb', // Blue
+        catKey: 'FURNITURE',
+      },
+      {
+        key: 'CHAIR',
+        label: 'Chairs & Seating',
+        count: chairMachines.length,
+        cost: chairCost,
+        color: '#7c3aed', // Purple
+        catKey: 'FURNITURE',
+      },
+      {
+        key: 'UTILITY',
+        label: 'Plant Utilities',
+        count: utilityMachines.length,
+        cost: utilityCost,
+        color: '#d97706', // Amber
+        catKey: 'UTILITY',
+      },
+      {
+        key: 'ELECTRICAL',
+        label: 'Lighting & Fans',
+        count: lightMachines.length,
+        cost: lightCost,
+        color: '#dc2626', // Red
+        catKey: 'UTILITY',
+      },
+      {
+        key: 'VEHICLE',
+        label: 'Vehicles & Transport',
+        count: vehicleMachines.length,
+        cost: vehicleCost,
+        color: '#64748b', // Slate
+        catKey: 'VEHICLE',
+      },
+    ];
+  }, [machines]);
+
+  const liveLineData = useMemo(() => {
+    const lines = [
+      { key: 'Line 01', label: 'Line 01', color: '#0d9488' },
+      { key: 'Line 02', label: 'Line 02', color: '#2563eb' },
+      { key: 'Line 03', label: 'Line 03', color: '#7c3aed' },
+      { key: 'Line 04', label: 'Line 04', color: '#dc2626' },
+      { key: 'Buffer Workshop', label: 'Buffer Bay', color: '#d97706' },
+      { key: 'Cutting Department', label: 'Cutting Bay', color: '#64748b' },
+    ];
+
+    return lines.map((l) => {
+      const lineMachines = machines.filter(
+        (m) => m.currentLine === l.key || (!m.currentLine && l.key === 'Line 01')
+      );
+      const lineCost = lineMachines.reduce((sum, m) => sum + (m.cost || 45000), 0);
+      return {
+        key: l.key,
+        label: l.label,
+        count: lineMachines.length,
+        cost: lineCost,
+        color: l.color,
+        catKey: undefined as string | undefined,
+      };
+    });
+  }, [machines]);
+
+  const activePieList = costTab === 'cost' ? liveCategoryData : liveLineData;
+  const totalPieCount = activePieList.reduce((sum, item) => sum + item.count, 0);
   const hoveredPieItem = hoveredPieKey ? activePieList.find((i) => i.key === hoveredPieKey) : null;
 
-  // Clockwise slice order matching screenshot: Blue(16), Purple(10), Grey(7), Red(12), Amber(9), Teal(69)
+  // Clockwise slice order for items with count > 0
   const pieChartSlices = useMemo(() => {
-    const clockWiseKeys = costTab === 'cost'
-      ? ['TABLE', 'CHAIR', 'VEHICLE', 'ELECTRICAL', 'UTILITY', 'MACHINE']
-      : ['800', '222', '977-L', '900-0-7Y', '900-K', '234-M'];
+    if (totalPieCount === 0) return [];
 
-    const ordered = clockWiseKeys
-      .map((k) => activePieList.find((i) => i.key === k))
-      .filter(Boolean) as typeof activePieList;
+    const nonZeroItems = activePieList.filter((item) => item.count > 0);
+    let currentAngle = 12;
 
-    let currentAngle = 12; // Start angle at 12 deg clockwise (where Teal & Blue meet at top)
-    return ordered.map((item) => {
+    return nonZeroItems.map((item) => {
       const angleDelta = (item.count / totalPieCount) * 360;
       const startAngle = currentAngle;
       const endAngle = currentAngle + angleDelta;
@@ -446,7 +569,7 @@ export function PlantOperationsDashboard({
         endAngle,
       };
     });
-  }, [costTab, activePieList, totalPieCount]);
+  }, [activePieList, totalPieCount]);
 
   return (
     <div className="space-y-4 pb-12 animate-fade-in">
@@ -944,18 +1067,18 @@ export function PlantOperationsDashboard({
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
-                  {costTab === 'cost' ? 'COST ANALYSIS' : 'ORDERS BY BUYER'}
+                  {costTab === 'cost' ? 'COST ANALYSIS' : 'LINE ASSETS'}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {costTab === 'cost' ? 'Click a category to drill down' : 'Click a buyer to drill down'}
+                  {costTab === 'cost' ? 'Click a category to drill down' : 'Click a line to drill down'}
                 </p>
               </div>
               <button
-                onClick={() => setCostTab(costTab === 'cost' ? 'buyer' : 'cost')}
+                onClick={() => setCostTab(costTab === 'cost' ? 'line' : 'cost')}
                 className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-full transition cursor-pointer shrink-0"
-                title="Switch between Cost Categories and Buyer View"
+                title="Switch between Cost Categories and Production Lines"
               >
-                {costTab === 'cost' ? 'Buyer View' : 'Cost View'}
+                {costTab === 'cost' ? 'Floor Line View' : 'Category View'}
               </button>
             </div>
 
@@ -964,6 +1087,16 @@ export function PlantOperationsDashboard({
               {/* Left Side: Donut / Pie Chart with Total inside */}
               <div className="relative shrink-0 flex items-center justify-center w-36 h-36">
                 <svg viewBox="0 0 140 140" className="w-full h-full overflow-visible">
+                  {/* Subtle Background Ring */}
+                  <circle
+                    cx="70"
+                    cy="70"
+                    r="46"
+                    fill="none"
+                    stroke="#f8fafc"
+                    strokeWidth="20"
+                  />
+
                   {pieChartSlices.map((slice) => {
                     const isHovered = hoveredPieKey === slice.key;
                     const isDimmed = hoveredPieKey !== null && !isHovered;
@@ -996,7 +1129,7 @@ export function PlantOperationsDashboard({
                               category: slice.catKey,
                             });
                           } else {
-                            openDrillDown('open_tickets', `Buyer ${slice.label} Orders & Repairs`);
+                            openDrillDown('total_assets', `${slice.label} Asset Registry`);
                           }
                         }}
                       />
@@ -1013,16 +1146,18 @@ export function PlantOperationsDashboard({
                   >
                     {hoveredPieItem ? hoveredPieItem.count : totalPieCount}
                   </text>
-                  {hoveredPieItem && (
-                    <text
-                      x="70"
-                      y="84"
-                      textAnchor="middle"
-                      className="text-[9px] font-bold fill-slate-500 select-none pointer-events-none"
-                    >
-                      {hoveredPieItem.label}
-                    </text>
-                  )}
+                  <text
+                    x="70"
+                    y={hoveredPieItem ? '83' : '88'}
+                    textAnchor="middle"
+                    className="text-[9px] font-bold fill-slate-400 select-none pointer-events-none truncate max-w-[50px]"
+                  >
+                    {hoveredPieItem
+                      ? `${totalPieCount > 0 ? Math.round((hoveredPieItem.count / totalPieCount) * 100) : 0}%`
+                      : totalPieCount === 0
+                      ? 'No Assets'
+                      : 'Total Assets'}
+                  </text>
                 </svg>
               </div>
 
@@ -1030,6 +1165,8 @@ export function PlantOperationsDashboard({
               <div className="flex-1 space-y-2 select-none">
                 {activePieList.map((item) => {
                   const isHovered = hoveredPieKey === item.key;
+                  const pct = totalPieCount > 0 ? Math.round((item.count / totalPieCount) * 100) : 0;
+
                   return (
                     <div
                       key={item.key}
@@ -1041,25 +1178,32 @@ export function PlantOperationsDashboard({
                             category: item.catKey,
                           });
                         } else {
-                          openDrillDown('open_tickets', `Buyer ${item.label} Orders & Repairs`);
+                          openDrillDown('total_assets', `${item.label} Asset Registry`);
                         }
                       }}
                       className={`flex items-center justify-between py-1 px-2 rounded-xl transition cursor-pointer group ${
                         isHovered ? 'bg-slate-50' : 'hover:bg-slate-50/70'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <span
                           className="w-2.5 h-2.5 rounded-full shrink-0"
                           style={{ backgroundColor: item.color }}
                         />
-                        <span className="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition">
+                        <span className="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition truncate">
                           {item.label}
                         </span>
                       </div>
-                      <span className="text-sm font-bold text-slate-900 font-mono ml-4">
-                        {item.count}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                        {item.count > 0 && totalPieCount > 0 && (
+                          <span className="text-[10px] font-semibold text-slate-400 font-mono">
+                            {pct}%
+                          </span>
+                        )}
+                        <span className="text-sm font-bold text-slate-900 font-mono min-w-[18px] text-right">
+                          {item.count}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
