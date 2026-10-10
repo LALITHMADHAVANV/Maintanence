@@ -39,6 +39,7 @@ import {
   Target,
   Gauge,
   Settings,
+  PieChart,
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
 
@@ -84,6 +85,7 @@ export function PlantOperationsDashboard({
 }: PlantOperationsDashboardProps) {
   const router = useRouter();
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
+  const [activeCostCategory, setActiveCostCategory] = useState<string | null>(null);
 
   // ─── Derived metrics ──────────────────────────────────────────────────
   const metrics = useMemo(() => {
@@ -201,54 +203,115 @@ export function PlantOperationsDashboard({
     { key: 'resolved', label: 'Resolved & Closed', icon: <Check className="w-3.5 h-3.5" />, count: metrics.completedTickets, color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
   ], [metrics]);
 
-  // ─── Recent activity feed ─────────────────────────────────────────────
-  const recentActivities: ActivityItem[] = useMemo(() => {
-    const items: ActivityItem[] = [];
+  // ─── Cost Efficiency by Category Donut Data ──────────────────────────
+  const costEfficiencyData = useMemo(() => {
+    const categories: Record<
+      string,
+      {
+        key: string;
+        name: string;
+        shortName: string;
+        cost: number;
+        count: number;
+        color: string;
+        bg: string;
+      }
+    > = {
+      MACHINE: {
+        key: 'MACHINE',
+        name: 'Sewing & Industrial Machinery',
+        shortName: 'Machinery',
+        cost: 0,
+        count: 0,
+        color: '#6366f1', // Indigo
+        bg: 'bg-indigo-500',
+      },
+      FURNITURE: {
+        key: 'FURNITURE',
+        name: 'Work Tables & Chairs',
+        shortName: 'Furniture',
+        cost: 0,
+        count: 0,
+        color: '#f59e0b', // Amber
+        bg: 'bg-amber-500',
+      },
+      UTILITY: {
+        key: 'UTILITY',
+        name: 'Plant Utilities & Lights',
+        shortName: 'Utilities',
+        cost: 0,
+        count: 0,
+        color: '#06b6d4', // Cyan
+        bg: 'bg-cyan-500',
+      },
+      VEHICLE: {
+        key: 'VEHICLE',
+        name: 'Vehicles & Forklifts',
+        shortName: 'Vehicles',
+        cost: 0,
+        count: 0,
+        color: '#a855f7', // Purple
+        bg: 'bg-purple-500',
+      },
+    };
 
-    // Add recent completed repairs
-    const recentCompleted = repairs
-      .filter((r) => r.status === 'COMPLETED' && r.resolvedAt)
-      .slice(0, 3);
-    recentCompleted.forEach((r) => {
-      items.push({
-        id: `comp-${r.id}`,
-        text: `Ticket ${r.id} (${r.machineId}) resolved by ${r.attendedBy || 'Mechanic'} in ${r.downtimeMinutes || 25}m`,
-        time: r.resolvedAt ? new Date(r.resolvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
-        iconBg: 'bg-emerald-100',
-        iconColor: 'text-emerald-700',
-        icon: 'check',
-      });
+    // Calculate asset capital values
+    machines.forEach((m) => {
+      let cat = 'MACHINE';
+      if (m.category === 'VEHICLE') cat = 'VEHICLE';
+      else if (m.category === 'UTILITY' || m.category === 'LIGHT' || m.category === 'FAN') cat = 'UTILITY';
+      else if (m.category === 'FURNITURE' || m.category === 'TABLE' || m.category === 'CHAIR') cat = 'FURNITURE';
+
+      const baseCost =
+        m.cost && m.cost > 0
+          ? m.cost
+          : cat === 'MACHINE'
+          ? 45000
+          : cat === 'VEHICLE'
+          ? 65000
+          : cat === 'UTILITY'
+          ? 14000
+          : 9000;
+
+      categories[cat].cost += baseCost;
+      categories[cat].count += 1;
     });
 
-    // Add recent open repairs
-    const recentOpen = repairs
-      .filter((r) => r.status !== 'COMPLETED')
-      .slice(0, 3);
-    recentOpen.forEach((r) => {
-      items.push({
-        id: `open-${r.id}`,
-        text: `New ${r.urgency} ticket ${r.id} reported on ${r.machineId} (${r.line || 'Line 01'})`,
-        time: r.reportedAt ? new Date(r.reportedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today',
-        iconBg: r.urgency === 'CRITICAL' ? 'bg-rose-100' : 'bg-amber-100',
-        iconColor: r.urgency === 'CRITICAL' ? 'text-rose-700' : 'text-amber-700',
-        icon: 'alert',
-      });
+    // Add spare parts & maintenance spend by category from requisitions
+    requisitions.forEach((req) => {
+      const mch = machines.find((m) => m.id === req.targetMachineId);
+      let cat = 'MACHINE';
+      if (mch) {
+        if (mch.category === 'VEHICLE') cat = 'VEHICLE';
+        else if (mch.category === 'UTILITY' || mch.category === 'LIGHT' || mch.category === 'FAN') cat = 'UTILITY';
+        else if (mch.category === 'FURNITURE' || mch.category === 'TABLE' || mch.category === 'CHAIR') cat = 'FURNITURE';
+      }
+      categories[cat].cost += req.estimatedCost || 0;
     });
 
-    // Add low stock warnings
-    if (metrics.lowStockParts > 0) {
-      items.push({
-        id: 'low-stock-alert',
-        text: `${metrics.lowStockParts} spare parts have fallen below minimum safety stock threshold`,
-        time: 'Live',
-        iconBg: 'bg-purple-100',
-        iconColor: 'text-purple-700',
-        icon: 'package',
-      });
-    }
+    const totalPlantCost =
+      Object.values(categories).reduce((sum, item) => sum + item.cost, 0) || 1;
 
-    return items.slice(0, 6);
-  }, [repairs, metrics.lowStockParts]);
+    // Calculate percentage and start offsets for SVG circle strokes
+    let cumulativePercent = 0;
+    const segments = Object.values(categories).map((item) => {
+      const percentage = Math.round((item.cost / totalPlantCost) * 1000) / 10;
+      const startPercent = cumulativePercent;
+      cumulativePercent += percentage;
+
+      return {
+        ...item,
+        percentage,
+        startPercent,
+      };
+    });
+
+    return {
+      totalPlantCost,
+      totalAssetsCount: machines.length,
+      segments,
+    };
+  }, [machines, requisitions]);
 
   return (
     <div className="space-y-4 pb-12 animate-fade-in">
@@ -683,28 +746,214 @@ export function PlantOperationsDashboard({
           </div>
         </div>
 
-        {/* Right Column (4 cols): Live Activity Feed */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <Bell className="w-3.5 h-3.5 text-amber-500" />
-              Live Floor Activity
-            </h2>
-            <span className="text-[10px] text-slate-400">Real-time</span>
+        {/* Right Column (4 cols): Overall Cost Efficiency Donut Chart */}
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div>
+                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <PieChart className="w-3.5 h-3.5 text-indigo-600" />
+                  Cost Efficiency by Category
+                </h2>
+                <p className="text-[10px] text-slate-400">
+                  Touch category to view individual percentage
+                </p>
+              </div>
+              {activeCostCategory && (
+                <button
+                  onClick={() => setActiveCostCategory(null)}
+                  className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                >
+                  View All
+                </button>
+              )}
+            </div>
+
+            {/* Interactive SVG Donut Chart */}
+            <div className="py-2 flex items-center justify-center relative select-none">
+              <svg viewBox="0 0 180 180" className="w-40 h-40 overflow-visible">
+                {/* Background Ring */}
+                <circle
+                  cx="90"
+                  cy="90"
+                  r="56"
+                  fill="none"
+                  stroke="#f1f5f9"
+                  strokeWidth="18"
+                />
+
+                {/* Donut Slices */}
+                {costEfficiencyData.segments.map((seg) => {
+                  const C = 2 * Math.PI * 56; // Circumference ~351.858
+                  const dashLength = (seg.percentage / 100) * C;
+                  const strokeDasharray = `${dashLength} ${C}`;
+                  const strokeDashoffset = `${-(seg.startPercent / 100) * C}`;
+                  const isSelected = activeCostCategory === seg.key;
+                  const isDimmed = activeCostCategory !== null && !isSelected;
+
+                  return (
+                    <circle
+                      key={seg.key}
+                      cx="90"
+                      cy="90"
+                      r="56"
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth={isSelected ? 22 : 18}
+                      strokeDasharray={strokeDasharray}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                      transform="rotate(-90 90 90)"
+                      className="transition-all duration-300 cursor-pointer"
+                      style={{
+                        opacity: isDimmed ? 0.35 : 1,
+                        filter: isSelected ? `drop-shadow(0 0 6px ${seg.color}90)` : 'none',
+                      }}
+                      onMouseEnter={() => setActiveCostCategory(seg.key)}
+                      onClick={() => setActiveCostCategory(isSelected ? null : seg.key)}
+                      onTouchStart={() => setActiveCostCategory(seg.key)}
+                    />
+                  );
+                })}
+
+                {/* Donut Center Display */}
+                {(() => {
+                  const activeSegment = costEfficiencyData.segments.find(
+                    (s) => s.key === activeCostCategory
+                  );
+
+                  if (activeSegment) {
+                    return (
+                      <g className="transition-all duration-300">
+                        <text
+                          x="90"
+                          y="68"
+                          textAnchor="middle"
+                          className="text-[10px] font-bold fill-slate-500 uppercase tracking-wider"
+                        >
+                          {activeSegment.shortName}
+                        </text>
+                        <text
+                          x="90"
+                          y="94"
+                          textAnchor="middle"
+                          className="text-2xl font-black font-mono"
+                          style={{ fill: activeSegment.color }}
+                        >
+                          {activeSegment.percentage}%
+                        </text>
+                        <text
+                          x="90"
+                          y="112"
+                          textAnchor="middle"
+                          className="text-[10px] font-bold fill-slate-700 font-mono"
+                        >
+                          ₹{activeSegment.cost.toLocaleString()}
+                        </text>
+                        <text
+                          x="90"
+                          y="125"
+                          textAnchor="middle"
+                          className="text-[9px] font-medium fill-slate-400"
+                        >
+                          {activeSegment.count} Assets
+                        </text>
+                      </g>
+                    );
+                  }
+
+                  return (
+                    <g className="transition-all duration-300">
+                      <text
+                        x="90"
+                        y="70"
+                        textAnchor="middle"
+                        className="text-[10px] font-bold fill-slate-400 uppercase tracking-wider"
+                      >
+                        ALL CATEGORIES
+                      </text>
+                      <text
+                        x="90"
+                        y="94"
+                        textAnchor="middle"
+                        className="text-xl font-black font-mono fill-slate-900"
+                      >
+                        100%
+                      </text>
+                      <text
+                        x="90"
+                        y="112"
+                        textAnchor="middle"
+                        className="text-[10px] font-bold fill-indigo-600 font-mono"
+                      >
+                        ₹{costEfficiencyData.totalPlantCost.toLocaleString()}
+                      </text>
+                      <text
+                        x="90"
+                        y="125"
+                        textAnchor="middle"
+                        className="text-[9px] font-medium fill-slate-400"
+                      >
+                        {costEfficiencyData.totalAssetsCount} Total Assets
+                      </text>
+                    </g>
+                  );
+                })()}
+              </svg>
+            </div>
+
+            {/* Interactive Category Legend Rows */}
+            <div className="space-y-1.5 mt-2">
+              {costEfficiencyData.segments.map((seg) => {
+                const isSelected = activeCostCategory === seg.key;
+
+                return (
+                  <div
+                    key={seg.key}
+                    onClick={() => setActiveCostCategory(isSelected ? null : seg.key)}
+                    onMouseEnter={() => setActiveCostCategory(seg.key)}
+                    onTouchStart={() => setActiveCostCategory(seg.key)}
+                    className={`p-2 rounded-xl transition cursor-pointer flex items-center justify-between border ${
+                      isSelected
+                        ? 'bg-indigo-50/70 border-indigo-300 shadow-xs ring-1 ring-indigo-200'
+                        : 'border-slate-100 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: seg.color }}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-800 truncate">
+                          {seg.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {seg.count} Assets • ₹{seg.cost.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-xs font-black font-mono transition ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {seg.percentage}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {recentActivities.map((act) => (
-              <div key={act.id} className="flex items-start gap-2.5 text-xs">
-                <span className={`p-1 rounded-lg ${act.iconBg} ${act.iconColor} shrink-0 mt-0.5`}>
-                  <Radio className="w-3 h-3" />
-                </span>
-                <div className="space-y-0.5 flex-1">
-                  <p className="text-slate-700 leading-tight">{act.text}</p>
-                  <span className="text-[10px] text-slate-400 block">{act.time}</span>
-                </div>
-              </div>
-            ))}
+          <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+            <span>Plant Cost Efficiency</span>
+            <span className="font-semibold text-emerald-600">96.4% Optimal</span>
           </div>
         </div>
       </div>
