@@ -71,22 +71,6 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<'month' | 'agenda' | 'milestones'>('month');
   const [filterType, setFilterType] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
 
-  // Pop-up Day Details Slide-over Drawer State ("Short page as like dashboard")
-  const [isDayDrawerOpen, setIsDayDrawerOpen] = useState(false);
-  const [drawerFilter, setDrawerFilter] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
-  const [drawerSearch, setDrawerSearch] = useState('');
-
-  // Handle ESC key to close Day Drawer
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isDayDrawerOpen) {
-        setIsDayDrawerOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDayDrawerOpen]);
-
   // Handle URL params and set default view for junior workers
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -103,7 +87,6 @@ export default function CalendarPage() {
         if (ticket) {
           const tDate = ticket.reportedAt ? ticket.reportedAt.slice(0, 10) : toDateKey(new Date());
           setSelectedDate(tDate);
-          setIsDayDrawerOpen(true);
         }
       }
     }
@@ -371,69 +354,6 @@ export default function CalendarPage() {
 
     return cells;
   }, [year, month, eventsByDate, todayKey, selectedDate]);
-
-  // Selected date events & details (used in slide-over pop-up drawer)
-  const selectedDayData = useMemo(() => {
-    const bucket = eventsByDate.get(selectedDate) || { repairs: [], ppms: [] };
-    const dateObj = new Date(selectedDate + 'T00:00:00');
-
-    let filteredRepairs = bucket.repairs;
-    let filteredPpms = bucket.ppms;
-
-    // Filter by drawerFilter if set
-    if (drawerFilter === 'CRITICAL') {
-      filteredRepairs = filteredRepairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED');
-      filteredPpms = [];
-    } else if (drawerFilter === 'REPAIRS') {
-      filteredRepairs = filteredRepairs.filter((r) => r.status !== 'COMPLETED');
-      filteredPpms = [];
-    } else if (drawerFilter === 'PPM') {
-      filteredRepairs = [];
-      filteredPpms = filteredPpms.filter((p) => p.status !== 'COMPLETED');
-    } else if (drawerFilter === 'COMPLETED') {
-      filteredRepairs = filteredRepairs.filter((r) => r.status === 'COMPLETED');
-      filteredPpms = filteredPpms.filter((p) => p.status === 'COMPLETED');
-    }
-
-    // Filter by drawerSearch
-    if (drawerSearch.trim()) {
-      const q = drawerSearch.toLowerCase();
-      filteredRepairs = filteredRepairs.filter(
-        (r) =>
-          r.machineId.toLowerCase().includes(q) ||
-          r.faultCategory.toLowerCase().includes(q) ||
-          r.faultDetails.toLowerCase().includes(q) ||
-          (r.attendedBy && r.attendedBy.toLowerCase().includes(q))
-      );
-      filteredPpms = filteredPpms.filter(
-        (p) =>
-          p.machineId.toLowerCase().includes(q) ||
-          p.task.toLowerCase().includes(q)
-      );
-    }
-
-    const rawRepairs = bucket.repairs;
-    const rawPpms = bucket.ppms;
-
-    return {
-      dateString: selectedDate,
-      dateFormatted: dateObj.toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-      isToday: selectedDate === todayKey,
-      repairs: filteredRepairs,
-      ppms: filteredPpms,
-      totalCount: filteredRepairs.length + filteredPpms.length,
-      rawCriticalCount: rawRepairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED').length,
-      rawRepairsCount: rawRepairs.filter((r) => r.urgency !== 'CRITICAL' && r.status !== 'COMPLETED').length,
-      rawPpmCount: rawPpms.filter((p) => p.status !== 'COMPLETED').length,
-      rawCompletedCount: rawRepairs.filter((r) => r.status === 'COMPLETED').length + rawPpms.filter((p) => p.status === 'COMPLETED').length,
-      rawTotalCount: rawRepairs.length + rawPpms.length,
-    };
-  }, [selectedDate, eventsByDate, drawerFilter, drawerSearch, todayKey]);
 
   // Agenda view items (all events in current month sorted by date)
   const agendaMonthItems = useMemo(() => {
@@ -869,7 +789,6 @@ export default function CalendarPage() {
           onCompletePPM={(ppmId, machineId) => handleCompletePPM(ppmId, 'PPM Maintenance', machineId)}
           onOpenCalendarDate={(dStr) => {
             setSelectedDate(dStr);
-            setIsDayDrawerOpen(true);
           }}
           onOpenFullCalendar={() => setViewMode('month')}
         />
@@ -919,7 +838,6 @@ export default function CalendarPage() {
                   key={cell.dateString}
                   onClick={() => {
                     setSelectedDate(cell.dateString);
-                    setIsDayDrawerOpen(true);
                   }}
                   className={`min-h-[58px] sm:min-h-[66px] md:min-h-[72px] p-1.5 border-t border-l border-slate-200 flex flex-col justify-between transition group cursor-pointer relative hover:shadow-xs ${
                     !cell.isCurrentMonth
@@ -1067,8 +985,8 @@ export default function CalendarPage() {
                 <span className="font-semibold text-slate-700">Completed</span>
               </span>
             </div>
-            <div className="text-indigo-600 font-bold flex items-center gap-1.5">
-              <span>👉 Click any date grid cell to open the day task details &amp; dispatch drawer</span>
+            <div className="text-slate-500 font-semibold text-xs flex items-center gap-1.5">
+              <span>Selected date: <strong className="text-slate-800">{selectedDate}</strong></span>
             </div>
           </div>
         </div>
@@ -1115,27 +1033,16 @@ export default function CalendarPage() {
                         type="button"
                         onClick={() => {
                           setSelectedDate(group.dateStr);
-                          setIsDayDrawerOpen(true);
                         }}
                         className={`text-xs font-extrabold px-3 py-1 rounded-xl border transition cursor-pointer hover:shadow-xs flex items-center gap-1.5 ${
                           isTodayGroup
                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                             : 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200'
                         }`}
-                        title="Click to inspect this day in slide-over drawer"
+                        title="Selected date"
                       >
                         <span>{formattedHeader}</span>
                         {isTodayGroup && <span>• TODAY</span>}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedDate(group.dateStr);
-                          setIsDayDrawerOpen(true);
-                        }}
-                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-                      >
-                        <span>Open Details Drawer →</span>
                       </button>
                       <div className="flex-1 h-px bg-slate-200" />
                       <span className="text-[11px] font-semibold text-slate-400">
@@ -1315,490 +1222,6 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* 6. Slide-over Day Details Pop-up Drawer ("Short Page as like Dashboard") */}
-      {isDayDrawerOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200">
-          <div className="w-full max-w-xl md:max-w-2xl bg-white h-full shadow-2xl flex flex-col transform transition-transform duration-300 ease-out animate-in slide-in-from-right overflow-hidden">
-            {/* Drawer Top Header */}
-            <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-600/30">
-                  <CalendarDays className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-extrabold text-white">
-                      {selectedDayData.dateFormatted}
-                    </h3>
-                    {selectedDayData.isToday && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-300 border border-indigo-400/40">
-                        ⚡ TODAY LIVE
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Plant Floor CMMS Tasks • Critical Breakdowns &amp; Shift Dispatch
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDayDrawerOpen(false)}
-                className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition cursor-pointer"
-                title="Close drawer (Esc)"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Drawer Body (Scrollable) */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-              {/* Day Summary Metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Total Jobs</div>
-                  <div className="text-lg font-extrabold text-slate-900 mt-0.5">{selectedDayData.rawTotalCount}</div>
-                </div>
-                <div className="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
-                  <div className="text-[10px] font-bold text-rose-700 uppercase flex items-center gap-1">
-                    {selectedDayData.rawCriticalCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping" />}
-                    <span>Critical</span>
-                  </div>
-                  <div className="text-lg font-extrabold text-rose-700 mt-0.5">{selectedDayData.rawCriticalCount}</div>
-                </div>
-                <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                  <div className="text-[10px] font-bold text-blue-700 uppercase">PPM Tasks</div>
-                  <div className="text-lg font-extrabold text-blue-700 mt-0.5">{selectedDayData.rawPpmCount}</div>
-                </div>
-                <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
-                  <div className="text-[10px] font-bold text-emerald-700 uppercase">Completed</div>
-                  <div className="text-lg font-extrabold text-emerald-700 mt-0.5">{selectedDayData.rawCompletedCount}</div>
-                </div>
-              </div>
-
-              {/* Action Toolbar */}
-              <div className="flex items-center flex-wrap gap-2">
-                {canSchedulePPM && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setIsInlineDispatchOpen((prev) => !prev)}
-                      className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                    >
-                      <Wrench className="w-3.5 h-3.5" />
-                      <span>{isInlineDispatchOpen ? 'Hide Quick Dispatch' : '+ Assign / Move Task'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsSchedulePPMOpen(true)}
-                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Schedule PPM</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsTeamModalOpen(true)}
-                      className="px-3 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      <span>👥 Team Roster</span>
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {/* Inline Task Dispatch Box (if open) */}
-              {canSchedulePPM && isInlineDispatchOpen && (
-                <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
-                      <Wrench className="w-4 h-4 text-emerald-600" />
-                      <span>Quick Task Dispatch for {selectedDayData.dateFormatted}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsInlineDispatchOpen(false)}
-                      className="text-emerald-700 hover:text-emerald-950 text-xs font-bold cursor-pointer"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <form onSubmit={handleInlineAssignTask} className="space-y-3">
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                        Target Machine / Workstation:
-                      </label>
-                      <select
-                        value={inlineMachineId}
-                        onChange={(e) => setInlineMachineId(e.target.value)}
-                        className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
-                      >
-                        {displayMachines.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.id} — {m.brand} {m.model} ({m.currentLine})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                        Task Defect / Instructions:
-                      </label>
-                      <input
-                        type="text"
-                        value={inlineTaskTitle}
-                        onChange={(e) => setInlineTaskTitle(e.target.value)}
-                        placeholder="e.g. Skipping stitches, needle collision, re-time looper..."
-                        className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-semibold text-slate-800 outline-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                          Priority:
-                        </label>
-                        <select
-                          value={inlineUrgency}
-                          onChange={(e) => setInlineUrgency(e.target.value as RepairUrgency)}
-                          className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
-                        >
-                          <option value="WARNING">Routine / Normal</option>
-                          <option value="CRITICAL">🚨 Critical Stoppage</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                          Assign To:
-                        </label>
-                        <select
-                          value={inlineAssignee}
-                          onChange={(e) => setInlineAssignee(e.target.value)}
-                          className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
-                        >
-                          <option value={user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')}>
-                            Myself ({user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')})
-                          </option>
-                          {relevantTechnicians.map((m) => (
-                            <option key={m.id} value={m.name}>
-                              {m.name} ({m.trade} - {m.role})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="submit"
-                        disabled={isSubmittingInline}
-                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Dispatch Work Order</span>
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-
-              {/* Drawer Filter Pills & Search */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-100">
-                <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 text-xs">
-                  {[
-                    { id: 'ALL', label: `All (${selectedDayData.rawTotalCount})` },
-                    { id: 'CRITICAL', label: `🚨 Critical (${selectedDayData.rawCriticalCount})` },
-                    { id: 'REPAIRS', label: `🔧 Repairs (${selectedDayData.rawRepairsCount})` },
-                    { id: 'PPM', label: `📅 PPM (${selectedDayData.rawPpmCount})` },
-                    { id: 'COMPLETED', label: `✅ Done (${selectedDayData.rawCompletedCount})` },
-                  ].map((pill) => {
-                    const active = drawerFilter === pill.id;
-                    return (
-                      <button
-                        key={pill.id}
-                        type="button"
-                        onClick={() => setDrawerFilter(pill.id as typeof drawerFilter)}
-                        className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer whitespace-nowrap ${
-                          active
-                            ? 'bg-slate-900 text-white shadow-xs'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                        }`}
-                      >
-                        {pill.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="relative min-w-[170px] w-full sm:w-auto">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={drawerSearch}
-                    onChange={(e) => setDrawerSearch(e.target.value)}
-                    placeholder="Search machines or defects..."
-                    className="w-full pl-7 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                  {drawerSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setDrawerSearch('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Task Cards List */}
-              <div className="space-y-3">
-                {selectedDayData.totalCount === 0 ? (
-                  <div className="py-12 px-4 text-center border-2 border-dashed border-slate-200 rounded-2xl space-y-2.5">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-                    <div className="text-sm font-bold text-slate-800">No Matching Jobs on this Date</div>
-                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      All machines on active production lines are operating smoothly without pending stoppages.
-                    </p>
-                    {canSchedulePPM && (
-                      <button
-                        type="button"
-                        onClick={() => setIsSchedulePPMOpen(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition cursor-pointer border border-indigo-200"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Schedule PPM on this Day</span>
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {/* 1. Critical Breakdown Work Orders */}
-                    {selectedDayData.repairs
-                      .filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED')
-                      .map((t) => {
-                        const machine = machines.find((m) => m.id === t.machineId);
-                        return (
-                          <div
-                            key={t.id}
-                            className="p-4 rounded-2xl border-2 border-rose-300 bg-rose-50/50 text-xs space-y-2.5 shadow-xs"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-600 text-white shadow-xs animate-pulse">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                                  <span>🚨 CRITICAL STOPPAGE</span>
-                                </span>
-                                <span className="text-[10px] font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-md">
-                                  {t.faultCategory}
-                                </span>
-                              </div>
-                              <span className="text-[11px] font-mono font-bold text-slate-500">#{t.id}</span>
-                            </div>
-
-                            <div>
-                              <div className="text-base font-extrabold text-slate-900 font-mono flex items-center gap-2">
-                                <span>{t.machineId}</span>
-                                <span className="text-xs font-bold px-2 py-0.5 bg-slate-900 text-white rounded-md">
-                                  {t.line}
-                                </span>
-                              </div>
-                              <div className="text-xs text-slate-600 mt-0.5">
-                                {machine ? `${machine.brand} ${machine.model} (${machine.name || machine.typeName})` : t.machineType}
-                              </div>
-                            </div>
-
-                            <div className="p-2.5 bg-white rounded-xl border border-rose-200 text-xs text-slate-800 font-medium">
-                              <strong>Fault Details:</strong> {t.faultDetails}
-                            </div>
-
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                              <span>Reported by: <strong className="text-slate-700">{t.reportedBy}</strong></span>
-                              {t.reportedAt && (
-                                <span>{new Date(t.reportedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                              )}
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="pt-2 border-t border-rose-200/80 flex flex-wrap items-center justify-between gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenResolveModal(t)}
-                                className="px-3.5 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-rose-600/30 cursor-pointer"
-                              >
-                                <Wrench className="w-3.5 h-3.5" />
-                                <span>⚡ Attend &amp; Fix Breakdown</span>
-                              </button>
-
-                              {/* 1-Click Move Selector */}
-                              {canSchedulePPM && (
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase">Move:</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDirectMoveTask(t.id, user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))}
-                                    className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-800 rounded-lg text-[10px] font-bold border border-slate-200 cursor-pointer"
-                                  >
-                                    To Myself
-                                  </button>
-                                  {relevantTechnicians.slice(0, 3).map((mech) => (
-                                    <button
-                                      key={mech.id}
-                                      type="button"
-                                      onClick={() => handleDirectMoveTask(t.id, mech.name)}
-                                      className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-800 rounded-lg text-[10px] font-bold border border-slate-200 cursor-pointer"
-                                    >
-                                      {mech.name.split(' ')[0]}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                    {/* 2. Routine Active Repairs */}
-                    {selectedDayData.repairs
-                      .filter((r) => r.urgency !== 'CRITICAL' && r.status !== 'COMPLETED')
-                      .map((t) => {
-                        const machine = machines.find((m) => m.id === t.machineId);
-                        const isAssigned = t.status === 'ASSIGNED';
-                        return (
-                          <div
-                            key={t.id}
-                            className={`p-3.5 rounded-xl border text-xs space-y-2 transition ${
-                              isAssigned ? 'bg-violet-50/40 border-violet-200' : 'bg-amber-50/40 border-amber-200'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                                  isAssigned ? 'bg-violet-100 text-violet-800 border border-violet-200' : 'bg-amber-100 text-amber-800'
-                                }`}>
-                                  {isAssigned ? 'ASSIGNED' : 'ROUTINE'} • {t.faultCategory}
-                                </span>
-                                {isAssigned && (
-                                  <span className="text-[10px] font-semibold text-violet-700">
-                                    → {t.attendedBy}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-[10px] font-mono text-slate-400">#{t.id}</span>
-                            </div>
-
-                            <div>
-                              <div className="font-extrabold text-sm text-slate-900 font-mono">{t.machineId}</div>
-                              <div className="text-[11px] text-slate-600">
-                                {machine ? `${machine.brand} ${machine.model}` : t.machineType} • <span className="font-semibold text-indigo-700">{t.line}</span>
-                              </div>
-                            </div>
-
-                            <p className="text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
-                              {t.faultDetails}
-                            </p>
-
-                            <div className="flex items-center justify-between pt-1">
-                              <span className="text-[10px] text-slate-400">By: {t.reportedBy}</span>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenResolveModal(t)}
-                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Wrench className="w-3 h-3" />
-                                  <span>Attend &amp; Fix</span>
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                    {/* 3. PPM Schedules */}
-                    {selectedDayData.ppms
-                      .filter((p) => p.status !== 'COMPLETED')
-                      .map((ppm) => {
-                        const machine = machines.find((m) => m.id === ppm.machineId);
-                        return (
-                          <div key={ppm.id} className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/30 text-xs space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                                PPM • {ppm.frequency}
-                              </span>
-                              <span className="text-[10px] text-blue-600 font-bold">Every {ppm.intervalDays} Days</span>
-                            </div>
-                            <div>
-                              <div className="font-extrabold text-sm text-slate-900 font-mono">{ppm.machineId}</div>
-                              <div className="text-[11px] text-slate-600">
-                                {machine ? `${machine.brand} ${machine.model} (${machine.currentLine})` : 'Line Machine'}
-                              </div>
-                            </div>
-                            <div className="bg-white p-2 rounded-lg border border-blue-100 text-[11px] text-slate-700 font-medium">
-                              {ppm.task}
-                            </div>
-                            <div className="flex items-center justify-between pt-1">
-                              <span className="text-[10px] text-slate-400">Due: <strong className="text-slate-600">{ppm.nextDue}</strong></span>
-                              <button
-                                type="button"
-                                onClick={() => handleCompletePPM(ppm.id, ppm.task, ppm.machineId)}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                              >
-                                <CheckCheck className="w-3 h-3" />
-                                <span>Complete PPM</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                    {/* 4. Completed Work Orders */}
-                    {selectedDayData.repairs
-                      .filter((r) => r.status === 'COMPLETED')
-                      .map((t) => (
-                        <div key={t.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50/80 text-xs space-y-1.5 opacity-90">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                              RESOLVED • {t.faultCategory}
-                            </span>
-                            <span className="text-[10px] text-emerald-700 font-bold">Fixed in {t.downtimeMinutes}m</span>
-                          </div>
-                          <div className="font-extrabold text-slate-800 font-mono">{t.machineId} ({t.line})</div>
-                          <p className="text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
-                            {t.actionTaken || t.faultDetails}
-                          </p>
-                          <div className="text-[10px] text-slate-400">
-                            Attended by: <strong className="text-slate-600">{t.attendedBy || 'Mechanic'}</strong>
-                          </div>
-                        </div>
-                      ))}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Drawer Sticky Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
-              <span className="text-xs text-slate-500">
-                {selectedDayData.totalCount} active items on {selectedDayData.dateString}
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsDayDrawerOpen(false)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
-              >
-                Close Inspector
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 6. Attend & Resolve Repair Modal (With Downtime and Spare Parts Inventory Deduction) */}
       {isResolveOpen && selectedTicket && (
