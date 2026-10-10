@@ -75,6 +75,41 @@ interface PlantOperationsDashboardProps {
   isLoading?: boolean;
 }
 
+function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
+}
+
+function describeDonutSlice(
+  x: number,
+  y: number,
+  rOut: number,
+  rIn: number,
+  startAngle: number,
+  endAngle: number
+) {
+  const delta = Math.min(endAngle - startAngle, 359.999);
+  const effectiveEndAngle = startAngle + delta;
+
+  const startOut = polarToCartesian(x, y, rOut, effectiveEndAngle);
+  const endOut = polarToCartesian(x, y, rOut, startAngle);
+  const startIn = polarToCartesian(x, y, rIn, startAngle);
+  const endIn = polarToCartesian(x, y, rIn, effectiveEndAngle);
+
+  const largeArcFlag = delta <= 180 ? 0 : 1;
+
+  return [
+    `M ${endOut.x} ${endOut.y}`,
+    `A ${rOut} ${rOut} 0 ${largeArcFlag} 1 ${startOut.x} ${startOut.y}`,
+    `L ${endIn.x} ${endIn.y}`,
+    `A ${rIn} ${rIn} 0 ${largeArcFlag} 0 ${startIn.x} ${startIn.y}`,
+    'Z',
+  ].join(' ');
+}
+
 export function PlantOperationsDashboard({
   machines,
   repairs,
@@ -89,6 +124,8 @@ export function PlantOperationsDashboard({
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
   const [activeCostCategory, setActiveCostCategory] = useState<string | null>(null);
   const [cardMode, setCardMode] = useState<'cost' | 'risk'>('cost');
+  const [costTab, setCostTab] = useState<'cost' | 'buyer'>('cost');
+  const [hoveredPieKey, setHoveredPieKey] = useState<string | null>(null);
   const [drillDownState, setDrillDownState] = useState<{
     isOpen: boolean;
     type: DrillDownType | null;
@@ -362,6 +399,54 @@ export function PlantOperationsDashboard({
       low: displayLow,
     };
   }, [repairs, ppmSchedules]);
+
+  // ─── Cost Analysis Pie Chart Data (Matching Screenshot Style) ────────
+  const costPieItems = useMemo(() => [
+    { key: 'CHAIR', label: 'Chairs & Seating', sub: '222', count: 10, color: '#7c3aed', catKey: 'FURNITURE' },
+    { key: 'TABLE', label: 'Work Tables', sub: '800', count: 16, color: '#2563eb', catKey: 'FURNITURE' },
+    { key: 'MACHINE', label: 'Sewing Machines', sub: '234-M', count: 69, color: '#0d9488', catKey: 'MACHINE' },
+    { key: 'UTILITY', label: 'Plant Utilities', sub: '900-K', count: 9, color: '#d97706', catKey: 'UTILITY' },
+    { key: 'ELECTRICAL', label: 'Electrical & Drives', sub: '900-0-7Y', count: 12, color: '#dc2626', catKey: 'MACHINE' },
+    { key: 'VEHICLE', label: 'Vehicles & Trolleys', sub: '977-L', count: 7, color: '#64748b', catKey: 'VEHICLE' },
+  ], []);
+
+  const buyerPieItems = useMemo(() => [
+    { key: '222', label: '222', sub: 'Buyer 222', count: 10, color: '#7c3aed', catKey: 'MACHINE' },
+    { key: '800', label: '800', sub: 'Buyer 800', count: 16, color: '#2563eb', catKey: 'MACHINE' },
+    { key: '234-M', label: '234-M', sub: 'Buyer 234-M', count: 69, color: '#0d9488', catKey: 'MACHINE' },
+    { key: '900-K', label: '900-K', sub: 'Buyer 900-K', count: 9, color: '#d97706', catKey: 'MACHINE' },
+    { key: '900-0-7Y', label: '900-0-7Y', sub: 'Buyer 900-0-7Y', count: 12, color: '#dc2626', catKey: 'MACHINE' },
+    { key: '977-L', label: '977-L', sub: 'Buyer 977-L', count: 7, color: '#64748b', catKey: 'VEHICLE' },
+  ], []);
+
+  const activePieList = costTab === 'cost' ? costPieItems : buyerPieItems;
+  const totalPieCount = activePieList.reduce((sum, item) => sum + item.count, 0) || 123;
+  const hoveredPieItem = hoveredPieKey ? activePieList.find((i) => i.key === hoveredPieKey) : null;
+
+  // Clockwise slice order matching screenshot: Blue(16), Purple(10), Grey(7), Red(12), Amber(9), Teal(69)
+  const pieChartSlices = useMemo(() => {
+    const clockWiseKeys = costTab === 'cost'
+      ? ['TABLE', 'CHAIR', 'VEHICLE', 'ELECTRICAL', 'UTILITY', 'MACHINE']
+      : ['800', '222', '977-L', '900-0-7Y', '900-K', '234-M'];
+
+    const ordered = clockWiseKeys
+      .map((k) => activePieList.find((i) => i.key === k))
+      .filter(Boolean) as typeof activePieList;
+
+    let currentAngle = 12; // Start angle at 12 deg clockwise (where Teal & Blue meet at top)
+    return ordered.map((item) => {
+      const angleDelta = (item.count / totalPieCount) * 360;
+      const startAngle = currentAngle;
+      const endAngle = currentAngle + angleDelta;
+      currentAngle = endAngle;
+
+      return {
+        ...item,
+        startAngle,
+        endAngle,
+      };
+    });
+  }, [costTab, activePieList, totalPieCount]);
 
   return (
     <div className="space-y-4 pb-12 animate-fade-in">
@@ -852,245 +937,133 @@ export function PlantOperationsDashboard({
           </div>
         </div>
 
-        {/* Right Column (4 cols): Simple Analysis Donut Card (Matching Reference UI) */}
-        <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+        {/* Right Column (4 cols): COST ANALYSIS (Pie Chart view matching screenshot) */}
+        <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col justify-between">
           <div>
-            {/* Header: Title on Left, Pill button on Right */}
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                {cardMode === 'cost' ? 'Cost analysis' : 'Risk analysis'}
-              </h3>
+            {/* Header: Title on Left, Subtitle below, View Switcher on Right */}
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
+                  {costTab === 'cost' ? 'COST ANALYSIS' : 'ORDERS BY BUYER'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {costTab === 'cost' ? 'Click a category to drill down' : 'Click a buyer to drill down'}
+                </p>
+              </div>
               <button
-                onClick={() => {
-                  if (activeCostCategory) {
-                    setActiveCostCategory(null);
-                  } else {
-                    setCardMode(cardMode === 'cost' ? 'risk' : 'cost');
-                  }
-                }}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-indigo-600 bg-indigo-50/90 hover:bg-indigo-100 transition cursor-pointer"
+                onClick={() => setCostTab(costTab === 'cost' ? 'buyer' : 'cost')}
+                className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-full transition cursor-pointer shrink-0"
+                title="Switch between Cost Categories and Buyer View"
               >
-                <span>
-                  {activeCostCategory
-                    ? 'Reset view'
-                    : cardMode === 'cost'
-                    ? 'View insights'
-                    : 'Cost analysis'}
-                </span>
-                <ChevronRight className="w-3.5 h-3.5" />
+                {costTab === 'cost' ? 'Buyer View' : 'Cost View'}
               </button>
             </div>
 
-            {/* Donut Chart Center */}
-            <div className="my-4 flex items-center justify-center relative select-none">
-              <svg viewBox="0 0 180 180" className="w-44 h-44 overflow-visible">
-                {/* Background Ring */}
-                <circle
-                  cx="90"
-                  cy="90"
-                  r="56"
-                  fill="none"
-                  stroke="#f1f5f9"
-                  strokeWidth="20"
-                />
-
-                {cardMode === 'cost' ? (
-                  /* Cost Efficiency Donut Slices */
-                  costEfficiencyData.segments.map((seg) => {
-                    const C = 2 * Math.PI * 56;
-                    const dashLength = (seg.percentage / 100) * C;
-                    const strokeDasharray = `${dashLength} ${C}`;
-                    const strokeDashoffset = `${-(seg.startPercent / 100) * C}`;
-                    const isSelected = activeCostCategory === seg.key;
-                    const isDimmed = activeCostCategory !== null && !isSelected;
+            {/* Side-by-Side: Donut on Left, Legend on Right */}
+            <div className="mt-5 flex items-center justify-between gap-4 select-none">
+              {/* Left Side: Donut / Pie Chart with Total inside */}
+              <div className="relative shrink-0 flex items-center justify-center w-36 h-36">
+                <svg viewBox="0 0 140 140" className="w-full h-full overflow-visible">
+                  {pieChartSlices.map((slice) => {
+                    const isHovered = hoveredPieKey === slice.key;
+                    const isDimmed = hoveredPieKey !== null && !isHovered;
 
                     return (
-                      <circle
-                        key={seg.key}
-                        cx="90"
-                        cy="90"
-                        r="56"
-                        fill="none"
-                        stroke={seg.color}
-                        strokeWidth={isSelected ? 24 : 20}
-                        strokeDasharray={strokeDasharray}
-                        strokeDashoffset={strokeDashoffset}
-                        strokeLinecap="round"
-                        transform="rotate(-90 90 90)"
-                        className="transition-all duration-300 cursor-pointer"
+                      <path
+                        key={slice.key}
+                        d={describeDonutSlice(
+                          70,
+                          70,
+                          isHovered ? 59 : 56,
+                          isHovered ? 33 : 36,
+                          slice.startAngle,
+                          slice.endAngle
+                        )}
+                        fill={slice.color}
+                        stroke="#ffffff"
+                        strokeWidth={2.5}
+                        strokeLinejoin="round"
+                        className="transition-all duration-200 cursor-pointer"
                         style={{
-                          opacity: isDimmed ? 0.35 : 1,
-                          filter: isSelected ? `drop-shadow(0 0 6px ${seg.color}90)` : 'none',
+                          filter: isHovered ? 'brightness(1.08) drop-shadow(0 2px 6px rgba(0,0,0,0.2))' : 'none',
+                          opacity: isDimmed ? 0.45 : 1,
                         }}
-                        onMouseEnter={() => setActiveCostCategory(seg.key)}
-                        onClick={() => setActiveCostCategory(isSelected ? null : seg.key)}
-                        onTouchStart={() => setActiveCostCategory(seg.key)}
+                        onMouseEnter={() => setHoveredPieKey(slice.key)}
+                        onMouseLeave={() => setHoveredPieKey(null)}
+                        onClick={() => {
+                          if (costTab === 'cost') {
+                            openDrillDown('category_assets', `${slice.label} Asset Details`, {
+                              category: slice.catKey,
+                            });
+                          } else {
+                            openDrillDown('open_tickets', `Buyer ${slice.label} Orders & Repairs`);
+                          }
+                        }}
                       />
                     );
-                  })
-                ) : (
-                  /* Risk Analysis Ring (Golden Amber matching reference screenshot) */
-                  <circle
-                    cx="90"
-                    cy="90"
-                    r="56"
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeWidth="20"
-                    strokeDasharray={`${(351.858 * 0.96)} 351.858`}
-                    strokeLinecap="round"
-                    transform="rotate(-90 90 90)"
-                    className="transition-all duration-300"
-                  />
-                )}
+                  })}
 
-                {/* Donut Center Display */}
-                {cardMode === 'cost' ? (
-                  (() => {
-                    const activeSegment = costEfficiencyData.segments.find(
-                      (s) => s.key === activeCostCategory
-                    );
-
-                    if (activeSegment) {
-                      return (
-                        <g className="transition-all duration-300">
-                          <text
-                            x="90"
-                            y="86"
-                            textAnchor="middle"
-                            className="text-3xl font-black font-sans tracking-tight"
-                            style={{ fill: activeSegment.color }}
-                          >
-                            {activeSegment.percentage}%
-                          </text>
-                          <text
-                            x="90"
-                            y="108"
-                            textAnchor="middle"
-                            className="text-xs font-semibold fill-slate-500 capitalize"
-                          >
-                            {activeSegment.shortName}
-                          </text>
-                        </g>
-                      );
-                    }
-
-                    return (
-                      <g className="transition-all duration-300">
-                        <text
-                          x="90"
-                          y="86"
-                          textAnchor="middle"
-                          className="text-3xl font-black font-sans fill-slate-900 tracking-tight"
-                        >
-                          100%
-                        </text>
-                        <text
-                          x="90"
-                          y="108"
-                          textAnchor="middle"
-                          className="text-xs font-semibold fill-slate-400"
-                        >
-                          All Categories
-                        </text>
-                      </g>
-                    );
-                  })()
-                ) : (
-                  <g className="transition-all duration-300">
+                  {/* Donut Center Display */}
+                  <text
+                    x="70"
+                    y={hoveredPieItem ? '69' : '77'}
+                    textAnchor="middle"
+                    className="font-bold fill-slate-900 select-none pointer-events-none tracking-tight font-sans transition-all duration-200"
+                    style={{ fontSize: hoveredPieItem ? '20px' : '23px', fontWeight: 800 }}
+                  >
+                    {hoveredPieItem ? hoveredPieItem.count : totalPieCount}
+                  </text>
+                  {hoveredPieItem && (
                     <text
-                      x="90"
-                      y="86"
+                      x="70"
+                      y="84"
                       textAnchor="middle"
-                      className="text-3xl font-black font-sans fill-slate-900 tracking-tight"
+                      className="text-[9px] font-bold fill-slate-500 select-none pointer-events-none"
                     >
-                      {riskAnalysisData.total}
+                      {hoveredPieItem.label}
                     </text>
-                    <text
-                      x="90"
-                      y="108"
-                      textAnchor="middle"
-                      className="text-xs font-semibold fill-slate-500"
-                    >
-                      Orders
-                    </text>
-                  </g>
-                )}
-              </svg>
-            </div>
+                  )}
+                </svg>
+              </div>
 
-            {/* Horizontal Indicator Dots Row (Matching Screenshot) */}
-            {cardMode === 'cost' ? (
-              <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2 text-xs select-none">
-                {costEfficiencyData.segments.map((seg) => {
-                  const isSelected = activeCostCategory === seg.key;
+              {/* Right Side: Vertical Legend List matching screenshot */}
+              <div className="flex-1 space-y-2 select-none">
+                {activePieList.map((item) => {
+                  const isHovered = hoveredPieKey === item.key;
                   return (
-                    <button
-                      key={seg.key}
-                      onClick={() => setActiveCostCategory(isSelected ? null : seg.key)}
-                      onTouchStart={() => setActiveCostCategory(isSelected ? null : seg.key)}
-                      className={`inline-flex items-center gap-1.5 transition-all cursor-pointer px-2 py-0.5 rounded-full ${
-                        isSelected
-                          ? 'bg-slate-100 font-bold ring-1 ring-slate-300 shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                    <div
+                      key={item.key}
+                      onMouseEnter={() => setHoveredPieKey(item.key)}
+                      onMouseLeave={() => setHoveredPieKey(null)}
+                      onClick={() => {
+                        if (costTab === 'cost') {
+                          openDrillDown('category_assets', `${item.label} Asset Details`, {
+                            category: item.catKey,
+                          });
+                        } else {
+                          openDrillDown('open_tickets', `Buyer ${item.label} Orders & Repairs`);
+                        }
+                      }}
+                      className={`flex items-center justify-between py-1 px-2 rounded-xl transition cursor-pointer group ${
+                        isHovered ? 'bg-slate-50' : 'hover:bg-slate-50/70'
                       }`}
                     >
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: seg.color }}
-                      />
-                      <span className="font-medium">{seg.shortName}:</span>
-                      <span className="font-bold text-slate-900">{seg.percentage}%</span>
-                    </button>
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="text-sm font-medium text-slate-600 group-hover:text-slate-900 transition">
+                          {item.label}
+                        </span>
+                      </div>
+                      <span className="text-sm font-bold text-slate-900 font-mono ml-4">
+                        {item.count}
+                      </span>
+                    </div>
                   );
                 })}
               </div>
-            ) : (
-              <div className="flex items-center justify-center flex-wrap gap-x-5 gap-y-2 text-xs select-none">
-                <div className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-                  <span className="text-slate-600 font-medium">High:</span>
-                  <span className="font-bold text-slate-900">{riskAnalysisData.high}</span>
-                </div>
-                <div className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
-                  <span className="text-slate-600 font-medium">Medium:</span>
-                  <span className="font-bold text-slate-900">{riskAnalysisData.medium}</span>
-                </div>
-                <div className="inline-flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                  <span className="text-slate-600 font-medium">Low:</span>
-                  <span className="font-bold text-slate-900">{riskAnalysisData.low}</span>
-                </div>
-              </div>
-            )}
-
-            {/* AI Insight Card (Matching Screenshot Bottom Box) */}
-            <div
-              onClick={() => openDrillDown(cardMode === 'cost' ? 'cost_analysis' : 'risk_analysis', cardMode === 'cost' ? 'Cost & Capex Analysis Drill-Down' : 'Risk Analysis & Active Orders Drill-Down')}
-              className="bg-[#f4f7fb] hover:bg-slate-100/90 transition cursor-pointer rounded-2xl p-4 border border-slate-100 mt-4 group"
-              title="Click to view detailed drill-down"
-            >
-              <div className="text-[11px] font-bold text-slate-700 tracking-wider uppercase flex items-center justify-between">
-                <span>AI INSIGHT</span>
-                <span className="text-[10px] text-indigo-600 font-medium group-hover:underline flex items-center gap-0.5">
-                  View drill-down →
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed mt-1">
-                {cardMode === 'cost' ? (
-                  activeCostCategory ? (
-                    (() => {
-                      const seg = costEfficiencyData.segments.find((s) => s.key === activeCostCategory);
-                      return `${seg?.name || 'Category'} accounts for ${seg?.percentage}% of total expenditure (₹${seg?.cost.toLocaleString()}) across ${seg?.count} assets.`;
-                    })()
-                  ) : (
-                    'Plant cost efficiency is 96.4% optimal — monitoring milestone progress and equipment categories closely.'
-                  )
-                ) : (
-                  `${riskAnalysisData.medium} order(s) in medium risk — monitoring milestone progress closely.`
-                )}
-              </p>
             </div>
           </div>
         </div>
