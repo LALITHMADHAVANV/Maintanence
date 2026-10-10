@@ -16,7 +16,6 @@ import {
   Truck,
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
-import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
 
 interface MaintenanceMilestonesAndTasksProps {
   repairs: RepairTicket[];
@@ -72,7 +71,6 @@ export function MaintenanceMilestonesAndTasks({
   const router = useRouter();
   const todayKey = useMemo(() => toDateKey(new Date()), []);
   const [activeTab, setActiveTab] = useState<'schedules' | 'month_grid'>(defaultTab);
-  const [workerFilter, setWorkerFilter] = useState<string>('ALL'); // 'ALL' | 'MY' | specific name
   const [selectedGridDate, setSelectedGridDate] = useState<string>(() => toDateKey(new Date()));
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(true);
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
@@ -88,13 +86,6 @@ export function MaintenanceMilestonesAndTasks({
     ticketObj?: RepairTicket;
     ppmObj?: PPMSchedule;
   } | null>(null);
-
-  // Junior workers roster (Mechanics & Electricians except Senior Leads)
-  const juniorWorkers = useMemo(() => {
-    return FACTORY_MECHANICS_ROSTER.filter(
-      (m) => !m.role.toLowerCase().includes('senior') && !m.role.toLowerCase().includes('lead')
-    );
-  }, []);
 
   // Month grid navigation state (defaults to current month)
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(
@@ -202,35 +193,24 @@ export function MaintenanceMilestonesAndTasks({
     return combined;
   }, [repairs, ppmSchedules, machines, todayKey]);
 
-  // ─── 2. DERIVED DATA FOR RIGHT CARD: MY TASKS (FOR JUNIOR WORKERS) ────────
+  // ─── 2. DERIVED DATA FOR RIGHT CARD: MY TASKS (SHOW ONLY THEIR WORKS) ─────
   const myTasksList = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const userNameClean = (userName || '').trim().toLowerCase();
+    const firstName = userNameClean.split(' ')[0] || '';
 
-    const userNameLower = (userName || '').toLowerCase();
-
-    // Filter tickets according to workerFilter
-    const filteredTickets = repairs.filter((r) => {
+    // Filter tickets assigned specifically to this logged-in worker
+    const myTickets = repairs.filter((r) => {
       if (r.status === 'COMPLETED') return false;
-      if (workerFilter === 'ALL') return true;
-      if (workerFilter === 'MY') {
-        return (
-          r.attendedBy &&
-          (r.attendedBy.toLowerCase() === userNameLower ||
-            r.attendedBy.toLowerCase().includes(userNameLower.split(' ')[0]))
-        );
-      }
+      if (!r.attendedBy) return false;
+      const attendedClean = r.attendedBy.trim().toLowerCase();
       return (
-        r.attendedBy &&
-        (r.attendedBy.toLowerCase() === workerFilter.toLowerCase() ||
-          r.attendedBy.toLowerCase().includes(workerFilter.toLowerCase().split(' ')[0]))
+        attendedClean === userNameClean ||
+        (firstName.length > 2 && attendedClean.includes(firstName)) ||
+        (attendedClean.split(' ')[0]?.length > 2 && userNameClean.includes(attendedClean.split(' ')[0]))
       );
     });
 
-    // Filter PPMs
-    const filteredPpms = ppmSchedules.filter((p) => p.status !== 'COMPLETED');
-
-    const ticketTasks: MyTaskItem[] = filteredTickets.map((t) => {
+    const ticketTasks: MyTaskItem[] = myTickets.map((t) => {
       const isCritical = t.urgency === 'CRITICAL';
       const mch = machines.find((m) => m.id === t.machineId);
 
@@ -240,11 +220,11 @@ export function MaintenanceMilestonesAndTasks({
         title: t.faultCategory || t.faultDetails || 'Breakdown Inspection',
         code: t.machineId,
         machineId: t.machineId,
-        machineType: mch?.type || 'Sewing Machine',
+        machineType: mch?.type || 'Machine Unit',
         line: t.line || 'Line 01',
         stationNo: mch?.stationNo || 'Station 01',
-        assignedTo: t.attendedBy || 'Unassigned',
-        dueBadgeText: isCritical ? 'Due Today' : 'Due Today',
+        assignedTo: t.attendedBy || userName,
+        dueBadgeText: isCritical ? 'Critical Due' : 'Due Today',
         dueBadgeStyle: isCritical
           ? 'bg-rose-50 text-rose-700 border-rose-200'
           : 'bg-rose-50 text-rose-700 border-rose-100',
@@ -255,56 +235,8 @@ export function MaintenanceMilestonesAndTasks({
       };
     });
 
-    const ppmTasks: MyTaskItem[] = (workerFilter === 'ALL' || workerFilter === 'MY' ? filteredPpms : []).map((ppm, idx) => {
-      const mch = machines.find((m) => m.id === ppm.machineId);
-      const dueDate = ppm.nextDue ? new Date(ppm.nextDue) : new Date(today.getTime() + 86400000 * (idx + 1));
-      dueDate.setHours(0, 0, 0, 0);
-      const diffDays = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-      let dueBadgeText = 'Due Today';
-      let dueBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-100';
-      let duePriority = 1;
-
-      if (diffDays <= 0) {
-        dueBadgeText = 'Due Today';
-        dueBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-100';
-        duePriority = 1;
-      } else if (diffDays === 1) {
-        dueBadgeText = 'Tomorrow';
-        dueBadgeStyle = 'bg-amber-50 text-amber-800 border-amber-100';
-        duePriority = 2;
-      } else if (diffDays === 2) {
-        dueBadgeText = 'In 2 Days';
-        dueBadgeStyle = 'bg-sky-50 text-sky-700 border-sky-100';
-        duePriority = 3;
-      } else {
-        dueBadgeText = `In ${diffDays} Days`;
-        dueBadgeStyle = 'bg-slate-100 text-slate-700 border-slate-200';
-        duePriority = 4;
-      }
-
-      return {
-        id: ppm.id,
-        rawId: ppm.id,
-        title: ppm.task || 'Routine Preventive Check',
-        code: ppm.machineId,
-        machineId: ppm.machineId,
-        machineType: mch?.type || 'Machine Unit',
-        line: mch?.currentLine || 'Line 01',
-        stationNo: mch?.stationNo || 'Station 01',
-        assignedTo: 'PPM Specialist',
-        dueBadgeText,
-        dueBadgeStyle,
-        duePriority,
-        type: 'PPM' as const,
-        stage: ppm.frequency,
-        ppmObj: ppm,
-      };
-    });
-
-    const combined: MyTaskItem[] = [...ticketTasks, ...ppmTasks].sort((a, b) => a.duePriority - b.duePriority);
-    return combined;
-  }, [repairs, ppmSchedules, machines, userName, workerFilter]);
+    return ticketTasks.sort((a, b) => a.duePriority - b.duePriority);
+  }, [repairs, machines, userName]);
 
   // ─── 3. MONTH GRID CELLS (CALCULATED DIRECTLY FROM LIVE DATA) ───────────
   const monthGridCells = useMemo(() => {
@@ -965,30 +897,18 @@ export function MaintenanceMilestonesAndTasks({
       </div>
 
       {/* =================================================================== */}
-      {/* RIGHT CARD: MY TASKS (5 COLS)                                      */}
+      {/* RIGHT CARD: MY TASKS (5 COLS - ONLY LOGGED-IN WORKER'S TASKS)      */}
       {/* =================================================================== */}
       <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between">
-        {/* Header: Title, Worker Filter, and Open Button */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2 flex-wrap">
+        {/* Header: Title, Worker Badge, and Open Button */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
               My tasks
             </h2>
-            {/* Junior Workers Selection Dropdown */}
-            <select
-              value={workerFilter}
-              onChange={(e) => setWorkerFilter(e.target.value)}
-              className="text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              title="Show tasks for specific junior worker or all junior workers"
-            >
-              <option value="ALL">All Junior Workers</option>
-              <option value="MY">Assigned to Me ({userName.split(' ')[0]})</option>
-              {juniorWorkers.map((w) => (
-                <option key={w.id} value={w.name}>
-                  {w.name} ({w.trade === 'ELECTRICIAN' ? 'Elec' : 'Mech'})
-                </option>
-              ))}
-            </select>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {myTasksList.length} Active
+            </span>
           </div>
 
           <button
@@ -1005,9 +925,9 @@ export function MaintenanceMilestonesAndTasks({
         <div className="divide-y divide-slate-100 flex-1 min-h-0 overflow-y-auto pr-1">
           {myTasksList.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-400 space-y-1">
-              <p className="font-semibold text-slate-600">No active tasks assigned</p>
+              <p className="font-semibold text-slate-600">No active tasks assigned to you</p>
               <p className="text-[11px] text-slate-400">
-                All tasks for {workerFilter === 'ALL' ? 'junior workers' : workerFilter} are completed.
+                You have zero pending work orders. Ready for floor dispatch.
               </p>
             </div>
           ) : (
@@ -1025,9 +945,6 @@ export function MaintenanceMilestonesAndTasks({
                   </div>
                   <div className="text-[11px] text-slate-400 font-mono truncate">
                     .{task.code} · {task.machineType} · {task.stationNo}
-                    {workerFilter === 'ALL' && task.assignedTo && (
-                      <span className="text-indigo-600 font-sans ml-1.5 font-semibold">· {task.assignedTo}</span>
-                    )}
                   </div>
                 </div>
 
@@ -1055,10 +972,10 @@ export function MaintenanceMilestonesAndTasks({
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-indigo-600" />
-                  <span>All Junior Worker Tasks Queue</span>
+                  <span>My Tasks Queue ({userName})</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Floor breakdown orders, preventive inspections, and active jobs ({myTasksList.length} items)
+                  Floor breakdown orders and active maintenance jobs assigned to you ({myTasksList.length} items)
                 </p>
               </div>
               <button
