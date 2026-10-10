@@ -68,17 +68,17 @@ export default function CalendarPage() {
   // Navigation & View state
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
-  const [viewMode, setViewMode] = useState<'month' | 'agenda' | 'milestones'>('month');
+  const [viewMode, setViewMode] = useState<'month' | 'agenda' | 'milestones'>('milestones');
   const [filterType, setFilterType] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
 
-  // Handle URL params and set default view for junior workers
+  // Handle URL params and set default view to milestones for all persons
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const viewParam = params.get('view');
-      if (viewParam === 'milestones' || viewParam === 'month' || viewParam === 'agenda') {
+      if (viewParam === 'month' || viewParam === 'agenda') {
         setViewMode(viewParam);
-      } else if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
+      } else {
         setViewMode('milestones');
       }
       const ticketId = params.get('ticketId');
@@ -571,165 +571,34 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      {/* 1. Cloud Calendar Master Header */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
-                <CalendarDays className="w-5 h-5" />
-              </div>
-              <div>
-                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span>
-                    {role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN'
-                      ? 'Electrician Cloud Calendar & Dispatch'
-                      : 'Mechanic Cloud Calendar & Dispatch'}
-                  </span>
-                  <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    Live Monthly CMMS
-                  </span>
-                </h1>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Full monthly maintenance planner • Track preventive tasks (PPM), breakdowns, and shift allocations.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Senior Mechanic Controls: Inline Assign/Move, Everyone's Work Board & Schedule PPM */}
-          <div className="flex items-center flex-wrap gap-2.5">
-            {canSchedulePPM && (
-              <>
-                <button
-                  onClick={() => setIsInlineDispatchOpen((prev) => !prev)}
-                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/25 cursor-pointer"
-                  title="Direct inline task dispatch: assign a task directly on this page without popups"
-                >
-                  <Wrench className="w-3.5 h-3.5" />
-                  <span>⚡ Assign / Move Task</span>
-                </button>
-
-                <button
-                  onClick={() => setIsTeamModalOpen(true)}
-                  className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-indigo-600/25 cursor-pointer"
-                  title="View all mechanics scheduled work for any date"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>👥 Everyone&apos;s Work Board</span>
-                </button>
-
-                <button
-                  onClick={() => setIsSchedulePPMOpen(true)}
-                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Schedule PPM</span>
-                </button>
-              </>
-            )}
-
-            {/* View Mode Toggle (Schedule Milestones vs Month vs Agenda) */}
-            <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-semibold text-slate-600">
-              <button
-                onClick={() => setViewMode('milestones')}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'milestones'
-                    ? 'bg-white text-indigo-700 font-bold shadow-sm'
-                    : 'hover:text-slate-900'
-                }`}
-              >
-                <Truck className="w-3.5 h-3.5" />
-                <span>Milestones &amp; Tasks</span>
-              </button>
-              <button
-                onClick={() => setViewMode('month')}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'month'
-                    ? 'bg-white text-indigo-700 font-bold shadow-sm'
-                    : 'hover:text-slate-900'
-                }`}
-              >
-                <CalendarRange className="w-3.5 h-3.5" />
-                <span>Month</span>
-              </button>
-              <button
-                onClick={() => setViewMode('agenda')}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'agenda'
-                    ? 'bg-white text-indigo-700 font-bold shadow-sm'
-                    : 'hover:text-slate-900'
-                }`}
-              >
-                <ListOrdered className="w-3.5 h-3.5" />
-                <span>Agenda</span>
-              </button>
-            </div>
-          </div>
+      {/* Senior Supervisor Action Controls */}
+      {canSchedulePPM && (
+        <div className="flex items-center justify-end flex-wrap gap-2.5">
+          <button
+            onClick={() => setIsInlineDispatchOpen((prev) => !prev)}
+            className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/25 cursor-pointer"
+            title="Direct inline task dispatch: assign a task directly on this page without popups"
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>⚡ Assign / Move Task</span>
+          </button>
+          <button
+            onClick={() => setIsTeamModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-indigo-600/25 cursor-pointer"
+            title="View all mechanics scheduled work for any date"
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>👥 Everyone&apos;s Work Board</span>
+          </button>
+          <button
+            onClick={() => setIsSchedulePPMOpen(true)}
+            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Schedule PPM</span>
+          </button>
         </div>
-
-        {/* 2. Month Navigation Toolbar & Filters */}
-        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Month Selector & Today button */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleToday}
-              className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition border border-slate-200 cursor-pointer"
-            >
-              Today
-            </button>
-            <div className="flex items-center rounded-xl border border-slate-200 bg-white">
-              <button
-                onClick={handlePrevMonth}
-                aria-label="Previous Month"
-                className="p-1.5 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-l-xl transition cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-3 text-xs font-extrabold text-slate-900 min-w-[130px] text-center select-none">
-                {monthLabel}
-              </span>
-              <button
-                onClick={handleNextMonth}
-                aria-label="Next Month"
-                className="p-1.5 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-r-xl transition cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Filter Badges (All, Critical, Repairs, PPM, Completed) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mr-1">
-              <Filter className="w-3 h-3" />
-              <span>Filter:</span>
-            </span>
-            {[
-              { id: 'ALL', label: 'All Jobs', color: 'slate' },
-              { id: 'CRITICAL', label: '🚨 Critical', color: 'rose' },
-              { id: 'REPAIRS', label: '🔧 Repairs', color: 'amber' },
-              { id: 'PPM', label: '📅 PPM Tasks', color: 'blue' },
-              { id: 'COMPLETED', label: '✅ Completed', color: 'emerald' },
-            ].map((f) => {
-              const active = filterType === f.id;
-              return (
-                <button
-                  key={f.id}
-                  onClick={() => setFilterType(f.id as typeof filterType)}
-                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer whitespace-nowrap ${
-                    active
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* 3. Monthly Metrics Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -112,6 +112,11 @@ export function Sidebar() {
         badgeColor: 'bg-rose-600 text-white animate-pulse',
         highlight: true,
       },
+      {
+        label: 'History',
+        href: '/dashboard/history',
+        icon: History,
+      },
     ];
   } else if (role === 'STORE_PERSON') {
     navItems = [
@@ -134,6 +139,11 @@ export function Sidebar() {
         icon: Boxes,
         badge: lowStockCount > 0 ? lowStockCount : null,
         badgeColor: 'bg-amber-500 text-slate-900',
+      },
+      {
+        label: 'History',
+        href: '/dashboard/history',
+        icon: History,
       },
     ];
   } else if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
@@ -166,7 +176,7 @@ export function Sidebar() {
       },
     ];
   } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
-    // 🔧 Senior Mechanic: Supervisor Dashboard, Calendar, Floor Tracker, Roster, Group Indent
+    // 🔧 Senior Mechanic: Supervisor Dashboard, Calendar, Floor Tracker, Roster, Group Indent, History
     navItems = [
       {
         label: 'Supervisor Dashboard',
@@ -197,9 +207,14 @@ export function Sidebar() {
         badge: lowStockCount > 0 ? lowStockCount : null,
         badgeColor: 'bg-amber-500 text-slate-900',
       },
+      {
+        label: 'History',
+        href: '/dashboard/history',
+        icon: History,
+      },
     ];
   } else {
-    // 🦺 Mechanic & Electrician: My Dashboard, Mechanic Calendar & Indent
+    // 🦺 Mechanic & Electrician: My Dashboard, Mechanic Calendar, Indent, History
     navItems = [
       {
         label: 'My Dashboard',
@@ -219,6 +234,11 @@ export function Sidebar() {
         icon: Boxes,
         badge: lowStockCount > 0 ? lowStockCount : null,
         badgeColor: 'bg-amber-500 text-slate-900',
+      },
+      {
+        label: 'History',
+        href: '/dashboard/history',
+        icon: History,
       },
     ];
   }

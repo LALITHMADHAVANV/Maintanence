@@ -19,10 +19,10 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 1. CEO User: Restricted to ONLY the CEO Approval Section (/dashboard/messages)
+    // 1. CEO User: Restricted to CEO Approval Section and History
     if (role === 'CEO') {
-      if (pathname !== '/dashboard/messages') {
-        showToast('CEO account has access to the Executive Approval section only.', 'info');
+      if (pathname !== '/dashboard/messages' && pathname !== '/dashboard/history') {
+        showToast('CEO account has access to Executive Approvals and Work History.', 'info');
         router.replace('/dashboard/messages');
       }
       return;
@@ -64,7 +64,7 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   }
 
   // Prevent flash of forbidden pages for CEO
-  if (role === 'CEO' && pathname !== '/dashboard/messages') {
+  if (role === 'CEO' && pathname !== '/dashboard/messages' && pathname !== '/dashboard/history') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-2">
