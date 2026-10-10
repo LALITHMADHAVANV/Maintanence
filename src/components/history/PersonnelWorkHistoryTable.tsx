@@ -387,17 +387,37 @@ export function PersonnelWorkHistoryTable() {
         if (!row.date.startsWith(thisMonthPrefix)) return false;
       }
 
-      // 4. Search query
+      // 4. Search query (connect across all table fields with multi-token matching)
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const inId = row.ticketId.toLowerCase().includes(q);
-        const inPerson = row.personName.toLowerCase().includes(q);
-        const inMachine = row.machineId.toLowerCase().includes(q) || row.machineName.toLowerCase().includes(q);
-        const inAction = row.actionTaken.toLowerCase().includes(q);
-        const inFault = row.faultCategory.toLowerCase().includes(q);
-        const inParts = row.partsUsedText.toLowerCase().includes(q);
+        const tokens = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+        const rowHaystack = [
+          row.ticketId,
+          row.personName,
+          row.personRole,
+          row.personTrade,
+          row.machineId,
+          row.machineName,
+          row.line,
+          row.line.replace(/0(\d)/g, '$1'), // "Line 1" matches "Line 01"
+          row.stationNo,
+          row.stationNo.replace(/0(\d)/g, '$1'),
+          row.workType,
+          row.urgency,
+          row.faultCategory,
+          row.faultDetails,
+          row.actionTaken,
+          row.partsUsedText,
+          row.dateFormatted,
+          row.status,
+          `${row.downtimeMinutes} mins`,
+          `${row.downtimeMinutes}m`,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
 
-        if (!inId && !inPerson && !inMachine && !inAction && !inFault && !inParts) {
+        const allTokensMatch = tokens.every((token) => rowHaystack.includes(token));
+        if (!allTokensMatch) {
           return false;
         }
       }
@@ -575,144 +595,156 @@ export function PersonnelWorkHistoryTable() {
         </div>
       </div>
 
-      {/* ─── 3. FILTERS & SEARCH TOOLBAR ─────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3 no-print">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Search bar */}
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by ticket #, technician name, machine ID, fault, or action taken..."
-              className="w-full pl-10 pr-9 py-2 text-xs font-medium text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-            />
-            {searchQuery && (
+      {/* ─── 3 & 4. CONNECTED SEARCH TOOLBAR & PERSONNEL WORK HISTORY TABLE ─── */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm max-h-[450px] flex flex-col overflow-hidden">
+        {/* Connected Search & Filters Header Bar */}
+        <div className="p-3 sm:p-3.5 border-b border-slate-200/90 bg-slate-50/80 shrink-0 space-y-2.5 no-print">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            {/* Search bar with live connected feedback */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search across all columns (technician, ticket, machine, action taken, parts, line)..."
+                className="w-full pl-10 pr-24 py-2 text-xs font-medium text-slate-900 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs transition"
+              />
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded-full hover:bg-slate-100"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 font-mono">
+                  {filteredRows.length} found
+                </span>
+              </div>
+            </div>
+
+            {/* Filters Row */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Person Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <User className="w-3 h-3 text-slate-400" />
+                  <span>Person:</span>
+                </span>
+                <select
+                  value={selectedPerson}
+                  onChange={(e) => setSelectedPerson(e.target.value)}
+                  className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">All Persons (Whole Crew)</option>
+                  <option value="MY">Assigned to Me ({currentUserName.split(' ')[0]})</option>
+                  <optgroup label="Mechanics &amp; Electricians">
+                    {uniquePersonsList.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Work Type Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Type:
+                </span>
+                <select
+                  value={selectedWorkType}
+                  onChange={(e) => setSelectedWorkType(e.target.value as typeof selectedWorkType)}
+                  className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">All Types</option>
+                  <option value="BREAKDOWN">Breakdowns</option>
+                  <option value="PPM">PPM Overhauls</option>
+                </select>
+              </div>
+
+              {/* Date Range Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Date:
+                </span>
+                <select
+                  value={selectedDateRange}
+                  onChange={(e) => setSelectedDateRange(e.target.value as typeof selectedDateRange)}
+                  className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">All Time</option>
+                  <option value="TODAY">Today Only</option>
+                  <option value="WEEK">Last 7 Days</option>
+                  <option value="MONTH">This Month</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Active Filters Pill Bar */}
+          {(selectedPerson !== 'ALL' || selectedWorkType !== 'ALL' || selectedDateRange !== 'ALL' || searchQuery) && (
+            <div className="flex items-center gap-2 pt-1.5 border-t border-slate-200/70 text-xs text-slate-500 flex-wrap">
+              <span className="text-[11px] font-semibold text-slate-600">Active Filters:</span>
+              {selectedPerson !== 'ALL' && (
+                <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px]">
+                  Person: {selectedPerson === 'MY' ? currentUserName : selectedPerson}
+                </span>
+              )}
+              {selectedWorkType !== 'ALL' && (
+                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold text-[10px]">
+                  Type: {selectedWorkType}
+                </span>
+              )}
+              {selectedDateRange !== 'ALL' && (
+                <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px]">
+                  Date: {selectedDateRange}
+                </span>
+              )}
+              {searchQuery && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold text-[10px]">
+                  Query: &quot;{searchQuery}&quot;
+                </span>
+              )}
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                onClick={() => {
+                  setSelectedPerson('ALL');
+                  setSelectedWorkType('ALL');
+                  setSelectedDateRange('ALL');
+                  setSearchQuery('');
+                }}
+                className="text-indigo-600 hover:underline font-bold text-[11px] ml-auto cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                Reset Filters
               </button>
-            )}
-          </div>
-
-          {/* Filters Row */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Person Filter */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <User className="w-3 h-3" />
-                <span>Person:</span>
-              </span>
-              <select
-                value={selectedPerson}
-                onChange={(e) => setSelectedPerson(e.target.value)}
-                className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-              >
-                <option value="ALL">All Persons (Whole Crew)</option>
-                <option value="MY">Assigned to Me ({currentUserName.split(' ')[0]})</option>
-                <optgroup label="Mechanics &amp; Electricians">
-                  {uniquePersonsList.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
             </div>
-
-            {/* Work Type Filter */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Type:
-              </span>
-              <select
-                value={selectedWorkType}
-                onChange={(e) => setSelectedWorkType(e.target.value as typeof selectedWorkType)}
-                className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-              >
-                <option value="ALL">All Types</option>
-                <option value="BREAKDOWN">Breakdowns</option>
-                <option value="PPM">PPM Overhauls</option>
-              </select>
-            </div>
-
-            {/* Date Range Filter */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Date:
-              </span>
-              <select
-                value={selectedDateRange}
-                onChange={(e) => setSelectedDateRange(e.target.value as typeof selectedDateRange)}
-                className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-              >
-                <option value="ALL">All Time</option>
-                <option value="TODAY">Today Only</option>
-                <option value="WEEK">Last 7 Days</option>
-                <option value="MONTH">This Month</option>
-              </select>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Active Filters Bar */}
-        {(selectedPerson !== 'ALL' || selectedWorkType !== 'ALL' || selectedDateRange !== 'ALL' || searchQuery) && (
-          <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
-            <span>Showing {filteredRows.length} filtered results:</span>
-            {selectedPerson !== 'ALL' && (
-              <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px]">
-                Person: {selectedPerson === 'MY' ? currentUserName : selectedPerson}
-              </span>
-            )}
-            {selectedWorkType !== 'ALL' && (
-              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold text-[10px]">
-                Type: {selectedWorkType}
-              </span>
-            )}
-            {selectedDateRange !== 'ALL' && (
-              <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px]">
-                Date: {selectedDateRange}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedPerson('ALL');
-                setSelectedWorkType('ALL');
-                setSelectedDateRange('ALL');
-                setSearchQuery('');
-              }}
-              className="text-indigo-600 hover:underline font-bold text-[11px] ml-auto cursor-pointer"
-            >
-              Reset Filters
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ─── 4. MAIN PERSONNEL WORK HISTORY TABLE ────────────────────────── */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Scrollable Table Viewport with Sticky Header (Flex Scroll) */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto scrollbar-thin">
           <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-900 text-white font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-800">
-                <th className="py-3.5 px-4 whitespace-nowrap">Date &amp; Time</th>
-                <th className="py-3.5 px-4 whitespace-nowrap">Person / Tech</th>
-                <th className="py-3.5 px-3 whitespace-nowrap">Work Order</th>
-                <th className="py-3.5 px-4 whitespace-nowrap">Machine &amp; Line</th>
-                <th className="py-3.5 px-4 whitespace-nowrap">Issue / Task</th>
-                <th className="py-3.5 px-5 min-w-[280px]">Action Taken (What They Did)</th>
-                <th className="py-3.5 px-4 whitespace-nowrap">Parts Replaced</th>
-                <th className="py-3.5 px-3 whitespace-nowrap">Downtime</th>
-                <th className="py-3.5 px-3 whitespace-nowrap text-center">Status</th>
-                <th className="py-3.5 px-4 text-right no-print">Action</th>
+            <thead className="sticky top-0 bg-slate-900 text-white font-extrabold uppercase text-[10px] tracking-wider z-10 shadow-xs">
+              <tr className="border-b border-slate-800">
+                <th className="py-3 px-4 whitespace-nowrap">Date &amp; Time</th>
+                <th className="py-3 px-4 whitespace-nowrap">Person / Tech</th>
+                <th className="py-3 px-3 whitespace-nowrap">Work Order</th>
+                <th className="py-3 px-4 whitespace-nowrap">Machine &amp; Line</th>
+                <th className="py-3 px-4 whitespace-nowrap">Issue / Task</th>
+                <th className="py-3 px-5 min-w-[280px]">Action Taken (What They Did)</th>
+                <th className="py-3 px-4 whitespace-nowrap">Parts Replaced</th>
+                <th className="py-3 px-3 whitespace-nowrap">Downtime</th>
+                <th className="py-3 px-3 whitespace-nowrap text-center">Status</th>
+                <th className="py-3 px-4 text-right no-print">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-16 text-center text-slate-400 space-y-2">
