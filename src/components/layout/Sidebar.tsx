@@ -100,6 +100,11 @@ export function Sidebar() {
   if (role === 'CEO') {
     navItems = [
       {
+        label: 'Executive Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
+      {
         label: 'CEO Approvals',
         href: '/dashboard/messages',
         icon: Crown,
@@ -110,6 +115,11 @@ export function Sidebar() {
     ];
   } else if (role === 'STORE_PERSON') {
     navItems = [
+      {
+        label: 'Store Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
       {
         label: 'Monthly Indents',
         href: '/dashboard/store-inbox',
@@ -156,14 +166,29 @@ export function Sidebar() {
       },
     ];
   } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
-    // 🔧 Senior Mechanic: Mechanic Calendar & Group Indent
+    // 🔧 Senior Mechanic: Supervisor Dashboard, Calendar, Floor Tracker, Roster, Group Indent
     navItems = [
+      {
+        label: 'Supervisor Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
       {
         label: 'Mechanic Calendar',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-rose-500 text-white',
+      },
+      {
+        label: 'Floor Tracker',
+        href: '/dashboard/floor-tracker',
+        icon: Layers,
+      },
+      {
+        label: 'Mechanic Roster',
+        href: '/dashboard/mechanic-roster',
+        icon: Users,
       },
       {
         label: 'Group Indent',
@@ -174,8 +199,13 @@ export function Sidebar() {
       },
     ];
   } else {
-    // 🦺 Mechanic & Electrician: Mechanic Calendar & Indent
+    // 🦺 Mechanic & Electrician: My Dashboard, Mechanic Calendar & Indent
     navItems = [
+      {
+        label: 'My Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
       {
         label: 'Mechanic Calendar',
         href: '/dashboard/calendar',

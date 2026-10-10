@@ -42,17 +42,7 @@ export default function LoginPage() {
     try {
       const lower = cleanInput.toLowerCase();
       let email = cleanInput;
-      let targetRoute = '/dashboard/machines';
-
-      if (lower.includes('ceo')) {
-        targetRoute = '/dashboard/messages';
-      } else if (lower.includes('store')) {
-        targetRoute = '/dashboard/store-inbox';
-      } else if (lower.includes('mechanic') || lower.includes('electrician') || lower.includes('elec')) {
-        targetRoute = '/dashboard/calendar';
-      } else {
-        targetRoute = '/dashboard/machines';
-      }
+      const targetRoute = '/dashboard';
 
       await loginWithEmail(email, cleanPass);
       showToast('Successfully signed in. Welcome to Maintenance Module!', 'success');

@@ -94,8 +94,13 @@ export function Navbar() {
   let navTabs: NavTab[] = [];
 
   if (role === 'CEO') {
-    // 👑 CEO: Executive approval desk ONLY
+    // 👑 CEO: Executive dashboard & approval desk
     navTabs = [
+      {
+        label: 'Executive Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
       {
         label: '👑 Critical Approvals (CEO)',
         href: '/dashboard/messages',
@@ -106,8 +111,13 @@ export function Navbar() {
       },
     ];
   } else if (role === 'STORE_PERSON') {
-    // 📦 STORE PERSON: Monthly indents receiver and tool crib inventory custodian
+    // 📦 STORE PERSON: Store dashboard, monthly indents and tool crib inventory
     navTabs = [
+      {
+        label: 'Store Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
       {
         label: '📦 Monthly Store Indents',
         href: '/dashboard/store-inbox',
@@ -125,14 +135,24 @@ export function Navbar() {
       },
     ];
   } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
-    // 🔧 Senior Mechanic: Mechanic Calendar & Group Indent
+    // 🔧 Senior Mechanic: Supervisor Dashboard, Calendar, Floor Tracker & Group Indent
     navTabs = [
+      {
+        label: 'Supervisor Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
       {
         label: 'Mechanic Calendar',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
+      },
+      {
+        label: 'Floor Tracker',
+        href: '/dashboard/floor-tracker',
+        icon: Layers,
       },
       {
         label: 'Group Indent',
@@ -143,8 +163,13 @@ export function Navbar() {
       },
     ];
   } else if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
-    // 🦺 Mechanic: Mechanic Calendar & Indent
+    // 🦺 Mechanic: My Dashboard, Mechanic Calendar & Indent
     navTabs = [
+      {
+        label: 'My Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
       {
         label: 'Mechanic Calendar',
         href: '/dashboard/calendar',
