@@ -27,6 +27,7 @@ import {
   ArrowRight,
   Info,
   Users,
+  Search,
 } from 'lucide-react';
 import { RepairTicket, RepairUrgency, Machine, SparePart, PPMSchedule } from '@/types/cmms';
 import {
@@ -67,6 +68,38 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
   const [viewMode, setViewMode] = useState<'month' | 'agenda'>('month');
   const [filterType, setFilterType] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
+
+  // Pop-up Day Details Slide-over Drawer State ("Short page as like dashboard")
+  const [isDayDrawerOpen, setIsDayDrawerOpen] = useState(false);
+  const [drawerFilter, setDrawerFilter] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
+  const [drawerSearch, setDrawerSearch] = useState('');
+
+  // Handle ESC key to close Day Drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isDayDrawerOpen) {
+        setIsDayDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isDayDrawerOpen]);
+
+  // Handle URL ticketId param if arriving directly from dashboard drilldown
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const ticketId = params.get('ticketId');
+      if (ticketId && repairs.length > 0) {
+        const ticket = repairs.find((r) => r.id === ticketId);
+        if (ticket) {
+          const tDate = ticket.reportedAt ? ticket.reportedAt.slice(0, 10) : toDateKey(new Date());
+          setSelectedDate(tDate);
+          setIsDayDrawerOpen(true);
+        }
+      }
+    }
+  }, [repairs]);
 
   // Senior Mechanic and Senior Electrician have authority to schedule new PPM overhauls
   const canSchedulePPM = role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN';
@@ -120,13 +153,8 @@ export default function CalendarPage() {
   // Map of all machines by ID
   const machineMap = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
 
-  // In mechanic pages, ONLY show the machines (category === 'MACHINE') as assets
-  const displayMachines = useMemo(() => {
-    if (isMechanicRole) {
-      return machines.filter((m) => m.category === 'MACHINE');
-    }
-    return machines;
-  }, [machines, isMechanicRole]);
+  // In calendar & dispatch, include all plant floor machinery, tables, and equipment
+  const displayMachines = machines;
 
   // For Senior Electrician, ONLY show junior electricians; for Senior Mechanic, show mechanics
   const relevantTechnicians = useMemo(() => {
@@ -168,26 +196,9 @@ export default function CalendarPage() {
 
   const todayKey = useMemo(() => toDateKey(new Date()), []);
 
-  // Filter repairs and PPMs for mechanics to only include machines
-  const scopedRepairs = useMemo(() => {
-    if (isMechanicRole) {
-      return repairs.filter((r) => {
-        const m = machineMap.get(r.machineId);
-        return !m || m.category === 'MACHINE';
-      });
-    }
-    return repairs;
-  }, [repairs, machineMap, isMechanicRole]);
-
-  const scopedPpmSchedules = useMemo(() => {
-    if (isMechanicRole) {
-      return ppmSchedules.filter((p) => {
-        const m = machineMap.get(p.machineId);
-        return !m || m.category === 'MACHINE';
-      });
-    }
-    return ppmSchedules;
-  }, [ppmSchedules, machineMap, isMechanicRole]);
+  // Include ALL floor repairs and PPM schedules across sewing, furniture/tables, and utilities
+  const scopedRepairs = repairs;
+  const scopedPpmSchedules = ppmSchedules;
 
   // Events grouped by date string ('YYYY-MM-DD')
   const eventsByDate = useMemo(() => {
@@ -200,41 +211,59 @@ export default function CalendarPage() {
       return map.get(key)!;
     };
 
-    // Index repairs by reportedAt and resolvedAt
+    // Index repairs by reportedAt, resolvedAt, and active tickets on todayKey
     for (const r of scopedRepairs) {
-      const dateKey = r.reportedAt?.slice(0, 10);
+      const dateKey = r.reportedAt ? r.reportedAt.slice(0, 10) : todayKey;
       if (dateKey) {
-        getBucket(dateKey).repairs.push(r);
+        const bucket = getBucket(dateKey);
+        if (!bucket.repairs.some((existing) => existing.id === r.id)) {
+          bucket.repairs.push(r);
+        }
+      }
+      // If ticket is an active critical breakdown and reported date is NOT today,
+      // ALSO ensure it shows in today's bucket so technicians immediately see open emergencies!
+      if (r.urgency === 'CRITICAL' && r.status !== 'COMPLETED' && dateKey !== todayKey) {
+        const todayBucket = getBucket(todayKey);
+        if (!todayBucket.repairs.some((existing) => existing.id === r.id)) {
+          todayBucket.repairs.push(r);
+        }
       }
       // Also index resolved date if different and resolved
       if (r.status === 'COMPLETED' && r.resolvedAt) {
         const resKey = r.resolvedAt.slice(0, 10);
         if (resKey && resKey !== dateKey) {
-          getBucket(resKey).repairs.push(r);
+          const resBucket = getBucket(resKey);
+          if (!resBucket.repairs.some((existing) => existing.id === r.id)) {
+            resBucket.repairs.push(r);
+          }
         }
       }
     }
 
     // Index PPMs by nextDue
     for (const ppm of scopedPpmSchedules) {
-      const dateKey = ppm.nextDue?.slice(0, 10);
+      const dateKey = ppm.nextDue ? ppm.nextDue.slice(0, 10) : '';
       if (dateKey) {
-        getBucket(dateKey).ppms.push(ppm);
+        const bucket = getBucket(dateKey);
+        if (!bucket.ppms.some((existing) => existing.id === ppm.id)) {
+          bucket.ppms.push(ppm);
+        }
       }
     }
 
     return map;
-  }, [scopedRepairs, scopedPpmSchedules]);
+  }, [scopedRepairs, scopedPpmSchedules, todayKey]);
 
   // Monthly KPI Statistics
   const stats = useMemo(() => {
     const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-    const monthRepairs = repairs.filter(
+    const monthRepairs = scopedRepairs.filter(
       (r) => r.reportedAt?.startsWith(currentMonthPrefix) || r.resolvedAt?.startsWith(currentMonthPrefix)
     );
-    const monthPPMs = ppmSchedules.filter((p) => p.nextDue?.startsWith(currentMonthPrefix));
+    const monthPPMs = scopedPpmSchedules.filter((p) => p.nextDue?.startsWith(currentMonthPrefix));
 
-    const critical = monthRepairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED').length;
+    // Live active critical emergency tickets across plant
+    const critical = scopedRepairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED').length;
     const completed = monthRepairs.filter((r) => r.status === 'COMPLETED').length;
     const dueSoonPPM = monthPPMs.filter((p) => p.status === 'DUE_SOON' || p.status === 'OVERDUE').length;
 
@@ -245,7 +274,7 @@ export default function CalendarPage() {
       dueSoonPPM,
       totalPPM: monthPPMs.length,
     };
-  }, [repairs, ppmSchedules, year, month]);
+  }, [scopedRepairs, scopedPpmSchedules, year, month]);
 
   // Calendar matrix generator (42 cells: 6 weeks x 7 days)
   const calendarCells = useMemo(() => {
@@ -335,7 +364,7 @@ export default function CalendarPage() {
     return cells;
   }, [year, month, eventsByDate, todayKey, selectedDate]);
 
-  // Selected date events & details
+  // Selected date events & details (used in slide-over pop-up drawer)
   const selectedDayData = useMemo(() => {
     const bucket = eventsByDate.get(selectedDate) || { repairs: [], ppms: [] };
     const dateObj = new Date(selectedDate + 'T00:00:00');
@@ -343,17 +372,40 @@ export default function CalendarPage() {
     let filteredRepairs = bucket.repairs;
     let filteredPpms = bucket.ppms;
 
-    if (filterType === 'CRITICAL') {
-      filteredRepairs = filteredRepairs.filter((r) => r.urgency === 'CRITICAL');
+    // Filter by drawerFilter if set
+    if (drawerFilter === 'CRITICAL') {
+      filteredRepairs = filteredRepairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED');
       filteredPpms = [];
-    } else if (filterType === 'REPAIRS') {
+    } else if (drawerFilter === 'REPAIRS') {
+      filteredRepairs = filteredRepairs.filter((r) => r.status !== 'COMPLETED');
       filteredPpms = [];
-    } else if (filterType === 'PPM') {
+    } else if (drawerFilter === 'PPM') {
       filteredRepairs = [];
-    } else if (filterType === 'COMPLETED') {
+      filteredPpms = filteredPpms.filter((p) => p.status !== 'COMPLETED');
+    } else if (drawerFilter === 'COMPLETED') {
       filteredRepairs = filteredRepairs.filter((r) => r.status === 'COMPLETED');
       filteredPpms = filteredPpms.filter((p) => p.status === 'COMPLETED');
     }
+
+    // Filter by drawerSearch
+    if (drawerSearch.trim()) {
+      const q = drawerSearch.toLowerCase();
+      filteredRepairs = filteredRepairs.filter(
+        (r) =>
+          r.machineId.toLowerCase().includes(q) ||
+          r.faultCategory.toLowerCase().includes(q) ||
+          r.faultDetails.toLowerCase().includes(q) ||
+          (r.attendedBy && r.attendedBy.toLowerCase().includes(q))
+      );
+      filteredPpms = filteredPpms.filter(
+        (p) =>
+          p.machineId.toLowerCase().includes(q) ||
+          p.task.toLowerCase().includes(q)
+      );
+    }
+
+    const rawRepairs = bucket.repairs;
+    const rawPpms = bucket.ppms;
 
     return {
       dateString: selectedDate,
@@ -367,8 +419,13 @@ export default function CalendarPage() {
       repairs: filteredRepairs,
       ppms: filteredPpms,
       totalCount: filteredRepairs.length + filteredPpms.length,
+      rawCriticalCount: rawRepairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED').length,
+      rawRepairsCount: rawRepairs.filter((r) => r.urgency !== 'CRITICAL' && r.status !== 'COMPLETED').length,
+      rawPpmCount: rawPpms.filter((p) => p.status !== 'COMPLETED').length,
+      rawCompletedCount: rawRepairs.filter((r) => r.status === 'COMPLETED').length + rawPpms.filter((p) => p.status === 'COMPLETED').length,
+      rawTotalCount: rawRepairs.length + rawPpms.length,
     };
-  }, [selectedDate, eventsByDate, filterType, todayKey]);
+  }, [selectedDate, eventsByDate, drawerFilter, drawerSearch, todayKey]);
 
   // Agenda view items (all events in current month sorted by date)
   const agendaMonthItems = useMemo(() => {
@@ -596,7 +653,11 @@ export default function CalendarPage() {
               </div>
               <div>
                 <h1 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span>Mechanic Cloud Calendar & Dispatch</span>
+                  <span>
+                    {role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN'
+                      ? 'Electrician Cloud Calendar & Dispatch'
+                      : 'Mechanic Cloud Calendar & Dispatch'}
+                  </span>
                   <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                     Live Monthly CMMS
                   </span>
@@ -779,585 +840,201 @@ export default function CalendarPage() {
 
       {/* 4. Main Body: Full Cloud Calendar Grid or Agenda View */}
       {viewMode === 'month' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Left: The 7-Day / 6-Week Monthly Cloud Grid (lg: 8 cols) */}
-          <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            {/* Weekday column headers */}
-            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/75 text-center text-xs font-bold text-slate-600 py-2.5 select-none">
-              {weekdays.map((w, idx) => (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Weekday column headers */}
+          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/75 text-center text-xs font-bold text-slate-600 py-2.5 select-none">
+            {weekdays.map((w, idx) => (
+              <div
+                key={w}
+                className={`uppercase tracking-wider ${
+                  idx === 0 || idx === 6 ? 'text-slate-400' : 'text-slate-700'
+                }`}
+              >
+                {w}
+              </div>
+            ))}
+          </div>
+
+          {/* 42-Cell Monthly Calendar Grid with Reduced Height */}
+          <div className="grid grid-cols-7 border-b border-r border-slate-200">
+            {calendarCells.map((cell) => {
+              const isSelected = cell.dateString === selectedDate;
+              const isToday = cell.isToday;
+
+              // Filter events based on filterType
+              let displayRepairs = cell.repairs;
+              let displayPpms = cell.ppms;
+
+              if (filterType === 'CRITICAL') {
+                displayRepairs = displayRepairs.filter((r) => r.urgency === 'CRITICAL');
+                displayPpms = [];
+              } else if (filterType === 'REPAIRS') {
+                displayPpms = [];
+              } else if (filterType === 'PPM') {
+                displayRepairs = [];
+              } else if (filterType === 'COMPLETED') {
+                displayRepairs = displayRepairs.filter((r) => r.status === 'COMPLETED');
+                displayPpms = displayPpms.filter((p) => p.status === 'COMPLETED');
+              }
+
+              const totalEvents = displayRepairs.length + displayPpms.length;
+              const criticalCount = displayRepairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED').length;
+
+              return (
                 <div
-                  key={w}
-                  className={`uppercase tracking-wider ${
-                    idx === 0 || idx === 6 ? 'text-slate-400' : 'text-slate-700'
+                  key={cell.dateString}
+                  onClick={() => {
+                    setSelectedDate(cell.dateString);
+                    setIsDayDrawerOpen(true);
+                  }}
+                  className={`min-h-[58px] sm:min-h-[66px] md:min-h-[72px] p-1.5 border-t border-l border-slate-200 flex flex-col justify-between transition group cursor-pointer relative hover:shadow-xs ${
+                    !cell.isCurrentMonth
+                      ? 'bg-slate-50/50 text-slate-300'
+                      : cell.isWeekend
+                      ? 'bg-slate-50/25'
+                      : 'bg-white'
+                  } ${
+                    isSelected
+                      ? 'ring-2 ring-indigo-600 bg-indigo-50/40 z-10'
+                      : 'hover:bg-indigo-50/30'
                   }`}
                 >
-                  {w}
-                </div>
-              ))}
-            </div>
+                  {/* Date Number Header */}
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span
+                      className={`text-[11px] font-bold inline-flex items-center justify-center w-5 h-5 rounded-full transition ${
+                        isToday
+                          ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-200'
+                          : isSelected
+                          ? 'bg-slate-900 text-white'
+                          : cell.isCurrentMonth
+                          ? 'text-slate-800 group-hover:text-indigo-600'
+                          : 'text-slate-300'
+                      }`}
+                    >
+                      {cell.dayNumber}
+                    </span>
 
-            {/* 42-Cell Monthly Calendar Grid */}
-            <div className="grid grid-cols-7 border-b border-r border-slate-200">
-              {calendarCells.map((cell) => {
-                const isSelected = cell.dateString === selectedDate;
-                const isToday = cell.isToday;
-
-                // Filter events based on filterType
-                let displayRepairs = cell.repairs;
-                let displayPpms = cell.ppms;
-
-                if (filterType === 'CRITICAL') {
-                  displayRepairs = displayRepairs.filter((r) => r.urgency === 'CRITICAL');
-                  displayPpms = [];
-                } else if (filterType === 'REPAIRS') {
-                  displayPpms = [];
-                } else if (filterType === 'PPM') {
-                  displayRepairs = [];
-                } else if (filterType === 'COMPLETED') {
-                  displayRepairs = displayRepairs.filter((r) => r.status === 'COMPLETED');
-                  displayPpms = displayPpms.filter((p) => p.status === 'COMPLETED');
-                }
-
-                const totalEvents = displayRepairs.length + displayPpms.length;
-
-                return (
-                  <div
-                    key={cell.dateString}
-                    onClick={() => setSelectedDate(cell.dateString)}
-                    className={`min-h-[96px] sm:min-h-[110px] p-1.5 border-t border-l border-slate-200 flex flex-col justify-between transition group cursor-pointer relative ${
-                      !cell.isCurrentMonth
-                        ? 'bg-slate-50/50 text-slate-300'
-                        : cell.isWeekend
-                        ? 'bg-slate-50/20'
-                        : 'bg-white'
-                    } ${
-                      isSelected
-                        ? 'ring-2 ring-indigo-600 bg-indigo-50/40 z-10'
-                        : 'hover:bg-slate-50/80'
-                    }`}
-                  >
-                    {/* Date Number Header */}
-                    <div className="flex items-center justify-between mb-1">
+                    {/* Prominent badge for critical line stoppage */}
+                    {cell.hasCritical && (
                       <span
-                        className={`text-xs font-bold inline-flex items-center justify-center w-6 h-6 rounded-full transition ${
-                          isToday
-                            ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-200'
-                            : isSelected
-                            ? 'bg-slate-900 text-white'
-                            : cell.isCurrentMonth
-                            ? 'text-slate-800'
-                            : 'text-slate-300'
-                        }`}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-600 text-white text-[9px] font-extrabold rounded-full shadow-xs animate-pulse"
+                        title="Critical Breakdown Stoppage"
                       >
-                        {cell.dayNumber}
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                        <span>🚨 {criticalCount > 1 ? `${criticalCount} CRIT` : 'CRIT'}</span>
                       </span>
+                    )}
+                  </div>
 
-                      {/* Micro badge for critical line stoppage */}
-                      {cell.hasCritical && (
-                        <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" title="Critical Breakdown on this date" />
-                      )}
-                    </div>
-
-                    {/* Event Chips (Cloud Calendar Style) */}
-                    <div className="space-y-1 overflow-hidden flex-1">
-                      {/* 1. Critical Breakdown Chips */}
-                      {displayRepairs
-                        .filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED')
-                        .slice(0, 2)
-                        .map((r) => (
-                          <div
-                            key={r.id}
-                            className="bg-rose-100/90 text-rose-900 border border-rose-300 rounded px-1.5 py-0.5 text-[10px] font-extrabold truncate flex items-center gap-1 shadow-2xs"
-                            title={`${r.machineId}: ${r.faultCategory} (${r.urgency})`}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0" />
-                            <span className="truncate">{r.machineId}</span>
-                          </div>
-                        ))}
-
-                      {/* 2. Warning / Routine / Assigned Repair Chips */}
-                      {displayRepairs
-                        .filter((r) => r.urgency !== 'CRITICAL' && r.status !== 'COMPLETED')
-                        .slice(0, 2)
-                        .map((r) => {
-                          const isAssigned = r.status === 'ASSIGNED';
-                          return (
-                            <div
-                              key={r.id}
-                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold truncate flex items-center gap-1 ${
-                                isAssigned
-                                  ? 'bg-violet-100 text-violet-900 border border-violet-300 font-bold'
-                                  : 'bg-amber-50 text-amber-900 border border-amber-200'
-                              }`}
-                              title={`${r.machineId}: ${r.faultCategory}${isAssigned ? ` (Assigned to ${r.attendedBy || 'Technician'})` : ''}`}
-                            >
-                              {isAssigned ? (
-                                <UserCheck className="w-2.5 h-2.5 text-violet-600 shrink-0" />
-                              ) : (
-                                <Wrench className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                              )}
-                              <span className="truncate">{r.machineId}</span>
-                            </div>
-                          );
-                        })}
-
-                      {/* 3. PPM Schedule Chips */}
-                      {displayPpms.slice(0, 2).map((ppm) => (
+                  {/* Compact Event Chips */}
+                  <div className="space-y-0.5 overflow-hidden flex-1">
+                    {/* 1. Critical Breakdown Chips */}
+                    {displayRepairs
+                      .filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED')
+                      .slice(0, 1)
+                      .map((r) => (
                         <div
-                          key={ppm.id}
-                          className="bg-blue-50 text-blue-900 border border-blue-200 rounded px-1.5 py-0.5 text-[10px] font-semibold truncate flex items-center gap-1"
-                          title={`PPM: ${ppm.task} (${ppm.machineId})`}
+                          key={r.id}
+                          className="bg-rose-100/90 text-rose-950 border border-rose-300 rounded px-1.5 py-0.5 text-[9px] font-extrabold truncate flex items-center gap-1 shadow-2xs"
+                          title={`🚨 CRITICAL: ${r.machineId} - ${r.faultCategory}`}
                         >
-                          <ShieldCheck className="w-2.5 h-2.5 text-blue-600 shrink-0" />
-                          <span className="truncate">{ppm.machineId}</span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0" />
+                          <span className="truncate">{r.machineId}</span>
                         </div>
                       ))}
 
-                      {/* 4. Completed Repair Chips */}
-                      {displayRepairs
-                        .filter((r) => r.status === 'COMPLETED')
-                        .slice(0, 1)
-                        .map((r) => (
+                    {/* 2. Routine Repair Chips */}
+                    {displayRepairs
+                      .filter((r) => r.urgency !== 'CRITICAL' && r.status !== 'COMPLETED')
+                      .slice(0, 1)
+                      .map((r) => {
+                        const isAssigned = r.status === 'ASSIGNED';
+                        return (
                           <div
                             key={r.id}
-                            className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded px-1.5 py-0.5 text-[10px] font-medium truncate flex items-center gap-1 opacity-75"
-                            title={`Completed: ${r.machineId}`}
+                            className={`rounded px-1.5 py-0.5 text-[9px] font-semibold truncate flex items-center gap-1 ${
+                              isAssigned
+                                ? 'bg-violet-100 text-violet-900 border border-violet-300 font-bold'
+                                : 'bg-amber-50 text-amber-900 border border-amber-200'
+                            }`}
+                            title={`${r.machineId}: ${r.faultCategory}`}
                           >
-                            <CheckCheck className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                            {isAssigned ? (
+                              <UserCheck className="w-2.5 h-2.5 text-violet-600 shrink-0" />
+                            ) : (
+                              <Wrench className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                            )}
                             <span className="truncate">{r.machineId}</span>
                           </div>
-                        ))}
+                        );
+                      })}
 
-                      {/* "+N More" Chip */}
-                      {totalEvents > 2 && (
-                        <div className="text-[9px] font-bold text-slate-500 px-1 py-0.2 rounded hover:text-indigo-600 text-center">
-                          +{totalEvents - 2} more
+                    {/* 3. PPM Schedule Chips */}
+                    {displayPpms.slice(0, 1).map((ppm) => (
+                      <div
+                        key={ppm.id}
+                        className="bg-blue-50 text-blue-900 border border-blue-200 rounded px-1.5 py-0.5 text-[9px] font-semibold truncate flex items-center gap-1"
+                        title={`PPM: ${ppm.task} (${ppm.machineId})`}
+                      >
+                        <ShieldCheck className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+                        <span className="truncate">{ppm.machineId}</span>
+                      </div>
+                    ))}
+
+                    {/* 4. Completed Repair Chips */}
+                    {displayRepairs
+                      .filter((r) => r.status === 'COMPLETED')
+                      .slice(0, 1)
+                      .map((r) => (
+                        <div
+                          key={r.id}
+                          className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded px-1.5 py-0.5 text-[9px] font-medium truncate flex items-center gap-1 opacity-75"
+                          title={`Completed: ${r.machineId}`}
+                        >
+                          <CheckCheck className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">{r.machineId}</span>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      ))}
 
-            {/* Bottom Legend */}
-            <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-[11px] text-slate-600 gap-2">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded bg-rose-500" />
-                  <span className="font-semibold text-slate-700">Critical Breakdown</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded bg-amber-400" />
-                  <span className="font-semibold text-slate-700">Routine Repair</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded bg-violet-500" />
-                  <span className="font-semibold text-slate-700">Assigned Work</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded bg-blue-500" />
-                  <span className="font-semibold text-slate-700">PPM Service</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded bg-emerald-500" />
-                  <span className="font-semibold text-slate-700">Completed</span>
-                </span>
-              </div>
-              <div className="text-slate-400 italic">
-                Click any calendar day to inspect and dispatch tasks.
-              </div>
-            </div>
+                    {/* "+N More" Indicator */}
+                    {totalEvents > 2 && (
+                      <div className="text-[8px] font-extrabold text-indigo-600 px-1 py-0.2 rounded hover:text-indigo-800 text-right">
+                        +{totalEvents - 2} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Right: Selected Date Agenda / Task Inspector Drawer (lg: 4 cols) */}
-          <div className="lg:col-span-4 space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 sticky top-20">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                    Day Schedule Inspector
-                  </span>
-                  <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
-                    {selectedDayData.dateFormatted}
-                  </h3>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {selectedDayData.isToday && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
-                      TODAY
-                    </span>
-                  )}
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
-                    {selectedDayData.totalCount} {selectedDayData.totalCount === 1 ? 'Job' : 'Jobs'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Senior Mechanic Direct Inline Work Dispatch Section (No Popups) */}
-              {canSchedulePPM && (
-                <div className="mt-3 space-y-2">
-                  <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/90 rounded-2xl space-y-2.5 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-950">
-                        <Wrench className="w-4 h-4 text-emerald-600" />
-                        <span>Quick Task Dispatch (Direct Inline)</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsInlineDispatchOpen(!isInlineDispatchOpen)}
-                        className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-emerald-200 hover:bg-emerald-300 text-emerald-900 uppercase transition cursor-pointer"
-                      >
-                        {isInlineDispatchOpen ? 'Hide' : '+ Assign Task'}
-                      </button>
-                    </div>
-
-                    {!isInlineDispatchOpen ? (
-                      <p className="text-[11px] text-emerald-900 leading-snug">
-                        Use the <strong>&quot;Move to Mechanic&quot;</strong> selector on any card below to transfer tasks directly, or click <strong>+ Assign Task</strong> to create one inline.
-                      </p>
-                    ) : (
-                      <form onSubmit={handleInlineAssignTask} className="space-y-2.5 pt-2 border-t border-emerald-200/70">
-                        <div>
-                          <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                            Target Machine:
-                          </label>
-                          <select
-                            value={inlineMachineId}
-                            onChange={(e) => setInlineMachineId(e.target.value)}
-                            className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none focus:ring-1 focus:ring-emerald-500"
-                          >
-                            {displayMachines.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.id} — {m.brand} {m.model} ({m.currentLine})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                            Task Defect / Instructions:
-                          </label>
-                          <input
-                            type="text"
-                            value={inlineTaskTitle}
-                            onChange={(e) => setInlineTaskTitle(e.target.value)}
-                            placeholder="e.g. Looper timing collision, reset clearance..."
-                            className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-emerald-500"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                              Priority:
-                            </label>
-                            <select
-                              value={inlineUrgency}
-                              onChange={(e) => setInlineUrgency(e.target.value as RepairUrgency)}
-                              className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2 py-1.5 font-bold text-slate-800 outline-none"
-                            >
-                              <option value="WARNING">Routine / Normal</option>
-                              <option value="CRITICAL">🚨 Critical Stoppage</option>
-                            </select>
-                          </div>
-
-                        <div>
-                          <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
-                            Move &amp; Assign To:
-                          </label>
-                          <div className="flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setInlineAssignee(user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                inlineAssignee === (user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))
-                                  ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500'
-                                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                              }`}
-                            >
-                              <UserCheck className="w-3 h-3" />
-                              <span>Assign to Myself</span>
-                            </button>
-                            {FACTORY_MECHANICS_ROSTER.filter((m) => {
-                              if (role === 'SENIOR_ELECTRICIAN') {
-                                // For Senior Electrician, ONLY show junior electricians
-                                return m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior');
-                              }
-                              if (role === 'SENIOR_MECHANIC') {
-                                return m.trade === 'MECHANIC' && m.id !== 'MEC-01';
-                              }
-                              return m.name !== (user?.name || 'Ramesh Kumar');
-                            }).map((m) => (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => setInlineAssignee(m.name)}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                  inlineAssignee === m.name
-                                    ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-500'
-                                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                                }`}
-                              >
-                                <span>Move to {m.name.split(' ')[0]}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                        <div className="flex items-center gap-2 pt-1">
-                          <button
-                            type="submit"
-                            disabled={isSubmittingInline}
-                            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>
-                              {inlineAssignee.toLowerCase().includes('ramesh')
-                                ? 'Assign to Myself'
-                                : `Move to ${inlineAssignee.split(' ')[0]}`}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsInlineDispatchOpen(false)}
-                            className="px-3 py-2 text-xs text-emerald-800 hover:text-emerald-950 font-bold"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => setIsTeamModalOpen(true)}
-                    className="w-full py-2 px-3 bg-gradient-to-r from-violet-50 to-indigo-50 hover:from-violet-100 hover:to-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                  >
-                    <Users className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>👥 See Everyone&apos;s Work on {selectedDayData.isToday ? 'Today' : selectedDayData.dateFormatted.split(',')[0]}</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Day Tasks List */}
-              <div className="mt-4 space-y-3 max-h-[580px] overflow-y-auto pr-1">
-                {selectedDayData.totalCount === 0 ? (
-                  <div className="py-12 px-4 text-center border-2 border-dashed border-slate-200 rounded-xl space-y-2.5">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-                    <div className="text-xs font-bold text-slate-800">No Jobs for this Date</div>
-                    <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
-                      All sewing machinery on active lines are functioning without pending breakdowns or PPM tasks on this day.
-                    </p>
-                    {canSchedulePPM && (
-                      <button
-                        onClick={() => setIsSchedulePPMOpen(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Schedule PPM on this Day</span>
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {/* 1. Repair Tickets for Selected Day */}
-                    {selectedDayData.repairs.map((t) => {
-                      const machine = machines.find((m) => m.id === t.machineId);
-                      const isCritical = t.urgency === 'CRITICAL';
-                      const isCompleted = t.status === 'COMPLETED';
-
-                      return (
-                        <div
-                          key={t.id}
-                          className={`p-3.5 rounded-xl border text-xs space-y-2 transition ${
-                            isCompleted
-                              ? 'bg-slate-50/70 border-slate-200 opacity-90'
-                              : isCritical
-                              ? 'bg-rose-50/40 border-rose-200 ring-1 ring-rose-200'
-                              : 'bg-amber-50/30 border-amber-200'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span
-                                className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                                  isCompleted
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : t.status === 'ASSIGNED'
-                                    ? 'bg-violet-100 text-violet-800 border border-violet-200'
-                                    : isCritical
-                                    ? 'bg-rose-100 text-rose-800'
-                                    : 'bg-amber-100 text-amber-800'
-                                }`}
-                              >
-                                {isCompleted ? 'RESOLVED' : t.status === 'ASSIGNED' ? 'ASSIGNED' : t.urgency} • {t.faultCategory}
-                              </span>
-                              {t.status === 'ASSIGNED' && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
-                                  <UserCheck className="w-2.5 h-2.5 text-violet-600" />
-                                  <span>Assigned by {t.assignedBy || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic')}</span>
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              #{t.id}
-                            </span>
-                          </div>
-
-                          <div>
-                            <div className="font-extrabold text-sm text-slate-900 font-mono">
-                              {t.machineId}
-                            </div>
-                            <div className="text-[11px] text-slate-600 font-medium">
-                              {machine ? `${machine.brand} ${machine.model}` : t.machineType} •{' '}
-                              <span className="text-indigo-700 font-semibold">{t.line}</span>
-                            </div>
-                          </div>
-
-                          <p className="text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
-                            {t.faultDetails}
-                          </p>
-
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] text-slate-400">
-                              By: <span className="text-slate-600 font-medium">{t.reportedBy}</span>
-                            </span>
-
-                            {!isCompleted ? (
-                              <button
-                                onClick={() => handleOpenResolveModal(t)}
-                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm"
-                              >
-                                <Wrench className="w-3 h-3" />
-                                <span>Attend & Fix</span>
-                              </button>
-                            ) : (
-                              <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                                <CheckCheck className="w-3.5 h-3.5" />
-                                <span>Fixed in {t.downtimeMinutes}m</span>
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Direct 1-Click Move Buttons (Myself + Mechanics) */}
-                          <div className="pt-2 border-t border-slate-200/60 space-y-1.5">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                <ArrowRightLeft className="w-3 h-3 text-indigo-500" />
-                                <span>Move Task To:</span>
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                Assigned: <strong className="text-slate-800 font-bold">{t.attendedBy || 'Unassigned'}</strong>
-                                {t.assignedBy && (
-                                  <span className="text-violet-700 font-medium ml-1">({t.assignedBy})</span>
-                                )}
-                              </span>
-                            </div>
-
-                            {canSchedulePPM && !isCompleted && (
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {/* 1. Move to Myself Button */}
-                                {(() => {
-                                  const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
-                                  const isSelf = t.attendedBy?.toLowerCase().includes(selfName.toLowerCase());
-                                  return (
-                                    <button
-                                      onClick={() => handleDirectMoveTask(t.id, selfName)}
-                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                        isSelf
-                                          ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
-                                          : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                      }`}
-                                      title="Assign task directly to myself"
-                                    >
-                                      <UserCheck className="w-3 h-3" />
-                                      <span>{isSelf ? '✓ With Myself' : 'Assign to Myself'}</span>
-                                    </button>
-                                  );
-                                })()}
-
-                                {/* 2. Move to Someone Else Buttons */}
-                                {relevantTechnicians.filter(
-                                  (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
-                                ).map((mech) => {
-                                  const isCurrent = t.attendedBy?.toLowerCase().includes(mech.name.toLowerCase());
-                                  const firstName = mech.name.split(' ')[0];
-
-                                  return (
-                                    <button
-                                      key={mech.id}
-                                      onClick={() => handleDirectMoveTask(t.id, mech.name)}
-                                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                        isCurrent
-                                          ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-500 font-extrabold'
-                                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 hover:text-slate-900'
-                                      }`}
-                                      title={`Move task directly to ${mech.name} (${mech.role})`}
-                                    >
-                                      <span>{isCurrent ? `✓ ${firstName}` : `Move to ${firstName}`}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* 2. PPM Schedules for Selected Day */}
-                    {selectedDayData.ppms.map((ppm) => {
-                      const machine = machines.find((m) => m.id === ppm.machineId);
-
-                      return (
-                        <div
-                          key={ppm.id}
-                          className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/30 text-xs space-y-2"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                              PPM • {ppm.frequency}
-                            </span>
-                            <span className="text-[10px] text-blue-600 font-bold">
-                              Interval: {ppm.intervalDays} Days
-                            </span>
-                          </div>
-
-                          <div>
-                            <div className="font-extrabold text-sm text-slate-900 font-mono">
-                              {ppm.machineId}
-                            </div>
-                            <div className="text-[11px] text-slate-600">
-                              {machine ? `${machine.brand} ${machine.model} (${machine.currentLine})` : 'Line Machine'}
-                            </div>
-                          </div>
-
-                          <div className="bg-white p-2 rounded-lg border border-blue-100 text-[11px] text-slate-700 font-medium">
-                            {ppm.task}
-                          </div>
-
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] text-slate-400">
-                              Due: <span className="font-semibold text-slate-600">{ppm.nextDue}</span>
-                            </span>
-
-                            <button
-                              onClick={() => handleCompletePPM(ppm.id, ppm.task, ppm.machineId)}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-sm"
-                            >
-                              <CheckCheck className="w-3 h-3" />
-                              <span>Complete PPM</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
+          {/* Bottom Legend & Interactive Guide */}
+          <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-[11px] text-slate-600 gap-2">
+            <div className="flex items-center flex-wrap gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-rose-500" />
+                <span className="font-semibold text-slate-700">Critical Breakdown</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-amber-400" />
+                <span className="font-semibold text-slate-700">Routine Repair</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-violet-500" />
+                <span className="font-semibold text-slate-700">Assigned Work</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-blue-500" />
+                <span className="font-semibold text-slate-700">PPM Service</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-emerald-500" />
+                <span className="font-semibold text-slate-700">Completed</span>
+              </span>
+            </div>
+            <div className="text-indigo-600 font-bold flex items-center gap-1.5">
+              <span>👉 Click any date grid cell to open the day task details &amp; dispatch drawer</span>
             </div>
           </div>
         </div>
@@ -1400,16 +1077,32 @@ export default function CalendarPage() {
                   <div key={group.dateStr} className="space-y-3">
                     {/* Date Header Strip */}
                     <div className="flex items-center gap-3">
-                      <span
-                        className={`text-xs font-extrabold px-3 py-1 rounded-xl border ${
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(group.dateStr);
+                          setIsDayDrawerOpen(true);
+                        }}
+                        className={`text-xs font-extrabold px-3 py-1 rounded-xl border transition cursor-pointer hover:shadow-xs flex items-center gap-1.5 ${
                           isTodayGroup
                             ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                            : 'bg-slate-100 text-slate-800 border-slate-200'
+                            : 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200'
                         }`}
+                        title="Click to inspect this day in slide-over drawer"
                       >
-                        {formattedHeader}
-                        {isTodayGroup && ' • TODAY'}
-                      </span>
+                        <span>{formattedHeader}</span>
+                        {isTodayGroup && <span>• TODAY</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(group.dateStr);
+                          setIsDayDrawerOpen(true);
+                        }}
+                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Open Details Drawer →</span>
+                      </button>
                       <div className="flex-1 h-px bg-slate-200" />
                       <span className="text-[11px] font-semibold text-slate-400">
                         {group.repairs.length + group.ppms.length} items
@@ -1588,9 +1281,494 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* 6. Slide-over Day Details Pop-up Drawer ("Short Page as like Dashboard") */}
+      {isDayDrawerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200">
+          <div className="w-full max-w-xl md:max-w-2xl bg-white h-full shadow-2xl flex flex-col transform transition-transform duration-300 ease-out animate-in slide-in-from-right overflow-hidden">
+            {/* Drawer Top Header */}
+            <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-600/30">
+                  <CalendarDays className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-white">
+                      {selectedDayData.dateFormatted}
+                    </h3>
+                    {selectedDayData.isToday && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-300 border border-indigo-400/40">
+                        ⚡ TODAY LIVE
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Plant Floor CMMS Tasks • Critical Breakdowns &amp; Shift Dispatch
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDayDrawerOpen(false)}
+                className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                title="Close drawer (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Drawer Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+              {/* Day Summary Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Total Jobs</div>
+                  <div className="text-lg font-extrabold text-slate-900 mt-0.5">{selectedDayData.rawTotalCount}</div>
+                </div>
+                <div className="bg-rose-50/70 p-3 rounded-xl border border-rose-200">
+                  <div className="text-[10px] font-bold text-rose-700 uppercase flex items-center gap-1">
+                    {selectedDayData.rawCriticalCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping" />}
+                    <span>Critical</span>
+                  </div>
+                  <div className="text-lg font-extrabold text-rose-700 mt-0.5">{selectedDayData.rawCriticalCount}</div>
+                </div>
+                <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200">
+                  <div className="text-[10px] font-bold text-blue-700 uppercase">PPM Tasks</div>
+                  <div className="text-lg font-extrabold text-blue-700 mt-0.5">{selectedDayData.rawPpmCount}</div>
+                </div>
+                <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                  <div className="text-[10px] font-bold text-emerald-700 uppercase">Completed</div>
+                  <div className="text-lg font-extrabold text-emerald-700 mt-0.5">{selectedDayData.rawCompletedCount}</div>
+                </div>
+              </div>
+
+              {/* Action Toolbar */}
+              <div className="flex items-center flex-wrap gap-2">
+                {canSchedulePPM && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineDispatchOpen((prev) => !prev)}
+                      className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>{isInlineDispatchOpen ? 'Hide Quick Dispatch' : '+ Assign / Move Task'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsSchedulePPMOpen(true)}
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Schedule PPM</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsTeamModalOpen(true)}
+                      className="px-3 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>👥 Team Roster</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Inline Task Dispatch Box (if open) */}
+              {canSchedulePPM && isInlineDispatchOpen && (
+                <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
+                      <Wrench className="w-4 h-4 text-emerald-600" />
+                      <span>Quick Task Dispatch for {selectedDayData.dateFormatted}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineDispatchOpen(false)}
+                      className="text-emerald-700 hover:text-emerald-950 text-xs font-bold cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleInlineAssignTask} className="space-y-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
+                        Target Machine / Workstation:
+                      </label>
+                      <select
+                        value={inlineMachineId}
+                        onChange={(e) => setInlineMachineId(e.target.value)}
+                        className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
+                      >
+                        {displayMachines.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.id} — {m.brand} {m.model} ({m.currentLine})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
+                        Task Defect / Instructions:
+                      </label>
+                      <input
+                        type="text"
+                        value={inlineTaskTitle}
+                        onChange={(e) => setInlineTaskTitle(e.target.value)}
+                        placeholder="e.g. Skipping stitches, needle collision, re-time looper..."
+                        className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-semibold text-slate-800 outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
+                          Priority:
+                        </label>
+                        <select
+                          value={inlineUrgency}
+                          onChange={(e) => setInlineUrgency(e.target.value as RepairUrgency)}
+                          className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
+                        >
+                          <option value="WARNING">Routine / Normal</option>
+                          <option value="CRITICAL">🚨 Critical Stoppage</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-emerald-950 uppercase block mb-1">
+                          Assign To:
+                        </label>
+                        <select
+                          value={inlineAssignee}
+                          onChange={(e) => setInlineAssignee(e.target.value)}
+                          className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
+                        >
+                          <option value={user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')}>
+                            Myself ({user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')})
+                          </option>
+                          {relevantTechnicians.map((m) => (
+                            <option key={m.id} value={m.name}>
+                              {m.name} ({m.trade} - {m.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={isSubmittingInline}
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Dispatch Work Order</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Drawer Filter Pills & Search */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 text-xs">
+                  {[
+                    { id: 'ALL', label: `All (${selectedDayData.rawTotalCount})` },
+                    { id: 'CRITICAL', label: `🚨 Critical (${selectedDayData.rawCriticalCount})` },
+                    { id: 'REPAIRS', label: `🔧 Repairs (${selectedDayData.rawRepairsCount})` },
+                    { id: 'PPM', label: `📅 PPM (${selectedDayData.rawPpmCount})` },
+                    { id: 'COMPLETED', label: `✅ Done (${selectedDayData.rawCompletedCount})` },
+                  ].map((pill) => {
+                    const active = drawerFilter === pill.id;
+                    return (
+                      <button
+                        key={pill.id}
+                        type="button"
+                        onClick={() => setDrawerFilter(pill.id as typeof drawerFilter)}
+                        className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer whitespace-nowrap ${
+                          active
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {pill.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="relative min-w-[170px] w-full sm:w-auto">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={drawerSearch}
+                    onChange={(e) => setDrawerSearch(e.target.value)}
+                    placeholder="Search machines or defects..."
+                    className="w-full pl-7 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  {drawerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setDrawerSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Task Cards List */}
+              <div className="space-y-3">
+                {selectedDayData.totalCount === 0 ? (
+                  <div className="py-12 px-4 text-center border-2 border-dashed border-slate-200 rounded-2xl space-y-2.5">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+                    <div className="text-sm font-bold text-slate-800">No Matching Jobs on this Date</div>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      All machines on active production lines are operating smoothly without pending stoppages.
+                    </p>
+                    {canSchedulePPM && (
+                      <button
+                        type="button"
+                        onClick={() => setIsSchedulePPMOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition cursor-pointer border border-indigo-200"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Schedule PPM on this Day</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* 1. Critical Breakdown Work Orders */}
+                    {selectedDayData.repairs
+                      .filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED')
+                      .map((t) => {
+                        const machine = machines.find((m) => m.id === t.machineId);
+                        return (
+                          <div
+                            key={t.id}
+                            className="p-4 rounded-2xl border-2 border-rose-300 bg-rose-50/50 text-xs space-y-2.5 shadow-xs"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-600 text-white shadow-xs animate-pulse">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                                  <span>🚨 CRITICAL STOPPAGE</span>
+                                </span>
+                                <span className="text-[10px] font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-md">
+                                  {t.faultCategory}
+                                </span>
+                              </div>
+                              <span className="text-[11px] font-mono font-bold text-slate-500">#{t.id}</span>
+                            </div>
+
+                            <div>
+                              <div className="text-base font-extrabold text-slate-900 font-mono flex items-center gap-2">
+                                <span>{t.machineId}</span>
+                                <span className="text-xs font-bold px-2 py-0.5 bg-slate-900 text-white rounded-md">
+                                  {t.line}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-600 mt-0.5">
+                                {machine ? `${machine.brand} ${machine.model} (${machine.name || machine.typeName})` : t.machineType}
+                              </div>
+                            </div>
+
+                            <div className="p-2.5 bg-white rounded-xl border border-rose-200 text-xs text-slate-800 font-medium">
+                              <strong>Fault Details:</strong> {t.faultDetails}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                              <span>Reported by: <strong className="text-slate-700">{t.reportedBy}</strong></span>
+                              {t.reportedAt && (
+                                <span>{new Date(t.reportedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                              )}
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="pt-2 border-t border-rose-200/80 flex flex-wrap items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenResolveModal(t)}
+                                className="px-3.5 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-rose-600/30 cursor-pointer"
+                              >
+                                <Wrench className="w-3.5 h-3.5" />
+                                <span>⚡ Attend &amp; Fix Breakdown</span>
+                              </button>
+
+                              {/* 1-Click Move Selector */}
+                              {canSchedulePPM && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase">Move:</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDirectMoveTask(t.id, user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))}
+                                    className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-800 rounded-lg text-[10px] font-bold border border-slate-200 cursor-pointer"
+                                  >
+                                    To Myself
+                                  </button>
+                                  {relevantTechnicians.slice(0, 3).map((mech) => (
+                                    <button
+                                      key={mech.id}
+                                      type="button"
+                                      onClick={() => handleDirectMoveTask(t.id, mech.name)}
+                                      className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-800 rounded-lg text-[10px] font-bold border border-slate-200 cursor-pointer"
+                                    >
+                                      {mech.name.split(' ')[0]}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {/* 2. Routine Active Repairs */}
+                    {selectedDayData.repairs
+                      .filter((r) => r.urgency !== 'CRITICAL' && r.status !== 'COMPLETED')
+                      .map((t) => {
+                        const machine = machines.find((m) => m.id === t.machineId);
+                        const isAssigned = t.status === 'ASSIGNED';
+                        return (
+                          <div
+                            key={t.id}
+                            className={`p-3.5 rounded-xl border text-xs space-y-2 transition ${
+                              isAssigned ? 'bg-violet-50/40 border-violet-200' : 'bg-amber-50/40 border-amber-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                                  isAssigned ? 'bg-violet-100 text-violet-800 border border-violet-200' : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {isAssigned ? 'ASSIGNED' : 'ROUTINE'} • {t.faultCategory}
+                                </span>
+                                {isAssigned && (
+                                  <span className="text-[10px] font-semibold text-violet-700">
+                                    → {t.attendedBy}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] font-mono text-slate-400">#{t.id}</span>
+                            </div>
+
+                            <div>
+                              <div className="font-extrabold text-sm text-slate-900 font-mono">{t.machineId}</div>
+                              <div className="text-[11px] text-slate-600">
+                                {machine ? `${machine.brand} ${machine.model}` : t.machineType} • <span className="font-semibold text-indigo-700">{t.line}</span>
+                              </div>
+                            </div>
+
+                            <p className="text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
+                              {t.faultDetails}
+                            </p>
+
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[10px] text-slate-400">By: {t.reportedBy}</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenResolveModal(t)}
+                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Wrench className="w-3 h-3" />
+                                  <span>Attend &amp; Fix</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {/* 3. PPM Schedules */}
+                    {selectedDayData.ppms
+                      .filter((p) => p.status !== 'COMPLETED')
+                      .map((ppm) => {
+                        const machine = machines.find((m) => m.id === ppm.machineId);
+                        return (
+                          <div key={ppm.id} className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/30 text-xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                                PPM • {ppm.frequency}
+                              </span>
+                              <span className="text-[10px] text-blue-600 font-bold">Every {ppm.intervalDays} Days</span>
+                            </div>
+                            <div>
+                              <div className="font-extrabold text-sm text-slate-900 font-mono">{ppm.machineId}</div>
+                              <div className="text-[11px] text-slate-600">
+                                {machine ? `${machine.brand} ${machine.model} (${machine.currentLine})` : 'Line Machine'}
+                              </div>
+                            </div>
+                            <div className="bg-white p-2 rounded-lg border border-blue-100 text-[11px] text-slate-700 font-medium">
+                              {ppm.task}
+                            </div>
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[10px] text-slate-400">Due: <strong className="text-slate-600">{ppm.nextDue}</strong></span>
+                              <button
+                                type="button"
+                                onClick={() => handleCompletePPM(ppm.id, ppm.task, ppm.machineId)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                              >
+                                <CheckCheck className="w-3 h-3" />
+                                <span>Complete PPM</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {/* 4. Completed Work Orders */}
+                    {selectedDayData.repairs
+                      .filter((r) => r.status === 'COMPLETED')
+                      .map((t) => (
+                        <div key={t.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50/80 text-xs space-y-1.5 opacity-90">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                              RESOLVED • {t.faultCategory}
+                            </span>
+                            <span className="text-[10px] text-emerald-700 font-bold">Fixed in {t.downtimeMinutes}m</span>
+                          </div>
+                          <div className="font-extrabold text-slate-800 font-mono">{t.machineId} ({t.line})</div>
+                          <p className="text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
+                            {t.actionTaken || t.faultDetails}
+                          </p>
+                          <div className="text-[10px] text-slate-400">
+                            Attended by: <strong className="text-slate-600">{t.attendedBy || 'Mechanic'}</strong>
+                          </div>
+                        </div>
+                      ))}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Drawer Sticky Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <span className="text-xs text-slate-500">
+                {selectedDayData.totalCount} active items on {selectedDayData.dateString}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsDayDrawerOpen(false)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Close Inspector
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 6. Attend & Resolve Repair Modal (With Downtime and Spare Parts Inventory Deduction) */}
       {isResolveOpen && selectedTicket && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-900 px-5 py-4 text-white flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
@@ -1739,7 +1917,7 @@ export default function CalendarPage() {
 
       {/* 7. Schedule Preventive Maintenance (PPM) Modal */}
       {isSchedulePPMOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-900 px-5 py-4 text-white flex items-center justify-between">
               <div className="flex items-center space-x-2.5">

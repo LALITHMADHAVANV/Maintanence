@@ -109,11 +109,14 @@ export function TeamScheduleModal({
     onDateChange(`${y}-${m}-${day}`);
   };
 
-  // Filter tasks for this selected date
+  // Filter tasks for this selected date (also include active critical tickets for today)
+  const isTodayDate = selectedDate === new Date().toISOString().slice(0, 10);
   const dayRepairs = repairs.filter((r) => {
     const repDate = r.reportedAt?.slice(0, 10);
     const resDate = r.resolvedAt?.slice(0, 10);
-    return repDate === selectedDate || resDate === selectedDate;
+    if (repDate === selectedDate || resDate === selectedDate) return true;
+    if (isTodayDate && r.urgency === 'CRITICAL' && r.status !== 'COMPLETED') return true;
+    return false;
   });
 
   const dayPpms = ppmSchedules.filter((p) => p.nextDue?.slice(0, 10) === selectedDate);
@@ -187,7 +190,7 @@ export function TeamScheduleModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto print:static print:p-0 print:bg-white print-modal-overlay">
+    <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto print:static print:p-0 print:bg-white print-modal-overlay">
       <div className="bg-slate-50 rounded-3xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:max-w-none print:w-full print:border-none print:shadow-none print:bg-white print:rounded-none print:overflow-visible print-modal-container">
         
         {/* Printed Document Header */}
