@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useToast } from '@/context/ToastContext';
 import {
   Search,
   Columns,
@@ -1279,11 +1280,17 @@ const CATEGORIES_META: {
 ];
 
 export default function HistoryPage() {
+  const { showToast } = useToast();
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
   const [statusFilter] = useState<'active' | 'completed' | 'all'>('all');
   const [q, setQ] = useState('');
   const [showPoc, setShowPoc] = useState<boolean>(true);
   const [collapsedCategories, setCollapsedCategories] = useState<string[]>([]);
+
+  // Category & Date Range Filter for Export & Matrix
+  const [exportCategory, setExportCategory] = useState<'ALL' | AssetCategory>('ALL');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
 
   // The active asset whose dedicated FULL HISTORY PAGE is currently open
   const [selectedAssetForHistory, setSelectedAssetForHistory] = useState<AssetHistoryRecord | null>(null);
@@ -1302,9 +1309,14 @@ export default function HistoryPage() {
     }
   };
 
-  // Filtered items based on active/completed status and search query
+  // Filtered items based on active/completed status, category, and search query
   const filtered = useMemo(() => {
     return items.filter((item) => {
+      // Category filter
+      if (exportCategory !== 'ALL' && item.category !== exportCategory) {
+        return false;
+      }
+
       // Status filter
       if (statusFilter !== 'all' && item.status !== statusFilter) {
         return false;
@@ -1326,10 +1338,13 @@ export default function HistoryPage() {
 
       return true;
     });
-  }, [items, statusFilter, q]);
+  }, [items, exportCategory, statusFilter, q]);
 
-  // Display all categories
-  const activeCategoriesMeta = CATEGORIES_META;
+  // Display categories (filtered by category selector if specific category chosen)
+  const activeCategoriesMeta = useMemo(() => {
+    if (exportCategory === 'ALL') return CATEGORIES_META;
+    return CATEGORIES_META.filter((c) => c.id === exportCategory);
+  }, [exportCategory]);
 
   // Date formatting helper
   const shortDate = (dateStr?: string) => {
@@ -1359,28 +1374,133 @@ export default function HistoryPage() {
     return 'bg-white text-slate-600';
   };
 
-  // CSV export function
-  const handleExport = () => {
-    const headers = ['Asset ID', 'Serial No', 'Name', 'Model', 'Brand', 'Category', 'Unit', 'Risk', 'Status'];
-    const rows = filtered.map((r) => [
-      r.assetId,
-      r.serialNo,
-      `"${r.name}"`,
-      r.model,
-      r.brand,
-      r.categoryLabel,
-      `"${r.unit}"`,
-      r.riskLevel,
-      r.status,
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+  // CSV export function filtered by Category and From-To Date Range
+  const handleExportFilteredData = () => {
+    // 1. Target assets based on category
+    const targetAssets = exportCategory === 'ALL'
+      ? items
+      : items.filter((i) => i.category === exportCategory);
+
+    const headers = [
+      'Asset ID',
+      'Asset Name',
+      'Category',
+      'Brand',
+      'Model',
+      'Unit / Station',
+      'Record Type',
+      'Event Date',
+      'Ticket / Reference',
+      'Fault / Milestone Details',
+      'Action Taken',
+      'Technician In-Charge',
+      'Parts Replaced',
+      'Downtime Minutes',
+      'Cost (INR)',
+      'Status',
+    ];
+
+    const rows: (string | number)[][] = [];
+
+    targetAssets.forEach((asset) => {
+      // Check service logs for date range match
+      const matchingLogs = asset.serviceLogs.filter((log) => {
+        if (fromDate && log.date < fromDate) return false;
+        if (toDate && log.date > toDate) return false;
+        return true;
+      });
+
+      matchingLogs.forEach((log) => {
+        rows.push([
+          asset.assetId,
+          `"${asset.name.replace(/"/g, '""')}"`,
+          asset.categoryLabel,
+          asset.brand,
+          asset.model,
+          `"${asset.unit.replace(/"/g, '""')}"`,
+          'Service Log',
+          log.date,
+          log.ticketId,
+          `"${log.faultCategory}: ${log.faultDetails.replace(/"/g, '""')}"`,
+          `"${log.actionTaken.replace(/"/g, '""')}"`,
+          log.technician,
+          `"${(log.partsReplaced || 'None').replace(/"/g, '""')}"`,
+          log.downtimeMinutes,
+          log.costIncurred,
+          log.status,
+        ]);
+      });
+
+      // Also check stage actions if dates are set
+      if (fromDate || toDate) {
+        Object.entries(asset.stages).forEach(([stageName, stage]) => {
+          const sDate = stage.actualDate || stage.plannedDate;
+          if (sDate) {
+            if (fromDate && sDate < fromDate) return;
+            if (toDate && sDate > toDate) return;
+            rows.push([
+              asset.assetId,
+              `"${asset.name.replace(/"/g, '""')}"`,
+              asset.categoryLabel,
+              asset.brand,
+              asset.model,
+              `"${asset.unit.replace(/"/g, '""')}"`,
+              'Stage Action',
+              sDate,
+              stageName,
+              `"Status: ${stage.status}${stage.lateDays ? ` (${stage.lateDays}d delay)` : ''}"`,
+              `"${stage.notes || 'Stage execution milestone'}"`,
+              stage.assignee || 'Unassigned',
+              'None',
+              0,
+              0,
+              stage.status,
+            ]);
+          }
+        });
+      }
+
+      // If no date filters are active, also include asset master summary row if no service logs exist
+      if (!fromDate && !toDate && matchingLogs.length === 0) {
+        rows.push([
+          asset.assetId,
+          `"${asset.name.replace(/"/g, '""')}"`,
+          asset.categoryLabel,
+          asset.brand,
+          asset.model,
+          `"${asset.unit.replace(/"/g, '""')}"`,
+          'Asset Master',
+          asset.purchaseDate,
+          'PURCHASE',
+          'Standard Equipment Registry',
+          'Preventive Maintenance Protocol',
+          'Plant Engineering',
+          'None',
+          asset.downtimeMins,
+          asset.totalMaintenanceCost,
+          asset.status.toUpperCase(),
+        ]);
+      }
+    });
+
+    if (rows.length === 0) {
+      showToast('No history records found for the selected date range and category.', 'warning');
+      return;
+    }
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\r\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `asset_tna_history_${statusFilter}.csv`);
+    const dateLabel = fromDate && toDate ? `${fromDate}_to_${toDate}` : fromDate ? `from_${fromDate}` : toDate ? `to_${toDate}` : 'all_dates';
+    link.setAttribute('download', `history_export_${exportCategory.toLowerCase()}_${dateLabel}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    showToast(`Exported ${rows.length} history records successfully!`, 'success');
   };
 
   // =========================================================================
@@ -2035,30 +2155,73 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/80">
-          <span className="inline-flex items-center gap-1.5 font-medium text-[11px]">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-2xs"></span>
-            <span>Completed</span>
-          </span>
-          <span className="inline-flex items-center gap-1.5 font-medium text-[11px]">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
-            <span>Not assigned</span>
-          </span>
-          <span className="inline-flex items-center gap-1.5 font-medium text-[11px]">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
-            <span>Current stage</span>
-          </span>
-          <span className="inline-flex items-center gap-1.5 font-medium text-[11px]">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-            <span>Stage delayed</span>
-          </span>
-          <span className="inline-flex items-center gap-1 font-medium text-[11px]">
-            <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[9px] uppercase">
-              Partial
-            </span>
-            <span>Stage partially done</span>
-          </span>
+        {/* Export & Filter Controls (Category-wise and From-To Date Range) */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-50/90 p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 shadow-2xs">
+          {/* Category Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Category:</span>
+            <select
+              value={exportCategory}
+              onChange={(e) => setExportCategory(e.target.value as any)}
+              className="h-8 px-2.5 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+            >
+              <option value="ALL">All Categories</option>
+              <option value="MACHINE">Machine</option>
+              <option value="FURNITURE">Furniture</option>
+              <option value="UTILITY">Utility</option>
+              <option value="VEHICLE">Vehicle</option>
+            </select>
+          </div>
+
+          <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
+
+          {/* From Date */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">From:</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="h-8 px-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+            />
+          </div>
+
+          {/* To Date */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">To:</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="h-8 px-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+            />
+          </div>
+
+          {/* Reset Filters */}
+          {(fromDate || toDate || exportCategory !== 'ALL') && (
+            <button
+              type="button"
+              onClick={() => {
+                setFromDate('');
+                setToDate('');
+                setExportCategory('ALL');
+              }}
+              title="Reset Filters"
+              className="h-8 px-2 text-[11px] font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition cursor-pointer"
+            >
+              Reset
+            </button>
+          )}
+
+          {/* Download Export Button */}
+          <button
+            type="button"
+            onClick={handleExportFilteredData}
+            className="h-8 px-3 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-xs shadow-indigo-600/30 ml-auto sm:ml-0"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Download Data</span>
+          </button>
         </div>
       </div>
 
@@ -2108,11 +2271,12 @@ export default function HistoryPage() {
           {/* Export button */}
           <button
             type="button"
-            onClick={handleExport}
+            onClick={handleExportFilteredData}
             className="h-8 px-2.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            title="Download export according to category and date filters"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Export</span>
+            <span>Download CSV</span>
           </button>
         </div>
       </div>
