@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Crown,
@@ -17,13 +17,16 @@ import {
   X,
   FileText,
 } from 'lucide-react';
-import { Machine, RepairTicket, PartRequisition } from '@/types/cmms';
+import { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
 import { updateRequisitionStatus } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
+import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 
 interface ExecutiveDashboardProps {
   machines: Machine[];
   repairs: RepairTicket[];
+  ppmSchedules?: PPMSchedule[];
+  parts?: SparePart[];
   requisitions: PartRequisition[];
   lastRefresh: Date;
   onRefresh: () => void;
@@ -33,6 +36,8 @@ interface ExecutiveDashboardProps {
 export function ExecutiveDashboard({
   machines,
   repairs,
+  ppmSchedules = [],
+  parts = [],
   requisitions,
   lastRefresh,
   onRefresh,
@@ -40,6 +45,30 @@ export function ExecutiveDashboard({
 }: ExecutiveDashboardProps) {
   const router = useRouter();
   const { showToast } = useToast();
+
+  // Widget Drilldown Drawer State
+  const [drillDownState, setDrillDownState] = useState<{
+    isOpen: boolean;
+    type: DrillDownType | null;
+    title?: string;
+    meta?: DrillDownMeta;
+  }>({
+    isOpen: false,
+    type: null,
+  });
+
+  const openDrillDown = (type: DrillDownType, title?: string, meta?: DrillDownMeta) => {
+    setDrillDownState({
+      isOpen: true,
+      type,
+      title,
+      meta,
+    });
+  };
+
+  const closeDrillDown = () => {
+    setDrillDownState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   const totalAssets = machines.length;
   const activeAssets = machines.filter((m) => m.status === 'ACTIVE').length;
@@ -129,47 +158,71 @@ export function ExecutiveDashboard({
 
       {/* ─── 2. EXECUTIVE METRIC CARDS ─────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('operational_assets', 'Plant Availability & Operational Machinery Fleet')
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-emerald-400 transition cursor-pointer group"
+          title="Click to view Operational Assets in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Plant Availability</span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-emerald-600 transition">Plant Availability</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:scale-110 transition">
               <Activity className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{plantAvailabilityPct}%</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-emerald-600 transition">{plantAvailabilityPct}%</div>
           <div className="text-[11px] text-emerald-600 font-semibold mt-1">Target &gt; 95%</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('total_assets', `Plant Production Machinery Fleet Registry (${totalAssets} assets)`)
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-400 transition cursor-pointer group"
+          title="Click to view Equipment Registry in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Active Machinery</span>
-            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">Active Machinery</span>
+            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 group-hover:scale-110 transition">
               <Layers className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{activeAssets} / {totalAssets}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-indigo-600 transition">{activeAssets} / {totalAssets}</div>
           <div className="text-[11px] text-slate-500 mt-1">Operational across lines</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('breakdown_assets', `Active Floor Breakdowns & Stoppages (${breakdownAssets})`)
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-rose-400 transition cursor-pointer group"
+          title="Click to view Breakdown Stoppages in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Active Stoppages</span>
-            <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-rose-600 transition">Active Stoppages</span>
+            <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600 group-hover:scale-110 transition">
               <AlertTriangle className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{breakdownAssets}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-rose-600 transition">{breakdownAssets}</div>
           <div className="text-[11px] text-slate-500 mt-1">Machines halted</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('pending_requisitions', `CEO High-Value Spare Requisitions Pending Sign-off (${ceoPendingReqs.length})`)
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-purple-400 transition cursor-pointer group"
+          title="Click to view Pending Approvals in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Pending Approvals</span>
-            <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-purple-600 transition">Pending Approvals</span>
+            <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 group-hover:scale-110 transition">
               <Crown className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{ceoPendingReqs.length}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-purple-600 transition">{ceoPendingReqs.length}</div>
           <div className="text-[11px] text-purple-600 font-semibold mt-1">
             ₹{totalPendingCost.toLocaleString()} awaiting sign-off
           </div>
@@ -237,6 +290,20 @@ export function ExecutiveDashboard({
           )}
         </div>
       </div>
+
+      {/* ─── 4. WIDGET DRILL-DOWN SIDEBAR (RIGHT TO LEFT) ─────────────── */}
+      <WidgetDrilldownDrawer
+        isOpen={drillDownState.isOpen}
+        onClose={closeDrillDown}
+        type={drillDownState.type}
+        title={drillDownState.title}
+        meta={drillDownState.meta}
+        machines={machines}
+        repairs={repairs}
+        ppmSchedules={ppmSchedules}
+        parts={parts}
+        requisitions={requisitions}
+      />
     </div>
   );
 }

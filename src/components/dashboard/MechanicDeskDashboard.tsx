@@ -36,6 +36,7 @@ import {
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 
 interface MechanicDeskDashboardProps {
   machines: Machine[];
@@ -99,6 +100,30 @@ export function MechanicDeskDashboard({
   const activeJob = useMemo(() => {
     return myOpenTickets.find((r) => r.status === 'IN_PROGRESS') || myOpenTickets[0] || null;
   }, [myOpenTickets]);
+
+  // Widget Drilldown Drawer State
+  const [drillDownState, setDrillDownState] = useState<{
+    isOpen: boolean;
+    type: DrillDownType | null;
+    title?: string;
+    meta?: DrillDownMeta;
+  }>({
+    isOpen: false,
+    type: null,
+  });
+
+  const openDrillDown = (type: DrillDownType, title?: string, meta?: DrillDownMeta) => {
+    setDrillDownState({
+      isOpen: true,
+      type,
+      title,
+      meta,
+    });
+  };
+
+  const closeDrillDown = () => {
+    setDrillDownState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   // Resolve Ticket Modal
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
@@ -217,49 +242,84 @@ export function MechanicDeskDashboard({
 
       {/* ─── 2. METRIC CARDS ───────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('open_tickets', `My Active Tickets & Work Orders (${myOpenTickets.length})`, {
+              assignedTo: userName,
+              filterDefault: 'my_tickets',
+            })
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-400 transition cursor-pointer group"
+          title="Click to view Active Tickets in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">My Active Tickets</span>
-            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">My Active Tickets</span>
+            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 group-hover:scale-110 transition">
               <Wrench className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{myOpenTickets.length}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-indigo-600 transition">{myOpenTickets.length}</div>
           <div className="text-[11px] text-slate-500 mt-1">
             {myOpenTickets.filter((r) => r.urgency === 'CRITICAL').length} Critical urgency
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('resolved', `My Resolved Work Orders Today (${myCompletedToday.length})`, {
+              assignedTo: userName,
+              filterDefault: 'my_resolved',
+            })
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-emerald-400 transition cursor-pointer group"
+          title="Click to view Resolved Work Orders in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Resolved Today</span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-emerald-600 transition">Resolved Today</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:scale-110 transition">
               <CheckCircle2 className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{myCompletedToday.length}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-emerald-600 transition">{myCompletedToday.length}</div>
           <div className="text-[11px] text-emerald-600 font-semibold mt-1">On-track performance</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('on_schedule', `My Scheduled PPM Tasks (${myPPMTasks.length})`, {
+              assignedTo: userName,
+            })
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-amber-400 transition cursor-pointer group"
+          title="Click to view Scheduled PPM tasks in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">My PPM Tasks</span>
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-amber-600 transition">My PPM Tasks</span>
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600 group-hover:scale-110 transition">
               <CalendarCheck className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{myPPMTasks.length}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-amber-600 transition">{myPPMTasks.length}</div>
           <div className="text-[11px] text-slate-500 mt-1">Scheduled inspections</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('toolbox_kit', `Assigned Toolkit & Calibrated Tools — ${mechanicProfile.toolbox.kitCode}`, {
+              kitCode: mechanicProfile.toolbox.kitCode,
+              assignedTo: userName,
+            })
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-cyan-400 transition cursor-pointer group"
+          title="Click to view Toolkit & calibrated tools in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Toolbox Kit</span>
-            <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-cyan-600 transition">Toolbox Kit</span>
+            <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600 group-hover:scale-110 transition">
               <ShieldCheck className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-lg font-black text-slate-900 font-mono">
+          <div className="text-lg font-black text-slate-900 font-mono group-hover:text-cyan-600 transition">
             {mechanicProfile.toolbox.kitCode}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -334,9 +394,19 @@ export function MechanicDeskDashboard({
               </h3>
               <p className="text-xs text-slate-500">Tickets awaiting your repair intervention</p>
             </div>
-            <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold">
-              {myOpenTickets.length} Pending
-            </span>
+            <button
+              onClick={() =>
+                openDrillDown('open_tickets', `My Assigned Work Orders (${myOpenTickets.length})`, {
+                  assignedTo: userName,
+                  filterDefault: 'my_tickets',
+                })
+              }
+              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold cursor-pointer transition flex items-center gap-1.5"
+              title="Click to view all assigned work orders in slide-over drawer"
+            >
+              <span>{myOpenTickets.length} Pending</span>
+              <ExternalLink className="w-3 h-3" />
+            </button>
           </div>
 
           <div className="space-y-3">
@@ -385,13 +455,27 @@ export function MechanicDeskDashboard({
               </h3>
               <p className="text-xs text-slate-500">Scheduled checks on your assigned lines</p>
             </div>
-            <button
-              onClick={() => router.push('/dashboard/calendar')}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-            >
-              <span>Calendar</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  openDrillDown('on_schedule', `My Assigned PPM Tasks (${myPPMTasks.length})`, {
+                    assignedTo: userName,
+                  })
+                }
+                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-full text-xs font-bold cursor-pointer transition flex items-center gap-1.5"
+                title="Click to view PPM tasks in slide-over drawer"
+              >
+                <span>{myPPMTasks.length} Due</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/calendar')}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+              >
+                <span>Calendar</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -501,6 +585,20 @@ export function MechanicDeskDashboard({
           </div>
         </div>
       )}
+
+      {/* ─── 5. WIDGET DRILL-DOWN SIDEBAR (RIGHT TO LEFT) ─────────────── */}
+      <WidgetDrilldownDrawer
+        isOpen={drillDownState.isOpen}
+        onClose={closeDrillDown}
+        type={drillDownState.type}
+        title={drillDownState.title}
+        meta={drillDownState.meta}
+        machines={machines}
+        repairs={repairs}
+        ppmSchedules={ppmSchedules}
+        parts={parts}
+        requisitions={requisitions}
+      />
     </div>
   );
 }

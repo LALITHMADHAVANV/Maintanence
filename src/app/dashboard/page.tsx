@@ -85,6 +85,9 @@ export default function DashboardPage() {
         />
       ) : activeRole === 'STORE_PERSON' ? (
         <StoreDashboard
+          machines={machines}
+          repairs={repairs}
+          ppmSchedules={ppmSchedules}
           parts={parts}
           requisitions={requisitions}
           lastRefresh={lastRefresh}
@@ -95,6 +98,8 @@ export default function DashboardPage() {
         <ExecutiveDashboard
           machines={machines}
           repairs={repairs}
+          ppmSchedules={ppmSchedules}
+          parts={parts}
           requisitions={requisitions}
           lastRefresh={lastRefresh}
           onRefresh={fetchAllData}

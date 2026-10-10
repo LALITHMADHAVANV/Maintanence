@@ -53,6 +53,7 @@ import {
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 
 interface SeniorMechanicDashboardProps {
   machines: Machine[];
@@ -106,6 +107,30 @@ export function SeniorMechanicDashboard({
   // Form state for Quick Assign
   const [assigneeName, setAssigneeName] = useState('');
   const [isSubmittingAssign, setIsSubmittingAssign] = useState(false);
+
+  // Widget Drilldown Drawer State
+  const [drillDownState, setDrillDownState] = useState<{
+    isOpen: boolean;
+    type: DrillDownType | null;
+    title?: string;
+    meta?: DrillDownMeta;
+  }>({
+    isOpen: false,
+    type: null,
+  });
+
+  const openDrillDown = (type: DrillDownType, title?: string, meta?: DrillDownMeta) => {
+    setDrillDownState({
+      isOpen: true,
+      type,
+      title,
+      meta,
+    });
+  };
+
+  const closeDrillDown = () => {
+    setDrillDownState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   // ─── Filtered Roster ────────────────────────────────────────────────────
   const roster = useMemo(() => {
@@ -355,16 +380,17 @@ export function SeniorMechanicDashboard({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {/* Open Work Orders */}
         <div
-          onClick={() => setTicketFilter('ALL')}
-          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition cursor-pointer group"
+          onClick={() => openDrillDown('open_tickets', `Floor Active Tickets Queue (${metrics.openTicketsCount})`)}
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-400 transition cursor-pointer group"
+          title="Click to view Active Tickets in slide-over drawer"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Active Tickets</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">Active Tickets</span>
             <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 group-hover:scale-110 transition">
               <Wrench className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{metrics.openTicketsCount}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-indigo-600 transition">{metrics.openTicketsCount}</div>
           <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-rose-500"></span>
             <span>{metrics.criticalCount} Critical</span>
@@ -375,15 +401,16 @@ export function SeniorMechanicDashboard({
 
         {/* Floor Breakdowns */}
         <div
-          onClick={() => setTicketFilter('CRITICAL')}
-          className={`rounded-2xl p-4 border shadow-sm transition cursor-pointer ${
+          onClick={() => openDrillDown('breakdown_assets', `Live Floor Breakdown Halts (${metrics.breakdownsCount})`)}
+          className={`rounded-2xl p-4 border shadow-sm hover:shadow-md hover:border-rose-400 transition cursor-pointer group ${
             metrics.breakdownsCount > 0
               ? 'bg-rose-50/70 border-rose-200 text-rose-950'
               : 'bg-white border-slate-200/80 text-slate-900'
           }`}
+          title="Click to view Breakdown Assets in slide-over drawer"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Floor Breakdowns</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-rose-600 transition">Floor Breakdowns</span>
             <span
               className={`p-1.5 rounded-lg ${
                 metrics.breakdownsCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600'
@@ -392,21 +419,25 @@ export function SeniorMechanicDashboard({
               <Flame className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black">{metrics.breakdownsCount}</div>
+          <div className="text-2xl font-black group-hover:text-rose-600 transition">{metrics.breakdownsCount}</div>
           <div className="text-[11px] text-slate-500 mt-1">
             {metrics.breakdownsCount > 0 ? 'Machines halted right now' : 'All lines active'}
           </div>
         </div>
 
         {/* Avg Resolution MTTR */}
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() => openDrillDown('at_risk', `Floor Resolution MTTR & At-Risk Tickets (${metrics.avgMTTR}m avg)`)}
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-blue-400 transition cursor-pointer group"
+          title="Click to view MTTR & At-Risk tickets in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Avg Floor MTTR</span>
-            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-blue-600 transition">Avg Floor MTTR</span>
+            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 group-hover:scale-110 transition">
               <Timer className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">
+          <div className="text-2xl font-black text-slate-900 group-hover:text-blue-600 transition">
             {metrics.avgMTTR} <span className="text-xs font-semibold text-slate-500">mins</span>
           </div>
           <div className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
@@ -416,29 +447,34 @@ export function SeniorMechanicDashboard({
         </div>
 
         {/* Floor SLA Compliance */}
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() => openDrillDown('resolved', `Floor SLA Resolution Performance (${metrics.slaRate}%)`)}
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-emerald-400 transition cursor-pointer group"
+          title="Click to view Resolved Tickets & SLA compliance in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">SLA On-Track</span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-emerald-600 transition">SLA On-Track</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:scale-110 transition">
               <CheckCircle2 className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{metrics.slaRate}%</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-emerald-600 transition">{metrics.slaRate}%</div>
           <div className="text-[11px] text-slate-500 mt-1">Fixed within target SLA</div>
         </div>
 
         {/* PPM Due This Week */}
         <div
-          onClick={() => router.push('/dashboard/calendar')}
-          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition cursor-pointer"
+          onClick={() => openDrillDown('on_schedule', `Floor Preventive Maintenance Schedules (${metrics.ppmDueCount} Due)`)}
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-amber-400 transition cursor-pointer group"
+          title="Click to view PPM schedules in slide-over drawer"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">PPM Due</span>
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-amber-600 transition">PPM Due</span>
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600 group-hover:scale-110 transition">
               <CalendarCheck className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{metrics.ppmDueCount}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-amber-600 transition">{metrics.ppmDueCount}</div>
           <div className="text-[11px] text-slate-500 mt-1">
             {metrics.ppmOverdueCount > 0 ? (
               <span className="text-rose-600 font-semibold">{metrics.ppmOverdueCount} Overdue</span>
@@ -450,16 +486,17 @@ export function SeniorMechanicDashboard({
 
         {/* Active Duty Technicians */}
         <div
-          onClick={() => router.push('/dashboard/mechanic-roster')}
-          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition cursor-pointer"
+          onClick={() => openDrillDown('duty_roster', `Shift Floor Technicians & Mechanic Duty Roster (${metrics.onDutyMechanics} on duty)`)}
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-cyan-400 transition cursor-pointer group"
+          title="Click to view Technician Duty Roster in slide-over drawer"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">On-Duty Roster</span>
-            <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-cyan-600 transition">On-Duty Roster</span>
+            <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600 group-hover:scale-110 transition">
               <Users className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{metrics.onDutyMechanics}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-cyan-600 transition">{metrics.onDutyMechanics}</div>
           <div className="text-[11px] text-slate-500 mt-1">
             <span className="text-indigo-600 font-semibold">{metrics.activeTasksCount} assigned</span>
             <span className="text-slate-400"> on active jobs</span>
@@ -1258,6 +1295,20 @@ export function SeniorMechanicDashboard({
           </div>
         </div>
       )}
+
+      {/* ─── WIDGET DRILL-DOWN SIDEBAR (RIGHT TO LEFT) ─────────────── */}
+      <WidgetDrilldownDrawer
+        isOpen={drillDownState.isOpen}
+        onClose={closeDrillDown}
+        type={drillDownState.type}
+        title={drillDownState.title}
+        meta={drillDownState.meta}
+        machines={machines}
+        repairs={repairs}
+        ppmSchedules={ppmSchedules}
+        parts={parts}
+        requisitions={requisitions}
+      />
     </div>
   );
 }

@@ -16,11 +16,15 @@ import {
   IndianRupee,
   Layers,
 } from 'lucide-react';
-import { SparePart, PartRequisition } from '@/types/cmms';
+import { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
 import { adjustPartStock, restockPart } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
+import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 
 interface StoreDashboardProps {
+  machines?: Machine[];
+  repairs?: RepairTicket[];
+  ppmSchedules?: PPMSchedule[];
   parts: SparePart[];
   requisitions: PartRequisition[];
   lastRefresh: Date;
@@ -29,6 +33,9 @@ interface StoreDashboardProps {
 }
 
 export function StoreDashboard({
+  machines = [],
+  repairs = [],
+  ppmSchedules = [],
   parts,
   requisitions,
   lastRefresh,
@@ -37,6 +44,30 @@ export function StoreDashboard({
 }: StoreDashboardProps) {
   const router = useRouter();
   const { showToast } = useToast();
+
+  // Widget Drilldown Drawer State
+  const [drillDownState, setDrillDownState] = useState<{
+    isOpen: boolean;
+    type: DrillDownType | null;
+    title?: string;
+    meta?: DrillDownMeta;
+  }>({
+    isOpen: false,
+    type: null,
+  });
+
+  const openDrillDown = (type: DrillDownType, title?: string, meta?: DrillDownMeta) => {
+    setDrillDownState({
+      isOpen: true,
+      type,
+      title,
+      meta,
+    });
+  };
+
+  const closeDrillDown = () => {
+    setDrillDownState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   const lowStockParts = useMemo(() => {
     return parts.filter((p) => p.stock <= p.minStock);
@@ -119,47 +150,71 @@ export function StoreDashboard({
 
       {/* ─── 2. KPI METRICS ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('low_stock_parts', `Critical Low Stock Spare Parts (${lowStockParts.length})`)
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-rose-400 transition cursor-pointer group"
+          title="Click to view Low Stock Parts in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Low Stock Warnings</span>
-            <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-rose-600 transition">Low Stock Warnings</span>
+            <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600 group-hover:scale-110 transition">
               <AlertTriangle className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{lowStockParts.length}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-rose-600 transition">{lowStockParts.length}</div>
           <div className="text-[11px] text-rose-600 font-semibold mt-1">Below safety reorder mark</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('pending_requisitions', `Pending Store Requisitions & Indents (${pendingRequisitions.length})`)
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-emerald-400 transition cursor-pointer group"
+          title="Click to view Pending Requisitions in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Pending Indents</span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-emerald-600 transition">Pending Indents</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:scale-110 transition">
               <Package className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{pendingRequisitions.length}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-emerald-600 transition">{pendingRequisitions.length}</div>
           <div className="text-[11px] text-slate-500 mt-1">Awaiting crib dispatch</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('low_stock_parts', `Tool Crib Spare Parts Master Catalog (${parts.length} SKUs)`)
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-blue-400 transition cursor-pointer group"
+          title="Click to view Catalog in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total SKUs</span>
-            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-blue-600 transition">Total SKUs</span>
+            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 group-hover:scale-110 transition">
               <Boxes className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">{parts.length}</div>
+          <div className="text-2xl font-black text-slate-900 group-hover:text-blue-600 transition">{parts.length}</div>
           <div className="text-[11px] text-slate-500 mt-1">Active registered spare parts</div>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+        <div
+          onClick={() =>
+            openDrillDown('cost_analysis', 'Tool Crib Spare Parts Inventory Valuation & Capital')
+          }
+          className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-amber-400 transition cursor-pointer group"
+          title="Click to view Valuation details in slide-over drawer"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Valuation</span>
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+            <span className="text-xs font-bold uppercase tracking-wider group-hover:text-amber-600 transition">Total Valuation</span>
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600 group-hover:scale-110 transition">
               <IndianRupee className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black text-slate-900">
+          <div className="text-2xl font-black text-slate-900 group-hover:text-amber-600 transition">
             ₹{totalInventoryValuation.toLocaleString()}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">Tool crib asset valuation</div>
@@ -276,6 +331,20 @@ export function StoreDashboard({
           </div>
         </div>
       </div>
+
+      {/* ─── 4. WIDGET DRILL-DOWN SIDEBAR (RIGHT TO LEFT) ─────────────── */}
+      <WidgetDrilldownDrawer
+        isOpen={drillDownState.isOpen}
+        onClose={closeDrillDown}
+        type={drillDownState.type}
+        title={drillDownState.title}
+        meta={drillDownState.meta}
+        machines={machines}
+        repairs={repairs}
+        ppmSchedules={ppmSchedules}
+        parts={parts}
+        requisitions={requisitions}
+      />
     </div>
   );
 }

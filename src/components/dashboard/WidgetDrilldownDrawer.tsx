@@ -21,8 +21,11 @@ import {
   Truck,
   Armchair,
   Zap,
+  Users,
+  ShieldCheck,
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
+import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
 
 export type DrillDownType =
   | 'open_tickets'
@@ -41,13 +44,18 @@ export type DrillDownType =
   | 'cost_analysis'
   | 'risk_analysis'
   | 'low_stock_parts'
-  | 'pending_requisitions';
+  | 'pending_requisitions'
+  | 'toolbox_kit'
+  | 'duty_roster';
 
 export interface DrillDownMeta {
   category?: string;
   stageKey?: string;
   fault?: string;
   riskLevel?: 'HIGH' | 'MEDIUM' | 'LOW';
+  assignedTo?: string;
+  filterDefault?: string;
+  kitCode?: string;
   [key: string]: any;
 }
 
@@ -57,11 +65,11 @@ interface WidgetDrilldownDrawerProps {
   type: DrillDownType | null;
   title?: string;
   meta?: DrillDownMeta;
-  machines: Machine[];
-  repairs: RepairTicket[];
-  ppmSchedules: PPMSchedule[];
-  parts: SparePart[];
-  requisitions: PartRequisition[];
+  machines?: Machine[];
+  repairs?: RepairTicket[];
+  ppmSchedules?: PPMSchedule[];
+  parts?: SparePart[];
+  requisitions?: PartRequisition[];
 }
 
 export function WidgetDrilldownDrawer({
@@ -70,11 +78,11 @@ export function WidgetDrilldownDrawer({
   type,
   title,
   meta,
-  machines,
-  repairs,
-  ppmSchedules,
-  parts,
-  requisitions,
+  machines = [],
+  repairs = [],
+  ppmSchedules = [],
+  parts = [],
+  requisitions = [],
 }: WidgetDrilldownDrawerProps) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
@@ -84,7 +92,7 @@ export function WidgetDrilldownDrawer({
   useEffect(() => {
     if (isOpen) {
       setSearchTerm('');
-      setActiveFilter('all');
+      setActiveFilter(meta?.filterDefault || 'all');
     }
   }, [isOpen, type, meta]);
 
@@ -128,6 +136,10 @@ export function WidgetDrilldownDrawer({
     // 1. OPEN TICKETS
     if (type === 'open_tickets') {
       const open = repairs.filter((r) => r.status !== 'COMPLETED');
+      const assignedToName = meta?.assignedTo?.toLowerCase();
+      const myOpen = assignedToName
+        ? open.filter((r) => r.attendedBy && r.attendedBy.toLowerCase() === assignedToName)
+        : [];
       const criticalCount = open.filter((r) => r.urgency === 'CRITICAL').length;
       const inProgressCount = open.filter((r) => r.status === 'IN_PROGRESS').length;
       const assignedCount = open.filter((r) => r.status === 'ASSIGNED').length;
@@ -136,10 +148,17 @@ export function WidgetDrilldownDrawer({
       const avgDowntime = open.length > 0 ? Math.round(totalDowntime / open.length) : 0;
 
       let filtered = open;
-      if (activeFilter === 'critical') filtered = open.filter((r) => r.urgency === 'CRITICAL');
-      else if (activeFilter === 'in_progress') filtered = open.filter((r) => r.status === 'IN_PROGRESS');
-      else if (activeFilter === 'assigned') filtered = open.filter((r) => r.status === 'ASSIGNED');
-      else if (activeFilter === 'pending') filtered = open.filter((r) => r.status === 'PENDING');
+      if (activeFilter === 'my_tickets' || activeFilter === 'mine') {
+        filtered = myOpen;
+      } else if (activeFilter === 'critical') {
+        filtered = open.filter((r) => r.urgency === 'CRITICAL');
+      } else if (activeFilter === 'in_progress') {
+        filtered = open.filter((r) => r.status === 'IN_PROGRESS');
+      } else if (activeFilter === 'assigned') {
+        filtered = open.filter((r) => r.status === 'ASSIGNED');
+      } else if (activeFilter === 'pending') {
+        filtered = open.filter((r) => r.status === 'PENDING');
+      }
 
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
@@ -154,6 +173,15 @@ export function WidgetDrilldownDrawer({
         );
       }
 
+      const filterPills = [
+        ...(assignedToName ? [{ id: 'my_tickets', label: `My Tickets (${myOpen.length})` }] : []),
+        { id: 'all', label: `All (${open.length})` },
+        { id: 'critical', label: `Critical (${criticalCount})` },
+        { id: 'in_progress', label: `In Progress (${inProgressCount})` },
+        { id: 'assigned', label: `Assigned (${assignedCount})` },
+        { id: 'pending', label: `Pending (${pendingCount})` },
+      ];
+
       return {
         categoryTitle: 'MAINTENANCE DRILL-DOWN',
         mainTitle: title || `Open Tickets: ${open.length}`,
@@ -163,13 +191,7 @@ export function WidgetDrilldownDrawer({
           { label: 'In Progress', value: inProgressCount, color: 'text-amber-600' },
           { label: 'Avg Downtime', value: `${avgDowntime}m`, color: 'text-slate-800' },
         ],
-        filterPills: [
-          { id: 'all', label: `All (${open.length})` },
-          { id: 'critical', label: `Critical (${criticalCount})` },
-          { id: 'in_progress', label: `In Progress (${inProgressCount})` },
-          { id: 'assigned', label: `Assigned (${assignedCount})` },
-          { id: 'pending', label: `Pending (${pendingCount})` },
-        ],
+        filterPills,
         tableHeaders: ['TICKET ID', 'MACHINE & LINE', 'FAULT CATEGORY', 'PRIORITY', 'STAGE', 'ACTIONS'],
         rows: filtered.map((r) => ({
           id: r.id,
@@ -399,13 +421,19 @@ export function WidgetDrilldownDrawer({
     // 5. RESOLVED TODAY & COMPLETED
     if (type === 'resolved') {
       const completed = repairs.filter((r) => r.status === 'COMPLETED');
+      const assignedToName = meta?.assignedTo?.toLowerCase();
+      const myResolved = assignedToName
+        ? completed.filter((r) => r.attendedBy && r.attendedBy.toLowerCase() === assignedToName)
+        : [];
       const totalDowntime = completed.reduce((sum, r) => sum + (r.downtimeMinutes || 0), 0);
       const avgMTTR = completed.length > 0 ? Math.round(totalDowntime / completed.length) : 0;
       const mechanical = completed.filter((r) => r.faultCategory?.toLowerCase().includes('mechanical')).length;
       const electrical = completed.filter((r) => r.faultCategory?.toLowerCase().includes('electrical')).length;
 
       let filtered = completed;
-      if (activeFilter === 'mechanical') {
+      if (activeFilter === 'my_resolved' || activeFilter === 'mine') {
+        filtered = myResolved;
+      } else if (activeFilter === 'mechanical') {
         filtered = completed.filter((r) => r.faultCategory?.toLowerCase().includes('mechanical'));
       } else if (activeFilter === 'electrical') {
         filtered = completed.filter((r) => r.faultCategory?.toLowerCase().includes('electrical'));
@@ -418,9 +446,17 @@ export function WidgetDrilldownDrawer({
             r.id.toLowerCase().includes(q) ||
             r.machineId.toLowerCase().includes(q) ||
             r.line.toLowerCase().includes(q) ||
-            r.actionTaken?.toLowerCase().includes(q)
+            r.actionTaken?.toLowerCase().includes(q) ||
+            (r.attendedBy && r.attendedBy.toLowerCase().includes(q))
         );
       }
+
+      const filterPills = [
+        ...(assignedToName ? [{ id: 'my_resolved', label: `My Resolved (${myResolved.length})` }] : []),
+        { id: 'all', label: `All (${completed.length})` },
+        { id: 'mechanical', label: `Mechanical (${mechanical})` },
+        { id: 'electrical', label: `Electrical (${electrical})` },
+      ];
 
       return {
         categoryTitle: 'PERFORMANCE DRILL-DOWN',
@@ -431,11 +467,7 @@ export function WidgetDrilldownDrawer({
           { label: 'Mechanical', value: mechanical, color: 'text-slate-800' },
           { label: 'Electrical', value: electrical, color: 'text-slate-800' },
         ],
-        filterPills: [
-          { id: 'all', label: `All (${completed.length})` },
-          { id: 'mechanical', label: `Mechanical (${mechanical})` },
-          { id: 'electrical', label: `Electrical (${electrical})` },
-        ],
+        filterPills,
         tableHeaders: ['TICKET ID', 'MACHINE & LINE', 'ACTION TAKEN', 'DOWNTIME', 'STATUS', 'ACTIONS'],
         rows: filtered.map((r) => ({
           id: r.id,
@@ -742,6 +774,168 @@ export function WidgetDrilldownDrawer({
           actionUrl: `/dashboard/requisition`,
         })),
         bottomAction: { label: 'Manage Approvals in Store Desk →', url: '/dashboard/requisition' },
+      };
+    }
+
+    // 12. TOOLBOX KIT & CUSTODY ITEMS
+    if (type === 'toolbox_kit') {
+      const kitCode = meta?.kitCode || 'TBX-MEC-08';
+      const mechanic =
+        FACTORY_MECHANICS_ROSTER.find(
+          (m) =>
+            m.toolbox.kitCode === kitCode ||
+            (meta?.assignedTo && m.name.toLowerCase() === meta.assignedTo.toLowerCase())
+        ) || FACTORY_MECHANICS_ROSTER[1];
+
+      const kit = mechanic.toolbox;
+      const checkedOut = mechanic.checkedOutTools || [];
+      const partsDrawn = mechanic.activePartsDrawn || [];
+
+      let rows: Array<{
+        id: string;
+        col1: string;
+        col2: string;
+        col3: string;
+        badge1: { text: string; bg: string };
+        badge2: { text: string; bg: string };
+        actionText: string;
+        actionUrl: string;
+      }> = [];
+
+      if (activeFilter === 'checked_out') {
+        rows = checkedOut.map((tool) => ({
+          id: tool.id,
+          col1: tool.id,
+          col2: `${tool.toolName} (${tool.serialNo})`,
+          col3: `Due: ${tool.returnDue} • Loc: ${tool.location}`,
+          badge1: { text: tool.condition, bg: 'bg-emerald-100 text-emerald-800' },
+          badge2: { text: tool.category, bg: 'bg-blue-100 text-blue-800' },
+          actionText: 'Audit Tool',
+          actionUrl: '/dashboard/inventory',
+        }));
+      } else if (activeFilter === 'parts_drawn') {
+        rows = partsDrawn.map((p) => ({
+          id: p.partId,
+          col1: p.sku,
+          col2: p.partName,
+          col3: `Qty: ${p.quantity} ${p.unit} • For Machine: ${p.forMachineId}`,
+          badge1: { text: p.line, bg: 'bg-indigo-100 text-indigo-800' },
+          badge2: { text: 'ISSUED', bg: 'bg-emerald-100 text-emerald-800' },
+          actionText: 'View Indent',
+          actionUrl: '/dashboard/inventory',
+        }));
+      } else {
+        // all tools in kit + custody
+        rows = [
+          ...kit.items.map((item, idx) => ({
+            id: `TOOL-${idx + 1}`,
+            col1: `${kit.kitCode}-0${idx + 1}`,
+            col2: item,
+            col3: `Calibrated Kit: ${kit.kitName}`,
+            badge1: { text: 'CALIBRATED', bg: 'bg-emerald-100 text-emerald-800 font-bold' },
+            badge2: { text: 'IN TOOLBOX', bg: 'bg-slate-100 text-slate-800' },
+            actionText: 'Check Tool',
+            actionUrl: '/dashboard/inventory',
+          })),
+          ...checkedOut.map((tool) => ({
+            id: tool.id,
+            col1: tool.serialNo,
+            col2: tool.toolName,
+            col3: `Custody Loan • Due: ${tool.returnDue}`,
+            badge1: { text: tool.condition, bg: 'bg-cyan-100 text-cyan-800' },
+            badge2: { text: 'CHECKED OUT', bg: 'bg-amber-100 text-amber-800 font-bold' },
+            actionText: 'Audit Tool',
+            actionUrl: '/dashboard/inventory',
+          })),
+        ];
+      }
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        rows = rows.filter(
+          (r) =>
+            r.col1.toLowerCase().includes(q) ||
+            r.col2.toLowerCase().includes(q) ||
+            r.col3.toLowerCase().includes(q)
+        );
+      }
+
+      return {
+        categoryTitle: 'TOOLBOX & ASSET CUSTODY',
+        mainTitle: title || `Toolbox Kit: ${kit.kitCode} (${mechanic.name})`,
+        kpiCards: [
+          { label: 'Kit Code', value: kit.kitCode, color: 'text-indigo-600' },
+          { label: 'Standard Tools', value: kit.items.length, color: 'text-slate-800' },
+          { label: 'Loaned Tools', value: checkedOut.length, color: 'text-amber-600' },
+          { label: 'Drawn Spares', value: partsDrawn.length, color: 'text-emerald-600' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All Tools (${kit.items.length + checkedOut.length})` },
+          { id: 'checked_out', label: `Loaned Tools (${checkedOut.length})` },
+          { id: 'parts_drawn', label: `Drawn Spares (${partsDrawn.length})` },
+        ],
+        tableHeaders: ['TOOL CODE / SN', 'NAME & SPECIFICATION', 'CUSTODY & LOCATION', 'CALIBRATION', 'STATUS', 'ACTIONS'],
+        rows,
+        bottomAction: { label: 'Indent Spares or Tools in Crib Catalog →', url: '/dashboard/inventory' },
+      };
+    }
+
+    // 13. ON-DUTY MECHANIC & TECHNICIAN ROSTER
+    if (type === 'duty_roster') {
+      const roster = FACTORY_MECHANICS_ROSTER;
+      const onDuty = roster.filter((m) => m.status === 'ON_DUTY').length;
+      const standby = roster.filter((m) => m.status === 'STANDBY').length;
+      const mechanicsCount = roster.filter((m) => m.trade === 'MECHANIC').length;
+      const electriciansCount = roster.filter((m) => m.trade === 'ELECTRICIAN').length;
+
+      let filtered = roster;
+      if (activeFilter === 'on_duty') filtered = roster.filter((m) => m.status === 'ON_DUTY');
+      else if (activeFilter === 'standby') filtered = roster.filter((m) => m.status === 'STANDBY');
+      else if (activeFilter === 'mechanic') filtered = roster.filter((m) => m.trade === 'MECHANIC');
+      else if (activeFilter === 'electrician') filtered = roster.filter((m) => m.trade === 'ELECTRICIAN');
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filtered = filtered.filter(
+          (m) =>
+            m.name.toLowerCase().includes(q) ||
+            m.role.toLowerCase().includes(q) ||
+            m.assignedLines.toLowerCase().includes(q) ||
+            m.specialty.toLowerCase().includes(q)
+        );
+      }
+
+      return {
+        categoryTitle: 'FLOOR WORKFORCE & ROSTER',
+        mainTitle: title || `Technician Duty Roster: ${roster.length} Staff`,
+        kpiCards: [
+          { label: 'Total Technicians', value: roster.length, color: 'text-slate-800' },
+          { label: 'On Duty', value: onDuty, color: 'text-emerald-600' },
+          { label: 'Standby / Relief', value: standby, color: 'text-amber-600' },
+          { label: 'Electricians', value: electriciansCount, color: 'text-indigo-600' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All (${roster.length})` },
+          { id: 'on_duty', label: `On Duty (${onDuty})` },
+          { id: 'standby', label: `Standby (${standby})` },
+          { id: 'mechanic', label: `Mechanics (${mechanicsCount})` },
+          { id: 'electrician', label: `Electricians (${electriciansCount})` },
+        ],
+        tableHeaders: ['NAME & ID', 'TRADE & ROLE', 'ASSIGNED LINES', 'PHONE / CONTACT', 'STATUS', 'ACTIONS'],
+        rows: filtered.map((m) => ({
+          id: m.id,
+          col1: `${m.name} (${m.id})`,
+          col2: `${m.trade || 'MECHANIC'} • ${m.specialty}`,
+          col3: `${m.assignedLines} • Kit: ${m.toolbox.kitCode}`,
+          badge1: { text: m.phone, bg: 'bg-slate-100 text-slate-800 font-mono' },
+          badge2: {
+            text: m.status.replace('_', ' '),
+            bg: m.status === 'ON_DUTY' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-amber-100 text-amber-800',
+          },
+          actionText: 'View Roster',
+          actionUrl: '/dashboard/mechanic-roster',
+        })),
+        bottomAction: { label: 'Open Shift Allocation & Roster Desk →', url: '/dashboard/mechanic-roster' },
       };
     }
 
