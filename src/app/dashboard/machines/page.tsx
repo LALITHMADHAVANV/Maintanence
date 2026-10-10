@@ -848,50 +848,58 @@ export default function MachinesPage() {
             <div className="flex items-center justify-between no-print">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                 <QrCode className="w-4 h-4 text-indigo-600" />
-                <span>QR Sticker Preview</span>
+                <span>Asset ID Card Preview</span>
               </h3>
               {isQrGenerated && (
                 <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded uppercase">
-                  Generated
+                  Generated (CR80)
                 </span>
               )}
             </div>
 
             {isQrGenerated ? (
               <>
-                {/* Printable Sticker: Only QR and Asset ID */}
+                {/* Printable ID Card: QR on Left, company/unit/id and unique id on Right */}
                 <div
                   id="printable-qr-tag"
-                  className="bg-white border-2 border-slate-900 rounded-2xl p-6 shadow-sm flex flex-col items-center justify-center text-center mx-auto max-w-[280px] print:border-2 print:border-black print:rounded-none print:shadow-none print:p-4 print:m-auto"
+                  className="bg-white border-2 border-slate-900 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-row items-center justify-start gap-4 mx-auto w-full max-w-[420px] aspect-[85.6/54] relative overflow-hidden print:w-[85.6mm] print:h-[54mm] print:max-w-[85.6mm] print:max-h-[54mm] print:p-[3.5mm] print:gap-[3.5mm] print:border-[1.5pt] print:border-black print:rounded-[3mm] print:shadow-none print:m-auto"
                 >
-                  {/* Plant Unit & Located Area badge */}
-                  <div className="w-full pb-2 mb-2 border-b border-dashed border-slate-300 flex items-center justify-between text-left">
-                    <span className="text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded">
-                      {mUnit || 'Unit 01'}
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-700 truncate max-w-[130px]" title={mArea}>
-                      {mArea || 'Sewing Floor'}
-                    </span>
-                  </div>
-
-                  {/* High-Resolution QR Code */}
-                  <div className="p-3 bg-white border-2 border-slate-900 rounded-xl flex items-center justify-center shadow-xs">
+                  {/* Left: High-Resolution QR Code Box */}
+                  <div className="shrink-0 p-2 bg-white border-2 border-slate-900 rounded-xl flex items-center justify-center shadow-xs print:border print:border-black print:p-[1.5mm] print:rounded-[2mm]">
                     <QRCodeSVG
                       value={qrData}
-                      size={180}
+                      size={120}
                       level="H"
                       bgColor="#ffffff"
                       fgColor="#000000"
+                      className="w-20 h-20 sm:w-24 sm:h-24 print:w-[32mm] print:h-[32mm]"
                     />
                   </div>
 
-                  {/* Asset Identifier */}
-                  <div className="mt-3.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Asset ID
+                  {/* Right: ID Card Metadata (Only first two lines) */}
+                  <div className="flex flex-col justify-center text-left min-w-0 flex-1 space-y-2.5 sm:space-y-3 print:space-y-[2mm]">
+                    {/* Line 1: company / unit / id */}
+                    <div>
+                      <div className="text-[9px] sm:text-[10px] print:text-[6.5pt] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+                        Company / Unit / ID
+                      </div>
+                      <div className="text-xs sm:text-sm print:text-[9pt] font-black uppercase tracking-wider text-slate-800 truncate flex items-center gap-1">
+                        <span>TexTech</span>
+                        <span className="text-slate-400">/</span>
+                        <span>{mUnit || 'Unit 01'}</span>
+                        <span className="text-slate-400">/</span>
+                        <span className="text-indigo-700 print:text-black font-mono">{mId || 'ASSET-101'}</span>
+                      </div>
                     </div>
-                    <div className="text-lg font-black text-slate-950 font-mono tracking-wide">
-                      {mId || 'ASSET-101'}
+
+                    {/* Line 2: unique id */}
+                    <div className="pt-2 border-t border-slate-200 print:border-black print:pt-[1.5mm]">
+                      <div className="text-[9px] sm:text-[10px] print:text-[6.5pt] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+                        Unique ID
+                      </div>
+                      <div className="text-lg sm:text-2xl print:text-[14pt] font-black text-slate-950 font-mono tracking-wide truncate leading-tight">
+                        {mId || 'ASSET-101'}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -904,7 +912,7 @@ export default function MachinesPage() {
                     className="w-full sm:flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>Print QR Sticker</span>
+                    <span>Print ID Card</span>
                   </button>
                   <button
                     type="button"

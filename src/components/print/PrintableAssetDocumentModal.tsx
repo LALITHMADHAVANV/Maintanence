@@ -101,6 +101,7 @@ export function PrintableAssetDocumentModal({
   const displayClass = asset.typeName || TYPE_NAME_MAP[asset.type] || asset.type;
   const valuation = asset.cost ? formatRupee(asset.cost) : '₹75,000';
   const regDate = asset.purchaseDate || '2023-01-01';
+  const companyName = 'TexTech';
 
   // Batch machines for sheet printing
   const batchList = allAssets.length > 0 ? allAssets.slice(0, 8) : [asset];
@@ -166,7 +167,7 @@ export function PrintableAssetDocumentModal({
               }`}
             >
               <Tag className="w-3.5 h-3.5" />
-              <span>Thermal QR Tag (Sticker)</span>
+              <span>Asset ID Card (85.6 × 54 mm)</span>
             </button>
 
             <button
@@ -192,12 +193,12 @@ export function PrintableAssetDocumentModal({
               }`}
             >
               <Grid className="w-3.5 h-3.5" />
-              <span>Batch Sticker Sheet ({batchList.length} Units)</span>
+              <span>Batch ID Cards ({batchList.length} Units)</span>
             </button>
           </div>
 
           <div className="text-[11px] text-slate-500 font-medium hidden sm:block">
-            Ready for standard A4 / 4&times;3&quot; label printers
+            CR80 ID Card Standard (85.6 &times; 54 mm)
           </div>
         </div>
 
@@ -205,41 +206,49 @@ export function PrintableAssetDocumentModal({
         <div className="p-4 sm:p-8 overflow-y-auto flex-1 flex justify-center items-start print:p-0 print:overflow-visible">
           
           {/* ============================================================== */}
-          {/* FORMAT 1: THERMAL QR ASSET TAG LABEL (PHYSICAL STICKER)        */}
+          {/* FORMAT 1: ASSET ID CARD TAG (STANDARD CR80 ID CARD SIZE)       */}
           {/* ============================================================== */}
           {printMode === 'TAG' && (
             <div
               id="printable-qr-tag"
-              className="bg-white border-2 border-slate-950 rounded-2xl p-6 shadow-lg flex flex-col items-center justify-center text-center mx-auto max-w-[280px] print:shadow-none print:border-2 print:border-black print:rounded-none print:m-auto print:max-w-[260px] print:p-4"
+              className="bg-white border-2 border-slate-950 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-row items-center justify-start gap-4 sm:gap-5 mx-auto w-full max-w-[440px] aspect-[85.6/54] relative overflow-hidden print:w-[85.6mm] print:h-[54mm] print:max-w-[85.6mm] print:max-h-[54mm] print:p-[3.5mm] print:gap-[3.5mm] print:border-[1.5pt] print:border-black print:rounded-[3mm] print:shadow-none print:m-auto"
             >
-              {/* Plant Unit & Located Area Header */}
-              <div className="w-full pb-2 mb-2 border-b border-dashed border-slate-400 flex items-center justify-between text-left">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-950 text-white px-2 py-0.5 rounded">
-                  {asset.unit || 'Unit 01'}
-                </span>
-                <span className="text-[10px] font-bold text-slate-700 truncate max-w-[130px]" title={asset.area || asset.department}>
-                  {asset.area || asset.department || 'Sewing Floor'}
-                </span>
-              </div>
-
-              {/* Sharp High-Contrast QR Code */}
-              <div className="p-3 bg-white border-2 border-slate-950 rounded-xl flex items-center justify-center shadow-xs">
+              {/* Left: Square QR Box */}
+              <div className="shrink-0 p-2 sm:p-2.5 bg-white border-2 border-slate-950 rounded-xl flex items-center justify-center shadow-xs print:border print:border-black print:p-[1.5mm] print:rounded-[2mm]">
                 <QRCodeSVG
                   value={qrData}
-                  size={180}
+                  size={135}
                   level="H"
                   bgColor="#ffffff"
                   fgColor="#000000"
+                  className="w-24 h-24 sm:w-28 sm:h-28 print:w-[35mm] print:h-[35mm]"
                 />
               </div>
 
-              {/* Machine Asset Identifier */}
-              <div className="mt-3.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Asset ID
+              {/* Right: ID Card Metadata (Only first two lines) */}
+              <div className="flex flex-col justify-center text-left min-w-0 flex-1 space-y-3 sm:space-y-4 print:space-y-[2.5mm]">
+                {/* Line 1: company / unit / id */}
+                <div>
+                  <div className="text-[9px] sm:text-[10px] print:text-[6.5pt] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+                    Company / Unit / ID
+                  </div>
+                  <div className="text-xs sm:text-sm print:text-[9pt] font-black uppercase tracking-tight text-slate-800 truncate flex items-center gap-1">
+                    <span>{companyName}</span>
+                    <span className="text-slate-400">/</span>
+                    <span>{asset.unit || 'Unit 01'}</span>
+                    <span className="text-slate-400">/</span>
+                    <span className="text-indigo-700 print:text-black font-mono">{asset.id}</span>
+                  </div>
                 </div>
-                <div className="text-lg font-black text-slate-950 font-mono tracking-wide">
-                  {asset.id}
+
+                {/* Line 2: unique id */}
+                <div className="pt-2 border-t border-slate-200 print:border-black print:pt-[2mm]">
+                  <div className="text-[9px] sm:text-[10px] print:text-[6.5pt] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+                    Unique ID
+                  </div>
+                  <div className="text-xl sm:text-2xl print:text-[15pt] font-black text-slate-950 font-mono tracking-wide truncate leading-tight">
+                    {asset.id}
+                  </div>
                 </div>
               </div>
             </div>
@@ -471,20 +480,20 @@ export function PrintableAssetDocumentModal({
           )}
 
           {/* ============================================================== */}
-          {/* FORMAT 3: BATCH QR STICKER SHEET (MULTI-UP LABELS)             */}
+          {/* FORMAT 3: BATCH ID CARD SHEET (MULTI-UP ID CARDS)              */}
           {/* ============================================================== */}
           {printMode === 'BATCH' && (
-            <div className="printable-document w-full max-w-[800px] bg-white p-6 shadow-xl border border-slate-300 print:border-none print:shadow-none print:p-0 print:m-0 space-y-4">
+            <div className="printable-document w-full max-w-[850px] bg-white p-6 shadow-xl border border-slate-300 print:border-none print:shadow-none print:p-0 print:m-0 space-y-4">
               <div className="border-b border-slate-300 pb-2 mb-4 flex justify-between items-center no-print">
                 <div className="text-xs font-bold text-slate-800">
-                  Batch Thermal Tag Sheet ({batchList.length} Labels)
+                  Batch ID Card Sheet ({batchList.length} Cards)
                 </div>
                 <div className="text-xs text-slate-500">
-                  Ready for Avery 2&times;4 / Sticker Paper Sheet
+                  Standard CR80 ID Card Format (85.6 &times; 54 mm)
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 print:grid-cols-3 print:gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:grid-cols-2 print:gap-3">
                 {batchList.map((m) => {
                   const mParams = new URLSearchParams({
                     id: m.id || '',
@@ -498,27 +507,48 @@ export function PrintableAssetDocumentModal({
                     date: m.purchaseDate || '',
                   });
                   const mQr = `${origin}/scan/${encodeURIComponent(m.id)}?${mParams.toString()}`;
+                  const mDisplayClass = m.typeName || TYPE_NAME_MAP[m.type] || m.type;
 
                   return (
                     <div
                       key={m.id}
-                      className="border-2 border-slate-900 rounded-xl p-3 bg-white flex flex-col items-center justify-center text-center space-y-1.5 print-break-inside-avoid"
+                      className="border-2 border-slate-900 rounded-xl p-3 sm:p-4 bg-white flex flex-row items-center gap-3.5 aspect-[85.6/54] print-break-inside-avoid print:border print:border-black print:p-[3mm] print:gap-[3mm] print:rounded-[2.5mm]"
                     >
-                      <div className="w-full flex items-center justify-between text-[8px] font-black uppercase tracking-wider text-slate-700 border-b border-dashed border-slate-300 pb-1 mb-0.5">
-                        <span className="bg-slate-900 text-white px-1.5 py-0.5 rounded text-[7px]">{m.unit || 'Unit 01'}</span>
-                        <span className="truncate max-w-[80px]" title={m.area || m.department}>{m.area || m.department || 'Sewing Floor'}</span>
-                      </div>
-                      <div className="p-2 bg-white border border-slate-900 rounded-lg flex items-center justify-center">
+                      {/* QR Box */}
+                      <div className="shrink-0 p-1.5 bg-white border border-slate-900 rounded-lg flex items-center justify-center">
                         <QRCodeSVG
                           value={mQr}
-                          size={105}
+                          size={95}
                           level="H"
                           bgColor="#ffffff"
                           fgColor="#000000"
+                          className="w-16 h-16 sm:w-20 sm:h-20 print:w-[26mm] print:h-[26mm]"
                         />
                       </div>
-                      <div className="font-mono font-black text-slate-950 text-xs">
-                        {m.id}
+
+                      {/* Right metadata (Only first two lines) */}
+                      <div className="flex flex-col justify-center text-left min-w-0 flex-1 space-y-2 print:space-y-[1.5mm]">
+                        <div>
+                          <div className="text-[8px] print:text-[5.5pt] font-extrabold uppercase tracking-widest text-slate-400">
+                            Company / Unit / ID
+                          </div>
+                          <div className="text-[10px] print:text-[7pt] font-black uppercase tracking-wider text-slate-800 truncate flex items-center gap-0.5">
+                            <span>{companyName}</span>
+                            <span className="text-slate-400">/</span>
+                            <span>{m.unit || 'Unit 01'}</span>
+                            <span className="text-slate-400">/</span>
+                            <span className="text-indigo-700 print:text-black font-mono">{m.id}</span>
+                          </div>
+                        </div>
+
+                        <div className="pt-1 border-t border-slate-200 print:border-black print:pt-[1mm]">
+                          <div className="text-[8px] print:text-[5.5pt] font-extrabold uppercase tracking-widest text-slate-400">
+                            Unique ID
+                          </div>
+                          <div className="font-mono font-black text-slate-950 text-sm sm:text-base print:text-[11pt] tracking-tight truncate leading-tight">
+                            {m.id}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
