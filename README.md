@@ -1,6 +1,6 @@
-# TexTech CMMS — Garment Factory Maintenance & Asset Management Suite
+# Maintenance Module — Garment Factory Maintenance & Asset Management Suite
 
-A modern, production-grade Computerized Maintenance Management System (CMMS) designed for apparel manufacturing sewing floors. Built with **Next.js 16 (App Router, React 19, TypeScript)**, **Tailwind CSS v4**, **Lucide Icons**, and **Supabase (PostgreSQL & Authentication)** with a zero-configuration reactive offline demo fallback.
+A modern, production-grade Computerized Maintenance Management System (CMMS) designed for apparel manufacturing sewing floors. Built with **Next.js 16 (App Router, React 19, TypeScript)**, **Tailwind CSS v4**, **Lucide Icons**, and **Local MongoDB** (`mongodb://127.0.0.1:27017/textech_cmms`).
 
 ---
 
@@ -42,22 +42,22 @@ A modern, production-grade Computerized Maintenance Management System (CMMS) des
 
 - **Framework:** Next.js 16.3.5 (Turbopack, App Router)
 - **Frontend:** React 19, TypeScript, Tailwind CSS v4, Lucide React
-- **Backend / Database:** Supabase (`@supabase/supabase-js`, PostgreSQL, Supabase Auth)
+- **Backend / Database:** Local MongoDB (`mongodb` official driver)
 - **QR Code Tooling:** `qrcode.react` (generation) & `html5-qrcode` (camera scanning)
 - **Date Utilities:** `date-fns`
 
 ---
 
-## Database Architecture (PostgreSQL Tables via Supabase)
+## Database Architecture (MongoDB Collections)
 
-| Table / Relation | Description | Primary Key / Document ID |
+| Collection | Description | Document Identifier |
 |---|---|---|
-| `users` | Mechanics, Plant Managers, System Admins | User UID (`MEC-08`, `MGR-01`) |
-| `machines` | 12 factory sewing machines across production lines | Machine Tag (`MC-SNLS-101`) |
-| `parts` | 10 tool crib garment spare parts & consumables | Part SKU (`PRT-01` to `PRT-10`) |
-| `repairs` | Breakdown tickets & chronological repair ledger | Work Order ID (`WO-1091`, `HIST-902`) |
-| `ppm_schedules` | Weekly, monthly, and 6-month preventive tasks | Schedule ID (`SCH-01`) |
-| `requisitions` | Monthly Indents, Urgent Shift Needs, Critical CEO Needs | Requisition ID (`REQ-2026-091`) |
+| `users` | Mechanics, Plant Managers, System Admins, CEO | `uid` / `email` |
+| `machines` | Factory sewing machines across production lines | `id` (e.g. `MC-SNLS-101`) |
+| `spare_parts` | Tool crib garment spare parts & consumables | `partId` (e.g. `PRT-01`) |
+| `repair_tickets` | Breakdown tickets & chronological repair ledger | `id` (e.g. `WO-1091`) |
+| `ppm_schedules` | Weekly, monthly, and 6-month preventive tasks | `id` (e.g. `PPM-101`) |
+| `part_requisitions` | Monthly Indents, Urgent Shift Needs, Critical CEO Needs | `id` (e.g. `REQ-2026-091`) |
 
 ---
 
@@ -67,34 +67,23 @@ A modern, production-grade Computerized Maintenance Management System (CMMS) des
 ```bash
 git clone https://github.com/LALITHMADHAVANV/maint-assert-module.git
 cd maint-assert-module
-npm install --ignore-scripts
+npm install
 ```
 
 ### 2. Configure Environment
-Copy the example environment file:
-```bash
-cp .env.example .env.local
-```
-Fill in your Supabase credentials:
+Your local MongoDB URI is already pre-configured in `.env.local`:
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+MONGODB_URI=mongodb://127.0.0.1:27017/textech_cmms
+MONGODB_DB_NAME=textech_cmms
 ```
 
-> **Note:** If real Supabase credentials are not provided, the system automatically falls back to an offline reactive local storage mode so all features can be tested immediately without database setup.
-
-### 3. Setup Database Schema
-Execute the SQL migration schema in Supabase SQL editor:
-```sql
-supabase/schema.sql
-```
-And seed default users / data:
+Ensure your local MongoDB server is running:
 ```bash
-node scripts/create-users.mjs
+# Verify MongoDB service or mongod
+mongod --dbpath <data-dir>
 ```
 
-### 4. Run Development Server
+### 3. Run Development Server
 ```bash
 npm run dev
 ```
@@ -102,13 +91,5 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## Demo Credentials
-
-Click the quick role login buttons on the homepage, or use:
-- **Lead Sewing Mechanic:** `mechanic@textech.garments` (Ramesh Kumar)
-- **Asset & Maintenance Manager:** `manager@textech.garments` (V. Sundaram)
-
----
-
 ## License
-Proprietary — TexTech Garments Maintenance Division.
+MIT

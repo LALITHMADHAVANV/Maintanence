@@ -121,6 +121,8 @@ export interface Machine {
   status: MachineStatus;
   currentLine: FloorLine;
   stationNo: string; // e.g. "Station 04", "Cutting Bay", "Inspection Bay"
+  unit?: string; // Plant Unit, e.g. "Unit 01", "Unit 02", "Unit 03"
+  area?: string; // Located Area, e.g. "Sewing Floor", "Cutting Section", "Finishing Bay"
   operator?: string;
   totalDowntimeMinutes: number;
   ageYears?: number;

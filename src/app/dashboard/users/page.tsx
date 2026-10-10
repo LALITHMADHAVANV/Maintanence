@@ -51,9 +51,9 @@ export default function UserManagementPage() {
   const [newEmail, setNewEmail] = useState('');
   const [newTitle, setNewTitle] = useState('Industrial Sewing Machine Mechanic');
   const [newDepartment, setNewDepartment] = useState('Maintenance Workshop');
-  const [newPhone, setNewPhone] = useState('+91 98421 ');
+  const [newPhone, setNewPhone] = useState('');
   const [newEmployeeId, setNewEmployeeId] = useState(`EMP-${Math.floor(100 + Math.random() * 900)}`);
-  const [newPassword, setNewPassword] = useState('mechanic123');
+  const [newPassword, setNewPassword] = useState('');
 
   // Change Password Modal State
   const [passwordModalUser, setPasswordModalUser] = useState<UserProfile | null>(null);
@@ -81,39 +81,33 @@ export default function UserManagementPage() {
     fetchUsers();
   }, []);
 
-  // Update default title & password suggestion when role changes in form
+  // Update default title & department when role changes in form
   const handleRoleChange = (role: UserRole) => {
     setNewRole(role);
     switch (role) {
       case 'ADMIN':
         setNewTitle('Plant Administrator & Asset Director');
         setNewDepartment('Plant Management');
-        setNewPassword('admin123');
         break;
       case 'SENIOR_MECHANIC':
         setNewTitle('Senior Master Technician & PPM Lead');
         setNewDepartment('Maintenance Workshop');
-        setNewPassword('senior123');
         break;
       case 'MECHANIC':
         setNewTitle('Industrial Sewing Machine Mechanic');
         setNewDepartment('Sewing Floor');
-        setNewPassword('mechanic123');
         break;
       case 'SENIOR_ELECTRICIAN':
         setNewTitle('Senior Electrical Engineer & Power Systems Lead');
         setNewDepartment('Electrical & Power Services');
-        setNewPassword('senior123');
         break;
       case 'ELECTRICIAN':
         setNewTitle('Industrial Electrician & Wiring Technician');
         setNewDepartment('Electrical & Power Services');
-        setNewPassword('electrician123');
         break;
       case 'STORE_PERSON':
         setNewTitle('Tool Crib & Store In-Charge');
         setNewDepartment('Tool Crib Stores');
-        setNewPassword('stores123');
         break;
     }
   };
@@ -157,7 +151,7 @@ export default function UserManagementPage() {
         throw new Error(data.error || 'Failed to create user');
       }
 
-      showToast(`User ${newName} successfully created in Supabase Auth & DB!`, 'success');
+      showToast(`User ${newName} successfully created in MongoDB!`, 'success');
       setIsAddUserModalOpen(false);
 
       // Reset form
@@ -304,7 +298,7 @@ export default function UserManagementPage() {
               <span>Plant Administrator Desk</span>
             </span>
             <span className="text-xs text-slate-500 font-mono font-medium">
-              Live Supabase Authentication &amp; RBAC
+              Live MongoDB Authentication &amp; RBAC
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2.5 text-slate-900">
@@ -513,7 +507,7 @@ export default function UserManagementPage() {
                             setModalNewPassword(u.defaultPassword || 'sewing123');
                           }}
                           className="px-2.5 py-1 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition inline-flex items-center gap-1"
-                          title="Reset / Set Password in Supabase Auth"
+                          title="Reset / Set Password in MongoDB"
                         >
                           <KeyRound className="w-3 h-3 text-slate-500" />
                           <span>Password</span>
@@ -565,7 +559,7 @@ export default function UserManagementPage() {
                 <div>
                   <h3 className="font-extrabold text-sm sm:text-base">Register New Factory User</h3>
                   <p className="text-xs text-indigo-200/80">
-                    Provisions account in Supabase Authentication &amp; PostgreSQL Database
+                    Provisions account in MongoDB Database
                   </p>
                 </div>
               </div>
@@ -717,7 +711,7 @@ export default function UserManagementPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-semibold text-slate-700">
-                    Initial Password in Supabase Auth *
+                    Initial Password in MongoDB *
                   </label>
                   <button
                     type="button"
@@ -811,7 +805,7 @@ export default function UserManagementPage() {
                   placeholder="Enter at least 6 characters"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
-                  Directly writes new password into Supabase Authentication.
+                  Directly writes new password into MongoDB.
                 </span>
               </div>
 

@@ -44,64 +44,18 @@ export default function LoginPage() {
       let email = cleanInput;
       let targetRoute = '/dashboard/machines';
 
-      if (lower.includes('@')) {
-        // Direct email input
-        if (lower.startsWith('ceo@')) {
-          email = 'ceo@textech.garments';
-          targetRoute = '/dashboard/messages';
-        } else if (lower.startsWith('admin@') || lower.startsWith('adm@')) {
-          email = 'admin@textech.garments';
-          targetRoute = '/dashboard/machines';
-        } else if (lower.startsWith('seniorelectrician@')) {
-          email = 'seniorelectrician@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else if (lower.startsWith('electrician@')) {
-          email = 'electrician@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else if (lower.startsWith('senior') || lower.startsWith('seniormechanic@')) {
-          email = 'seniormechanic@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else if (lower.startsWith('store') || lower.startsWith('stores@')) {
-          email = 'stores@textech.garments';
-          targetRoute = '/dashboard/store-inbox';
-        } else if (lower.startsWith('mechanic@')) {
-          email = 'mechanic@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else {
-          email = cleanInput;
-          targetRoute = '/dashboard/machines';
-        }
+      if (lower.includes('ceo')) {
+        targetRoute = '/dashboard/messages';
+      } else if (lower.includes('store')) {
+        targetRoute = '/dashboard/store-inbox';
+      } else if (lower.includes('mechanic') || lower.includes('electrician') || lower.includes('elec')) {
+        targetRoute = '/dashboard/calendar';
       } else {
-        // Employee ID / alias input
-        if (lower.includes('ceo')) {
-          email = 'ceo@textech.garments';
-          targetRoute = '/dashboard/messages';
-        } else if (lower.includes('admin') || lower.includes('adm')) {
-          email = 'admin@textech.garments';
-          targetRoute = '/dashboard/machines';
-        } else if (lower.includes('senior elec') || lower.includes('seniorelectrician') || lower.includes('elec-01') || lower.includes('anand')) {
-          email = 'seniorelectrician@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else if (lower.includes('electrician') || lower.includes('elec') || lower.includes('elec-02') || lower.includes('rajesh')) {
-          email = 'electrician@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else if (lower.includes('senior') || lower.includes('mec-01') || lower.includes('ramesh')) {
-          email = 'seniormechanic@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else if (lower.includes('store') || lower.includes('str') || lower.includes('arumugam')) {
-          email = 'stores@textech.garments';
-          targetRoute = '/dashboard/store-inbox';
-        } else if (lower.includes('mec-08') || lower.includes('suresh') || lower === 'mechanic') {
-          email = 'mechanic@textech.garments';
-          targetRoute = '/dashboard/calendar';
-        } else {
-          email = cleanInput;
-          targetRoute = '/dashboard/machines';
-        }
+        targetRoute = '/dashboard/machines';
       }
 
       await loginWithEmail(email, cleanPass);
-      showToast('Successfully signed in. Welcome to TexTech CMMS!', 'success');
+      showToast('Successfully signed in. Welcome to Maintenance Module!', 'success');
       router.push(targetRoute);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -119,9 +73,9 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/15 border border-white/25 text-white mb-3 shadow-inner">
             <Wrench className="w-7 h-7" />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight">TexTech Garments</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">Maintenance Module</h1>
           <p className="text-xs uppercase tracking-widest text-indigo-100 font-semibold mt-1">
-            Plant Maintenance & Asset Management (CMMS)
+            Plant Maintenance & Asset Management
           </p>
         </div>
 
@@ -142,7 +96,7 @@ export default function LoginPage() {
                   value={emailOrId}
                   onChange={(e) => setEmailOrId(e.target.value)}
                   className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition text-slate-800"
-                  placeholder="e.g. admin@textech.garments, ceo, MEC-01, ELEC-01"
+                  placeholder="Enter your Employee ID or Email"
                   autoComplete="username"
                   disabled={isLoading}
                 />
@@ -163,7 +117,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition text-slate-800"
-                  placeholder="Enter your password (e.g. password123)"
+                  placeholder="Enter your password"
                   autoComplete="current-password"
                   disabled={isLoading}
                 />
@@ -203,7 +157,7 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 text-center">
           <p className="text-[11px] text-slate-400">
-            Garment Manufacturing Plant 03 • Coimbatore Unit • All role accounts verified
+            Plant Maintenance & Asset Management
           </p>
         </div>
       </div>

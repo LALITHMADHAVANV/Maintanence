@@ -93,9 +93,8 @@ export function PrintableAssetDocumentModal({
     model: asset.model || '',
     type: asset.type || '',
     typeName: asset.typeName || TYPE_NAME_MAP[asset.type] || '',
-    line: asset.currentLine || '',
-    station: asset.stationNo || '',
-    motor: asset.motorType || '',
+    unit: asset.unit || 'Unit 01',
+    area: asset.area || asset.department || 'Sewing Floor',
     cost: asset.cost ? String(asset.cost) : '',
     date: asset.purchaseDate || '',
   }).toString()}`;
@@ -213,6 +212,16 @@ export function PrintableAssetDocumentModal({
               id="printable-qr-tag"
               className="bg-white border-2 border-slate-950 rounded-2xl p-6 shadow-lg flex flex-col items-center justify-center text-center mx-auto max-w-[280px] print:shadow-none print:border-2 print:border-black print:rounded-none print:m-auto print:max-w-[260px] print:p-4"
             >
+              {/* Plant Unit & Located Area Header */}
+              <div className="w-full pb-2 mb-2 border-b border-dashed border-slate-400 flex items-center justify-between text-left">
+                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-950 text-white px-2 py-0.5 rounded">
+                  {asset.unit || 'Unit 01'}
+                </span>
+                <span className="text-[10px] font-bold text-slate-700 truncate max-w-[130px]" title={asset.area || asset.department}>
+                  {asset.area || asset.department || 'Sewing Floor'}
+                </span>
+              </div>
+
               {/* Sharp High-Contrast QR Code */}
               <div className="p-3 bg-white border-2 border-slate-950 rounded-xl flex items-center justify-center shadow-xs">
                 <QRCodeSVG
@@ -247,7 +256,7 @@ export function PrintableAssetDocumentModal({
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="text-xs font-black uppercase tracking-widest text-indigo-700">
-                      TexTech Apparel Group &bull; Unit 03 Coimbatore
+                      TexTech Apparel Group &bull; {asset.unit || 'Unit 01'} &bull; {asset.area || 'Sewing Floor'}
                     </div>
                     <h1 className="text-xl font-black text-slate-950 tracking-tight mt-0.5 uppercase">
                       Equipment Master Specification &amp; Asset Passport
@@ -290,7 +299,7 @@ export function PrintableAssetDocumentModal({
                       <div className="font-mono font-black text-slate-950 text-base">{asset.id}</div>
                     </div>
                     <div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase">Asset Capital Valuation</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">Asset Value</div>
                       <div className="font-mono font-black text-slate-950 text-base">{valuation}</div>
                     </div>
                   </div>
@@ -308,12 +317,12 @@ export function PrintableAssetDocumentModal({
 
                   <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200">
                     <div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase">Machinery Class</div>
-                      <div className="font-semibold text-slate-800">{displayClass}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">Plant Unit &amp; Area</div>
+                      <div className="font-bold text-slate-900">{asset.unit || 'Unit 01'} &bull; {asset.area || asset.department || 'Sewing Floor'}</div>
                     </div>
                     <div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase">Assigned Operator</div>
-                      <div className="font-semibold text-slate-800">{asset.operator || 'Unassigned / Floor Pool'}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">Machinery Class</div>
+                      <div className="font-semibold text-slate-800">{displayClass}</div>
                     </div>
                   </div>
                 </div>
@@ -346,10 +355,10 @@ export function PrintableAssetDocumentModal({
                       <span>Where Moved To (Current Active Station)</span>
                     </div>
                     <div className="font-black text-slate-950 text-sm mt-1">
-                      {asset.currentLine}
+                      {asset.unit ? `${asset.unit} • ` : ''}{asset.currentLine}
                     </div>
                     <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                      {asset.stationNo} &bull; {asset.department || 'Sewing Floor'}
+                      {asset.area ? `${asset.area} • ` : ''}{asset.stationNo} &bull; {asset.department || 'Sewing Floor'}
                     </div>
                   </div>
                 </div>
@@ -483,9 +492,8 @@ export function PrintableAssetDocumentModal({
                     model: m.model || '',
                     type: m.type || '',
                     typeName: m.typeName || TYPE_NAME_MAP[m.type] || '',
-                    line: m.currentLine || '',
-                    station: m.stationNo || '',
-                    motor: m.motorType || '',
+                    unit: m.unit || 'Unit 01',
+                    area: m.area || m.department || 'Sewing Floor',
                     cost: m.cost ? String(m.cost) : '',
                     date: m.purchaseDate || '',
                   });
@@ -494,12 +502,16 @@ export function PrintableAssetDocumentModal({
                   return (
                     <div
                       key={m.id}
-                      className="border-2 border-slate-900 rounded-xl p-4 bg-white flex flex-col items-center justify-center text-center space-y-2 print-break-inside-avoid"
+                      className="border-2 border-slate-900 rounded-xl p-3 bg-white flex flex-col items-center justify-center text-center space-y-1.5 print-break-inside-avoid"
                     >
+                      <div className="w-full flex items-center justify-between text-[8px] font-black uppercase tracking-wider text-slate-700 border-b border-dashed border-slate-300 pb-1 mb-0.5">
+                        <span className="bg-slate-900 text-white px-1.5 py-0.5 rounded text-[7px]">{m.unit || 'Unit 01'}</span>
+                        <span className="truncate max-w-[80px]" title={m.area || m.department}>{m.area || m.department || 'Sewing Floor'}</span>
+                      </div>
                       <div className="p-2 bg-white border border-slate-900 rounded-lg flex items-center justify-center">
                         <QRCodeSVG
                           value={mQr}
-                          size={110}
+                          size={105}
                           level="H"
                           bgColor="#ffffff"
                           fgColor="#000000"

@@ -194,7 +194,10 @@ export function ScanModal({
                   {currentMachine.brand} {currentMachine.model} ({currentMachine.type})
                 </div>
                 <div className="text-indigo-700 text-[11px] mt-0.5">
-                  Location: <span className="font-semibold">{currentMachine.currentLine}</span> •{' '}
+                  Location:{' '}
+                  {currentMachine.unit && <strong className="text-indigo-950 font-bold">{currentMachine.unit} • </strong>}
+                  {currentMachine.area && <span className="font-semibold text-slate-800">{currentMachine.area} • </span>}
+                  <span className="font-semibold">{currentMachine.currentLine}</span> •{' '}
                   {currentMachine.stationNo}
                 </div>
                 {currentMachine.previousLine && (

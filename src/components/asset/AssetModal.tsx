@@ -1169,13 +1169,13 @@ export function AssetModal({
                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-indigo-600" />
-                    <span>Factory Dept & Zone</span>
+                    <span>Unit &amp; Area</span>
                   </div>
                   <div className="font-bold text-xs text-slate-900 mt-1 truncate">
-                    {currentAsset.department || currentAsset.currentLine}
+                    {currentAsset.unit || 'Unit 01'} • {currentAsset.area || currentAsset.department || 'Sewing Floor'}
                   </div>
                   <div className="text-[10px] text-indigo-600 font-semibold truncate">
-                    {currentAsset.stationNo} • {currentAsset.currentLine}
+                    {currentAsset.currentLine} ({currentAsset.stationNo})
                   </div>
                 </div>
 
@@ -1314,10 +1314,10 @@ export function AssetModal({
                       </span>
                     </div>
                     <div className="font-extrabold text-emerald-950 text-sm">
-                      {currentAsset.currentLine}
+                      {currentAsset.unit ? `${currentAsset.unit} • ` : ''}{currentAsset.currentLine}
                     </div>
                     <div className="text-xs font-semibold text-emerald-700 mt-0.5">
-                      {currentAsset.stationNo} • {currentAsset.department || 'Floor'}
+                      {currentAsset.area ? `${currentAsset.area} • ` : ''}{currentAsset.stationNo} • {currentAsset.department || 'Floor'}
                     </div>
                   </div>
                 </div>

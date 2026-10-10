@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   CalendarCheck,
   Boxes,
+  QrCode,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Machine, MachineType, MotorType, FloorLine, MachineStatus, AssetCategory } from '@/types/cmms';
@@ -44,15 +45,20 @@ export default function MachinesPage() {
 
   // Asset Form State
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('MACHINE');
-  const [mId, setMId] = useState('MC-OVK-4TH-101');
+  const [mId, setMId] = useState('');
   const [mBrand, setMBrand] = useState('Yamato');
   const [mType, setMType] = useState<MachineType>('OVERLOCK_4_THREAD');
-  const [mModel, setMModel] = useState('AZ-8000G / 4-Thread High-Speed');
-  const [mDate, setMDate] = useState('2023-04-12');
-  const [mCost, setMCost] = useState<number>(98000);
+  const [mModel, setMModel] = useState('');
+  const [mDate, setMDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [mCost, setMCost] = useState<number>(0);
   const [mMotor, setMMotor] = useState<MotorType>('SERVO');
+  const [mUnit, setMUnit] = useState<string>('Unit 01');
+  const [mArea, setMArea] = useState<string>('Sewing Floor');
   const [mLine, setMLine] = useState<FloorLine>('Line 01');
-  const [mStation, setMStation] = useState('Station 04');
+  const [mStation, setMStation] = useState('Station 01');
+
+  // QR generated state
+  const [isQrGenerated, setIsQrGenerated] = useState(false);
 
   // Scanner modal state
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -289,6 +295,8 @@ export default function MachinesPage() {
       purchaseDate: mDate,
       cost: mCost,
       status: 'ACTIVE',
+      unit: mUnit.trim() || 'Unit 01',
+      area: mArea.trim() || 'Sewing Floor',
       currentLine: mLine,
       stationNo: mStation.trim() || 'Station 01',
       totalDowntimeMinutes: 0,
@@ -298,8 +306,9 @@ export default function MachinesPage() {
 
     try {
       await createMachine(newAsset);
+      setIsQrGenerated(true);
       showToast(
-        `Asset ${cleanId} (${finalBrand} ${finalTypeName}) registered & QR sticker generated!`,
+        `Asset ${cleanId} registered & QR sticker generated!`,
         'success'
       );
     } catch (err) {
@@ -336,6 +345,8 @@ export default function MachinesPage() {
       typeName: typeName,
       cost: mCost,
       motorType: mMotor,
+      unit: mUnit.trim() || 'Unit 01',
+      area: mArea.trim() || 'Sewing Floor',
       currentLine: mLine,
       stationNo: mStation,
       purchaseDate: mDate,
@@ -359,6 +370,8 @@ export default function MachinesPage() {
     mType,
     mCost,
     mMotor,
+    mUnit,
+    mArea,
     mLine,
     mStation,
     mDate,
@@ -396,9 +409,8 @@ export default function MachinesPage() {
       type: mType || '',
       typeName: activeTypeName,
       category: selectedCategory || '',
-      line: mLine || '',
-      station: mStation || '',
-      motor: mMotor || '',
+      unit: mUnit || 'Unit 01',
+      area: mArea || 'Sewing Floor',
       date: mDate || '',
       cost: mCost ? String(mCost) : '',
     });
@@ -410,9 +422,8 @@ export default function MachinesPage() {
     mModel,
     mType,
     selectedCategory,
-    mLine,
-    mStation,
-    mMotor,
+    mUnit,
+    mArea,
     mDate,
     mCost,
     isCustomBrand,
@@ -463,15 +474,16 @@ export default function MachinesPage() {
   return (
     <div className="space-y-6">
       {/* Header Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200 no-print">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <PlusCircle className="w-5 h-5 text-indigo-600" />
-            <span>Plant Asset Registry &amp; Instant QR Generation</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Register factory assets &mdash; sewing machinery, cutting tables, seating, lighting &amp; utilities &mdash; and generate QR stickers.
-          </p>
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between no-print">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shadow-xs">
+            <PlusCircle className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">
+              Asset Registration
+            </h2>
+          </div>
         </div>
       </div>
 
@@ -487,15 +499,9 @@ export default function MachinesPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Factory Asset Category Dropdown */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Factory Asset Category *</span>
-                </label>
-                <span className="text-[11px] font-semibold text-slate-500">
-                  {currentCategoryDef.subtypes.length} Standard Varieties
-                </span>
-              </div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Category *
+              </label>
               <div className="relative">
                 <select
                   value={selectedCategory}
@@ -504,10 +510,6 @@ export default function MachinesPage() {
                 >
                   {ASSET_CATEGORIES.map((cat) => (
                     <option key={cat.id} value={cat.id} className="text-slate-800 py-1 font-bold">
-                      {cat.id === 'MACHINE' && '🧵 '}
-                      {cat.id === 'FURNITURE' && '🪑 '}
-                      {cat.id === 'VEHICLE' && '🚜 '}
-                      {cat.id === 'UTILITY' && '⚡ '}
                       {cat.name} ({cat.singular})
                     </option>
                   ))}
@@ -515,16 +517,6 @@ export default function MachinesPage() {
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-500">
                   <ChevronDown className="w-4 h-4" />
                 </div>
-              </div>
-              <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-500">
-                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {selectedCategory === 'MACHINE' && 'Industrial Machinery'}
-                  {selectedCategory === 'FURNITURE' && 'Work Tables & Seating'}
-                  {selectedCategory === 'VEHICLE' && 'Material Transport'}
-                  {selectedCategory === 'UTILITY' && 'Plant Infrastructure'}
-                </span>
-                <span>•</span>
-                <span className="truncate">{currentCategoryDef.description}</span>
               </div>
             </div>
 
@@ -534,14 +526,13 @@ export default function MachinesPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-semibold text-slate-600">
-                    Asset Variety / Model Subtype *
+                    Asset Variety *
                   </label>
                   {!isCustomType ? (
                     <button
                       type="button"
                       onClick={() => handleSubtypeChange('__CUSTOM_TYPE__')}
                       className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
-                      title="Add a custom variety or new seating/machine/table model"
                     >
                       <span>+ New Variety</span>
                     </button>
@@ -560,58 +551,51 @@ export default function MachinesPage() {
                 </div>
 
                 {!isCustomType ? (
-                  <>
-                    <select
-                      required
-                      value={mType}
-                      onChange={(e) => handleSubtypeChange(e.target.value as MachineType)}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-bold"
-                    >
-                      {selectedCategory === 'FURNITURE' && furnitureGroups ? (
-                        <>
-                          <optgroup label="📋 Work Tables & Workstations">
-                            {furnitureGroups.tables.map((sub) => (
-                              <option key={sub.id} value={sub.id}>
-                                {sub.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label="💺 Chairs & Floor Seating">
-                            {furnitureGroups.chairs.map((sub) => (
-                              <option key={sub.id} value={sub.id}>
-                                {sub.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                          {furnitureGroups.others.length > 0 && (
-                            <optgroup label="🛠️ Other Furniture Models">
-                              {furnitureGroups.others.map((sub) => (
-                                <option key={sub.id} value={sub.id}>
-                                  {sub.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </>
-                      ) : (
-                        <optgroup label={`Standard ${currentCategoryDef.singular} Models`}>
-                          {allSubtypesForCategory.map((sub) => (
+                  <select
+                    required
+                    value={mType}
+                    onChange={(e) => handleSubtypeChange(e.target.value as MachineType)}
+                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-bold"
+                  >
+                    {selectedCategory === 'FURNITURE' && furnitureGroups ? (
+                      <>
+                        <optgroup label="Work Tables & Workstations">
+                          {furnitureGroups.tables.map((sub) => (
                             <option key={sub.id} value={sub.id}>
                               {sub.name}
                             </option>
                           ))}
                         </optgroup>
-                      )}
-                      <option value="__CUSTOM_TYPE__" className="text-indigo-600 font-bold">
-                        ✨ + Add New / Custom {currentCategoryDef.singular} Type...
-                      </option>
-                    </select>
-                    <span className="text-[10px] text-slate-500 mt-1 block leading-tight">
-                      {ASSET_SUBTYPE_LOOKUP[mType]?.specs ||
-                        customSubtypes.find((s) => s.id === mType)?.specs ||
-                        'Standard industrial plant specification'}
-                    </span>
-                  </>
+                        <optgroup label="Chairs & Floor Seating">
+                          {furnitureGroups.chairs.map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {furnitureGroups.others.length > 0 && (
+                          <optgroup label="Other Furniture Models">
+                            {furnitureGroups.others.map((sub) => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </>
+                    ) : (
+                      <optgroup label={`Standard ${currentCategoryDef.singular} Models`}>
+                        {allSubtypesForCategory.map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <option value="__CUSTOM_TYPE__" className="text-indigo-600 font-bold">
+                      Add New / Custom {currentCategoryDef.singular} Type...
+                    </option>
+                  </select>
                 ) : (
                   <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
                     <div>
@@ -623,32 +607,20 @@ export default function MachinesPage() {
                         required
                         value={customTypeName}
                         onChange={(e) => setCustomTypeName(e.target.value)}
-                        placeholder={
-                          selectedCategory === 'FURNITURE'
-                            ? 'e.g. Ergonomic Drafting Chair or Cutting Table'
-                            : selectedCategory === 'CHAIR'
-                            ? 'e.g. Drafting Stool with Foot Ring'
-                            : selectedCategory === 'TABLE'
-                            ? 'e.g. Fabric Layout & Spreading Bench'
-                            : selectedCategory === 'UTILITY'
-                            ? 'e.g. Task Gooseneck LED 15W'
-                            : selectedCategory === 'VEHICLE'
-                            ? 'e.g. Electric Forklift or Pallet Jack'
-                            : 'e.g. Multi-Needle Smocking Machine'
-                        }
+                        placeholder="e.g. Model Name"
                         className="w-full px-3 py-1.5 text-xs bg-white border border-indigo-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                         autoFocus
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-indigo-800 mb-0.5">
-                        Technical Specs &amp; Measurements
+                        Technical Specs
                       </label>
                       <input
                         type="text"
                         value={customSpecs}
                         onChange={(e) => setCustomSpecs(e.target.value)}
-                        placeholder="e.g. 600-850mm pneumatic lift, chrome foot ring, ESD vinyl"
+                        placeholder="e.g. Technical specifications"
                         className="w-full px-3 py-1.5 text-[11px] bg-white border border-indigo-200 rounded-lg text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
                     </div>
@@ -660,7 +632,7 @@ export default function MachinesPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-semibold text-slate-600">
-                    Brand / Manufacturer OEM *
+                    Brand *
                   </label>
                   {!isCustomBrand ? (
                     <button
@@ -670,7 +642,6 @@ export default function MachinesPage() {
                         setCustomBrandInput('');
                       }}
                       className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
-                      title="Enter a new supplier or custom brand name"
                     >
                       <span>+ New Brand</span>
                     </button>
@@ -689,40 +660,35 @@ export default function MachinesPage() {
                 </div>
 
                 {!isCustomBrand ? (
-                  <>
-                    <select
-                      required
-                      value={mBrand}
-                      onChange={(e) => {
-                        if (e.target.value === '__CUSTOM_BRAND__') {
-                          setIsCustomBrand(true);
-                          setCustomBrandInput('');
-                        } else {
-                          setMBrand(e.target.value);
-                        }
-                      }}
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-bold"
-                    >
-                      <optgroup label="Available OEM Suppliers">
-                        {availableBrands.map((b) => (
-                          <option key={b} value={b}>
-                            {b} OEM
-                          </option>
-                        ))}
-                      </optgroup>
-                      <option value="__CUSTOM_BRAND__" className="text-indigo-600 font-bold">
-                        ✨ + Enter New / Custom Brand...
-                      </option>
-                    </select>
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      Verified supplier for {currentCategoryDef.singular}
-                    </span>
-                  </>
+                  <select
+                    required
+                    value={mBrand}
+                    onChange={(e) => {
+                      if (e.target.value === '__CUSTOM_BRAND__') {
+                        setIsCustomBrand(true);
+                        setCustomBrandInput('');
+                      } else {
+                        setMBrand(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-bold"
+                  >
+                    <optgroup label="Available Brands">
+                      {availableBrands.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <option value="__CUSTOM_BRAND__" className="text-indigo-600 font-bold">
+                      + Add Custom Brand...
+                    </option>
+                  </select>
                 ) : (
                   <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
                     <div>
                       <label className="block text-[10px] font-bold uppercase text-indigo-900 mb-0.5">
-                        Enter Custom Brand / Manufacturer *
+                        Brand Name *
                       </label>
                       <input
                         type="text"
@@ -732,14 +698,11 @@ export default function MachinesPage() {
                           setCustomBrandInput(e.target.value);
                           setMBrand(e.target.value);
                         }}
-                        placeholder="e.g. Steelcase, Godrej Interio, Local Fabrication"
+                        placeholder="e.g. Brand Name"
                         className="w-full px-3 py-1.5 text-xs bg-white border border-indigo-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                         autoFocus
                       />
                     </div>
-                    <span className="text-[10px] text-indigo-700 block">
-                      Will be saved and remembered for future asset registrations.
-                    </span>
                   </div>
                 )}
               </div>
@@ -749,7 +712,7 @@ export default function MachinesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Asset ID (Barcode / QR Unique Tag) *
+                  Asset ID *
                 </label>
                 <input
                   type="text"
@@ -759,19 +722,18 @@ export default function MachinesPage() {
                   placeholder="e.g. MC-OVK-4TH-101"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none font-mono font-bold text-slate-900"
                 />
-                <span className="text-[10px] text-slate-400">Unique factory barcode / physical stencil</span>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Model Series / Specification *
+                  Model / Specification *
                 </label>
                 <input
                   type="text"
                   required
                   value={mModel}
                   onChange={(e) => setMModel(e.target.value)}
-                  placeholder="e.g. AZ-8000G / 4-Thread High-Speed"
+                  placeholder="e.g. AZ-8000G"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none font-medium text-slate-900"
                 />
               </div>
@@ -781,7 +743,7 @@ export default function MachinesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Installation / Purchase Date *
+                  Installation Date *
                 </label>
                 <input
                   type="date"
@@ -793,7 +755,7 @@ export default function MachinesPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Calculated Asset Age
+                  Asset Age
                 </label>
                 <input
                   type="text"
@@ -804,7 +766,7 @@ export default function MachinesPage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Capital Valuation (₹ INR)
+                  Cost (₹)
                 </label>
                 <input
                   type="number"
@@ -816,97 +778,65 @@ export default function MachinesPage() {
               </div>
             </div>
 
-            {/* Power / Drive, Department, and Station */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {selectedCategory === 'MACHINE' ? (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Motor Drive Type
-                  </label>
-                  <select
-                    value={mMotor}
-                    onChange={(e) => setMMotor(e.target.value as MotorType)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800"
-                  >
-                    <option value="SERVO">Direct-Drive Servo (Energy Saving)</option>
-                    <option value="CLUTCH">Traditional Clutch Motor</option>
-                  </select>
-                </div>
-              ) : selectedCategory === 'UTILITY' ? (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Power Connection
-                  </label>
-                  <input
-                    type="text"
-                    readOnly
-                    value="220V AC / 415V Three-Phase"
-                    className="w-full px-3 py-2 text-sm bg-slate-100 border border-slate-200 text-slate-700 rounded-xl font-medium outline-none cursor-not-allowed"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Asset Power Class
-                  </label>
-                  <input
-                    type="text"
-                    readOnly
-                    value="Non-Powered Industrial Asset"
-                    className="w-full px-3 py-2 text-sm bg-slate-100 border border-slate-200 text-slate-700 rounded-xl font-medium outline-none cursor-not-allowed"
-                  />
-                </div>
-              )}
-
+            {/* Plant Unit & Located Area */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Assigned Factory Location *
+                  Plant Unit *
                 </label>
-                <select
-                  value={mLine}
-                  onChange={(e) => setMLine(e.target.value as FloorLine)}
+                <input
+                  type="text"
+                  list="unit-presets-list"
+                  required
+                  value={mUnit}
+                  onChange={(e) => setMUnit(e.target.value)}
+                  placeholder="e.g. Unit 01"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
-                >
-                  <optgroup label="🧵 Sewing Floor Lines">
-                    <option value="Line 01">Sewing Floor - Line 01</option>
-                    <option value="Line 02">Sewing Floor - Line 02</option>
-                    <option value="Line 03">Sewing Floor - Line 03</option>
-                    <option value="Line 04">Sewing Floor - Line 04</option>
-                  </optgroup>
-                  <optgroup label="🏢 Plant Departments">
-                    <option value="Cutting Department">Fabric Cutting Department</option>
-                    <option value="Finishing & Pressing">Finishing & Steam Pressing</option>
-                    <option value="Embroidery & Printing">Embroidery & Printing</option>
-                    <option value="Quality & Packing">Quality Assurance & Packing</option>
-                    <option value="Warehouse & Storage">Warehouse & Raw Materials</option>
-                    <option value="Central Utilities & Plant">Central Utilities & Power Plant</option>
-                    <option value="Maintenance Workshop">Maintenance Workshop & Tool Bay</option>
-                    <option value="Scrap Bay">Scrap & Salvage Bay</option>
-                  </optgroup>
-                </select>
+                />
+                <datalist id="unit-presets-list">
+                  <option value="Unit 01" />
+                  <option value="Unit 02" />
+                  <option value="Unit 03" />
+                  <option value="Unit 04" />
+                  <option value="Central Plant" />
+                  <option value="Warehouse Unit" />
+                </datalist>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Floor Bay / Station No.
+                  Area / Zone *
                 </label>
                 <input
                   type="text"
-                  value={mStation}
-                  onChange={(e) => setMStation(e.target.value)}
-                  placeholder="Station 08 / Bay 02"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-medium"
+                  list="area-presets-list"
+                  required
+                  value={mArea}
+                  onChange={(e) => setMArea(e.target.value)}
+                  placeholder="e.g. Sewing Floor"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
                 />
+                <datalist id="area-presets-list">
+                  <option value="Sewing Floor" />
+                  <option value="Cutting Section" />
+                  <option value="Finishing & Ironing Section" />
+                  <option value="Embroidery & Printing Area" />
+                  <option value="Quality Inspection Zone" />
+                  <option value="Packing & Dispatch Bay" />
+                  <option value="Utility & Generator Room" />
+                  <option value="Maintenance Workshop" />
+                  <option value="Raw Material Storage" />
+                </datalist>
               </div>
             </div>
 
             <div className="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
               <button
                 type="submit"
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center gap-2 cursor-pointer"
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center gap-2 cursor-pointer"
               >
-                <Tag className="w-4 h-4" />
-                <span>Register Asset &amp; Render QR Tag</span>
+                <QrCode className="w-4 h-4" />
+                <span>Generate</span>
               </button>
             </div>
           </form>
@@ -917,93 +847,101 @@ export default function MachinesPage() {
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 print:border-none print:shadow-none print:p-0">
             <div className="flex items-center justify-between no-print">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                <Tag className="w-4 h-4 text-indigo-600" />
-                <span>Asset QR Sticker Preview</span>
+                <QrCode className="w-4 h-4 text-indigo-600" />
+                <span>QR Sticker Preview</span>
               </h3>
-              <span className="text-[10px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded uppercase">
-                Ready to Paste
-              </span>
+              {isQrGenerated && (
+                <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded uppercase">
+                  Generated
+                </span>
+              )}
             </div>
 
-            {/* Printable Sticker: Only QR and Asset ID */}
-            <div
-              id="printable-qr-tag"
-              className="bg-white border-2 border-slate-900 rounded-2xl p-6 shadow-sm flex flex-col items-center justify-center text-center mx-auto max-w-[280px] print:border-2 print:border-black print:rounded-none print:shadow-none print:p-4 print:m-auto"
-            >
-              {/* High-Resolution QR Code containing all asset specifications */}
-              <div className="p-3 bg-white border-2 border-slate-900 rounded-xl flex items-center justify-center shadow-xs">
-                <QRCodeSVG
-                  value={qrData}
-                  size={180}
-                  level="H"
-                  bgColor="#ffffff"
-                  fgColor="#000000"
-                />
-              </div>
+            {isQrGenerated ? (
+              <>
+                {/* Printable Sticker: Only QR and Asset ID */}
+                <div
+                  id="printable-qr-tag"
+                  className="bg-white border-2 border-slate-900 rounded-2xl p-6 shadow-sm flex flex-col items-center justify-center text-center mx-auto max-w-[280px] print:border-2 print:border-black print:rounded-none print:shadow-none print:p-4 print:m-auto"
+                >
+                  {/* Plant Unit & Located Area badge */}
+                  <div className="w-full pb-2 mb-2 border-b border-dashed border-slate-300 flex items-center justify-between text-left">
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded">
+                      {mUnit || 'Unit 01'}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-700 truncate max-w-[130px]" title={mArea}>
+                      {mArea || 'Sewing Floor'}
+                    </span>
+                  </div>
 
-              {/* Asset Identifier */}
-              <div className="mt-3.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Asset ID
+                  {/* High-Resolution QR Code */}
+                  <div className="p-3 bg-white border-2 border-slate-900 rounded-xl flex items-center justify-center shadow-xs">
+                    <QRCodeSVG
+                      value={qrData}
+                      size={180}
+                      level="H"
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                    />
+                  </div>
+
+                  {/* Asset Identifier */}
+                  <div className="mt-3.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Asset ID
+                    </div>
+                    <div className="text-lg font-black text-slate-950 font-mono tracking-wide">
+                      {mId || 'ASSET-101'}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-lg font-black text-slate-950 font-mono tracking-wide">
-                  {mId || 'ASSET-101'}
+
+                {/* Tag Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-1 no-print">
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="w-full sm:flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print QR Sticker</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrintModalMachine(currentMachineObj);
+                      setPrintModalMode('TAG');
+                      setIsPrintModalOpen(true);
+                    }}
+                    className="w-full sm:flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Print Options</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScanModalTargetId(mId);
+                      setIsScanModalOpen(true);
+                    }}
+                    className="w-full sm:w-auto py-2.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Scan</span>
+                  </button>
                 </div>
+              </>
+            ) : (
+              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center text-center mx-auto max-w-[280px] min-h-[300px]">
+                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center mb-3 shadow-2xs">
+                  <QrCode className="w-6 h-6 text-slate-400" />
+                </div>
+                <p className="text-xs font-bold text-slate-700">QR Not Generated</p>
+                <p className="text-[11px] text-slate-400 mt-1 max-w-[190px]">
+                  Fill in asset specifications and click <strong>Generate</strong> to create the QR tag.
+                </p>
               </div>
-            </div>
-
-            {/* Tag Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center gap-2 pt-1 no-print">
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="w-full sm:flex-1 py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
-                title="Direct print QR sticker for asset"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print QR Sticker</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPrintModalMachine(currentMachineObj);
-                  setPrintModalMode('TAG');
-                  setIsPrintModalOpen(true);
-                }}
-                className="w-full sm:flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
-                title="Inspect printable sticker & batch sheet"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Print Options</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setScanModalTargetId(mId);
-                  setIsScanModalOpen(true);
-                }}
-                className="w-full sm:w-auto py-2.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                title="Simulate smartphone QR scan"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                <span>Scan</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Floor Scan Information Box */}
-          <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 text-xs text-indigo-950 space-y-1.5 no-print">
-            <div className="font-bold flex items-center gap-1.5 text-indigo-900">
-              <Info className="w-4 h-4 text-indigo-600" />
-              <span>Floor Scan Mechanics:</span>
-            </div>
-            <p className="text-indigo-900/80 leading-relaxed text-[11px]">
-              When line operators or mechanics scan this physical label on the floor, the encoded URL{' '}
-              <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[10px] text-indigo-800 border border-indigo-200">
-                /scan/{mId}
-              </code>{' '}
-              opens instantaneous mobile workflows: <b>1) Log Breakdown / Defect</b> (triggers mechanic dispatch) or <b>2) Relocate Asset</b> (rebalances factory departments).
-            </p>
+            )}
           </div>
         </div>
       </div>

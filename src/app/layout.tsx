@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
+import { NavProvider } from '@/context/NavContext';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'TexTech Garments - CMMS & Asset Management',
-  description: 'Garment Factory Maintenance & Asset Management Suite (Next.js 16, Supabase & QR Tooling)',
+  title: 'Maintenance Module',
+  description: 'Garment Factory Maintenance & Asset Management Suite (Next.js 16, MongoDB & QR Tooling)',
 };
 
 export default function RootLayout({
@@ -29,9 +30,11 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-800">
+      <body className="min-h-full flex flex-col bg-slate-100 text-slate-800">
         <AuthProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <NavProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </NavProvider>
         </AuthProvider>
       </body>
     </html>

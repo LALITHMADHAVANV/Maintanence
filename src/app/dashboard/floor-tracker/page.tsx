@@ -1002,27 +1002,29 @@ export default function FloorTrackerPage() {
           </div>
         </div>
 
-        {/* Right: 4 Simplified Category Selector Buttons */}
-        <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Right: 4 Simplified Category Selector Buttons (Enlarged Numbers) */}
+        <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3.5">
           {/* 1. Machinery */}
           <button
             type="button"
             onClick={() => toggleInlineCategory('MACHINE')}
-            className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+            className={`p-4 sm:p-5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between min-h-[125px] ${
               inlineCategoryView === 'MACHINE'
                 ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-500/20 shadow-sm'
-                : 'bg-white border-slate-200/90 hover:border-indigo-300 shadow-xs'
+                : 'bg-white border-slate-200/90 hover:border-indigo-300 shadow-xs hover:shadow-sm'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">Machinery</span>
-              <div className="w-7 h-7 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <Wrench className="w-3.5 h-3.5" />
+              <span className="text-xs sm:text-sm font-bold text-slate-800">Machinery</span>
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-200/60 shadow-2xs">
+                <Wrench className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </div>
             </div>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-xl font-black font-mono text-slate-900">{categoryCounts.MACHINE || 0}</span>
-              <span className="text-[10px] font-bold text-indigo-600">
+            <div className="mt-3 flex items-baseline justify-between">
+              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-slate-900">
+                {categoryCounts.MACHINE || 0}
+              </span>
+              <span className="text-[11px] font-bold text-indigo-600">
                 {inlineCategoryView === 'MACHINE' ? 'Active Table ✕' : 'Click to View'}
               </span>
             </div>
@@ -1032,23 +1034,23 @@ export default function FloorTrackerPage() {
           <button
             type="button"
             onClick={() => toggleInlineCategory('TABLE')}
-            className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+            className={`p-4 sm:p-5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between min-h-[125px] ${
               inlineCategoryView === 'TABLE' || inlineCategoryView === 'FURNITURE'
                 ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
-                : 'bg-white border-slate-200/90 hover:border-amber-300 shadow-xs'
+                : 'bg-white border-slate-200/90 hover:border-amber-300 shadow-xs hover:shadow-sm'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">Furniture</span>
-              <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Armchair className="w-3.5 h-3.5" />
+              <span className="text-xs sm:text-sm font-bold text-slate-800">Furniture</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200/60 shadow-2xs">
+                <Armchair className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </div>
             </div>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-xl font-black font-mono text-slate-900">
+            <div className="mt-3 flex items-baseline justify-between">
+              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-slate-900">
                 {(categoryCounts.TABLE || 0) + (categoryCounts.CHAIR || 0)}
               </span>
-              <span className="text-[10px] font-bold text-amber-600">
+              <span className="text-[11px] font-bold text-amber-600">
                 {inlineCategoryView === 'TABLE' ? 'Active Table ✕' : 'Click to View'}
               </span>
             </div>
@@ -1058,21 +1060,23 @@ export default function FloorTrackerPage() {
           <button
             type="button"
             onClick={() => toggleInlineCategory('VEHICLE')}
-            className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+            className={`p-4 sm:p-5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between min-h-[125px] ${
               inlineCategoryView === 'VEHICLE'
                 ? 'bg-stone-50 border-stone-500 ring-2 ring-stone-500/20 shadow-sm'
-                : 'bg-white border-slate-200/90 hover:border-stone-300 shadow-xs'
+                : 'bg-white border-slate-200/90 hover:border-stone-300 shadow-xs hover:shadow-sm'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">Vehicles</span>
-              <div className="w-7 h-7 rounded-xl bg-stone-50 text-stone-600 flex items-center justify-center">
-                <Truck className="w-3.5 h-3.5" />
+              <span className="text-xs sm:text-sm font-bold text-slate-800">Vehicles</span>
+              <div className="w-9 h-9 rounded-xl bg-stone-50 text-stone-600 flex items-center justify-center border border-stone-200/60 shadow-2xs">
+                <Truck className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </div>
             </div>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-xl font-black font-mono text-slate-900">{categoryCounts.VEHICLE || 0}</span>
-              <span className="text-[10px] font-bold text-stone-600">
+            <div className="mt-3 flex items-baseline justify-between">
+              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-slate-900">
+                {categoryCounts.VEHICLE || 0}
+              </span>
+              <span className="text-[11px] font-bold text-stone-600">
                 {inlineCategoryView === 'VEHICLE' ? 'Active Table ✕' : 'Click to View'}
               </span>
             </div>
@@ -1082,21 +1086,23 @@ export default function FloorTrackerPage() {
           <button
             type="button"
             onClick={() => toggleInlineCategory('UTILITY')}
-            className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+            className={`p-4 sm:p-5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between min-h-[125px] ${
               inlineCategoryView === 'UTILITY'
                 ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-500/20 shadow-sm'
-                : 'bg-white border-slate-200/90 hover:border-purple-300 shadow-xs'
+                : 'bg-white border-slate-200/90 hover:border-purple-300 shadow-xs hover:shadow-sm'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">Utilities & Plant</span>
-              <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                <Flame className="w-3.5 h-3.5" />
+              <span className="text-xs sm:text-sm font-bold text-slate-800">Utilities & Plant</span>
+              <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-200/60 shadow-2xs">
+                <Flame className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </div>
             </div>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-xl font-black font-mono text-slate-900">{categoryCounts.UTILITY || 0}</span>
-              <span className="text-[10px] font-bold text-purple-600">
+            <div className="mt-3 flex items-baseline justify-between">
+              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-slate-900">
+                {categoryCounts.UTILITY || 0}
+              </span>
+              <span className="text-[11px] font-bold text-purple-600">
                 {inlineCategoryView === 'UTILITY' ? 'Active Table ✕' : 'Click to View'}
               </span>
             </div>
@@ -1155,8 +1161,8 @@ export default function FloorTrackerPage() {
                   <th className="py-2.5 px-3">Asset ID</th>
                   <th className="py-2.5 px-3">Model / Name</th>
                   <th className="py-2.5 px-3">Brand</th>
-                  <th className="py-2.5 px-3">Department & Line</th>
-                  <th className="py-2.5 px-3">Station</th>
+                  <th className="py-2.5 px-3">Plant Unit &amp; Area</th>
+                  <th className="py-2.5 px-3">Line &amp; Station</th>
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3 text-right">Details</th>
                 </tr>
@@ -1178,8 +1184,12 @@ export default function FloorTrackerPage() {
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{asset.id}</td>
                       <td className="py-2.5 px-3 font-semibold text-slate-800">{asset.name || asset.model}</td>
                       <td className="py-2.5 px-3 text-slate-600">{asset.brand}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{asset.currentLine}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{asset.stationNo}</td>
+                      <td className="py-2.5 px-3 text-slate-700">
+                        <span className="font-bold text-slate-900">{asset.unit || 'Unit 01'}</span>
+                        <span className="text-slate-400 mx-1">•</span>
+                        <span className="text-slate-600">{asset.area || asset.department || 'Sewing Floor'}</span>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-slate-600">{asset.currentLine} ({asset.stationNo})</td>
                       <td className="py-2.5 px-3">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1222,20 +1232,18 @@ export default function FloorTrackerPage() {
                   <span className="font-semibold text-slate-800">{selectedInlineAsset.brand}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500">Department:</span>{' '}
+                  <span className="text-slate-500">Plant Unit:</span>{' '}
+                  <span className="font-semibold text-slate-800">{selectedInlineAsset.unit || 'Unit 01'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Located Area:</span>{' '}
                   <span className="font-semibold text-slate-800">
-                    {selectedInlineAsset.department || selectedInlineAsset.currentLine}
+                    {selectedInlineAsset.area || selectedInlineAsset.department || 'Sewing Floor'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500">Station:</span>{' '}
-                  <span className="font-semibold text-slate-800">{selectedInlineAsset.stationNo}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500">Motor:</span>{' '}
-                  <span className="font-semibold text-slate-800">
-                    {selectedInlineAsset.motorType || 'N/A'}
-                  </span>
+                  <span className="text-slate-500">Station / Line:</span>{' '}
+                  <span className="font-semibold text-slate-800">{selectedInlineAsset.currentLine} ({selectedInlineAsset.stationNo})</span>
                 </div>
               </div>
               {selectedInlineAsset.specs && (

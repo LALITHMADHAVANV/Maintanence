@@ -19,8 +19,13 @@ import {
   ClipboardList,
   Users,
   Zap,
+  LayoutDashboard,
+  QrCode,
+  IndianRupee,
+  PanelLeftClose,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useNav } from '@/context/NavContext';
 import {
   subscribeParts,
   subscribeRepairs,
@@ -31,6 +36,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, logout } = useAuth();
+  const { hideNav } = useNav();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const [lowStockCount, setLowStockCount] = useState<number>(0);
@@ -121,77 +127,69 @@ export function Sidebar() {
       },
     ];
   } else if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
-    // Admin & Asset Manager: Streamlined without shopfloor tool crib & mechanic maintenance tickets
+    // 🛡️ Admin & Asset Manager: Admin Dashboard, Asset Registration, Assets, Allowance, History
     navItems = [
       {
-        label: 'Asset Registry & QR',
+        label: 'Admin Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
+      },
+      {
+        label: 'Asset Registration',
         href: '/dashboard/machines',
-        icon: Wrench,
+        icon: QrCode,
       },
       {
-        label: 'Floor Workstations',
-        href: '/dashboard/floor-tracker',
-        icon: Layers,
-      },
-      {
-        label: 'Asset Categories',
+        label: 'Assets',
         href: '/dashboard/asset-types',
-        icon: ClipboardList,
+        icon: Boxes,
       },
       {
-        label: 'Service History',
+        label: 'Allowance',
+        href: '/dashboard/allowance',
+        icon: IndianRupee,
+      },
+      {
+        label: 'History',
         href: '/dashboard/history',
         icon: History,
       },
-      {
-        label: 'CEO Approvals',
-        href: '/dashboard/messages',
-        icon: Crown,
-        badge: pendingCeoCount > 0 ? pendingCeoCount : null,
-        badgeColor: 'bg-rose-600 text-white',
-      },
-      {
-        label: 'User Management',
-        href: '/dashboard/users',
-        icon: UserPlus,
-      },
     ];
-  } else {
-    // Mechanic, Senior Mechanic, Electrician, Senior Electrician
-    const isElectricianRole = role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN';
+  } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
+    // 🔧 Senior Mechanic: Mechanic Calendar & Group Indent
     navItems = [
       {
-        label: isElectricianRole ? 'Electrical & Tickets' : 'Maintenance & Tickets',
+        label: 'Mechanic Calendar',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-rose-500 text-white',
       },
-      ...(!isElectricianRole
-        ? [
-            {
-              label: 'Tool Crib & Indents',
-              href: '/dashboard/inventory',
-              icon: Boxes,
-              badge: lowStockCount > 0 ? lowStockCount : null,
-              badgeColor: 'bg-amber-500 text-slate-900',
-            },
-          ]
-        : []),
       {
-        label: 'Service History',
-        href: '/dashboard/history',
-        icon: History,
+        label: 'Group Indent',
+        href: '/dashboard/inventory',
+        icon: Package,
+        badge: lowStockCount > 0 ? lowStockCount : null,
+        badgeColor: 'bg-amber-500 text-slate-900',
       },
-      ...((role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN')
-        ? [
-            {
-              label: role === 'SENIOR_ELECTRICIAN' ? 'Electrician Roster' : 'Team Work Roster',
-              href: '/dashboard/mechanic-roster',
-              icon: Users,
-            },
-          ]
-        : []),
+    ];
+  } else {
+    // 🦺 Mechanic & Electrician: Mechanic Calendar & Indent
+    navItems = [
+      {
+        label: 'Mechanic Calendar',
+        href: '/dashboard/calendar',
+        icon: CalendarCheck,
+        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
+        badgeColor: 'bg-rose-500 text-white',
+      },
+      {
+        label: 'Indent',
+        href: '/dashboard/inventory',
+        icon: Boxes,
+        badge: lowStockCount > 0 ? lowStockCount : null,
+        badgeColor: 'bg-amber-500 text-slate-900',
+      },
     ];
   }
 
@@ -218,35 +216,52 @@ export function Sidebar() {
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-200 select-none">
+    <div className="flex flex-col h-full bg-white text-slate-700 select-none">
       {/* Brand Header */}
-      <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+      <div className="p-5 border-b border-slate-200 flex items-center justify-between">
         <Link
-          href={role === 'CEO' ? '/dashboard/messages' : '/dashboard/machines'}
+          href={
+            role === 'CEO'
+              ? '/dashboard/messages'
+              : role === 'STORE_PERSON'
+              ? '/dashboard/store-inbox'
+              : role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN'
+              ? '/dashboard/calendar'
+              : '/dashboard'
+          }
           className="flex items-center gap-3 group"
         >
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-105 transition shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-indigo-600/20 group-hover:scale-105 transition shrink-0">
             <Wrench className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-base tracking-tight text-white">
-                TexTech
+              <span className="font-extrabold text-base tracking-tight text-slate-900">
+                Maintenance
               </span>
-              <span className="px-1.5 py-0.2 text-[9px] font-bold bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/30">
-                CMMS
+              <span className="px-1.5 py-0.2 text-[9px] font-bold bg-indigo-50 text-indigo-700 rounded border border-indigo-200">
+                Module
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 truncate max-w-[140px]">
+            <p className="text-[11px] text-slate-500 font-medium truncate max-w-[140px]">
               Asset Maintenance
             </p>
           </div>
         </Link>
 
+        {/* Hide Navbar (Desktop) */}
+        <button
+          onClick={hideNav}
+          className="hidden md:flex p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+          title="Hide Navigation Bar"
+        >
+          <PanelLeftClose className="w-4 h-4" />
+        </button>
+
         {/* Mobile close button */}
         <button
           onClick={() => setIsMobileOpen(false)}
-          className="md:hidden p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+          className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -268,10 +283,10 @@ export function Sidebar() {
               href={item.href}
               className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition group ${
                 isActive
-                  ? 'bg-indigo-600 text-white shadow-sm'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20 font-bold'
                   : item.highlight
-                  ? 'text-purple-300 bg-purple-950/40 hover:bg-purple-900/50 border border-purple-800/40'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
+                  ? 'text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -280,8 +295,8 @@ export function Sidebar() {
                     isActive
                       ? 'text-white'
                       : item.highlight
-                      ? 'text-purple-400'
-                      : 'text-slate-400 group-hover:text-slate-200'
+                      ? 'text-purple-600'
+                      : 'text-slate-500 group-hover:text-slate-800'
                   }`}
                 />
                 <span className="truncate">{item.label}</span>
@@ -290,7 +305,9 @@ export function Sidebar() {
               {item.badge !== null && item.badge !== undefined && (
                 <span
                   className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold shrink-0 ${
-                    item.badgeColor || 'bg-indigo-500 text-white'
+                    isActive
+                      ? 'bg-white text-indigo-700'
+                      : item.badgeColor || 'bg-indigo-600 text-white'
                   }`}
                 >
                   {item.badge}
@@ -302,8 +319,8 @@ export function Sidebar() {
       </nav>
 
       {/* User Profile & Logout Bottom Dock */}
-      <div className="p-3 border-t border-slate-800 bg-slate-950/50">
-        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/60 border border-slate-700/50">
+      <div className="p-3 border-t border-slate-200 bg-slate-50/70">
+        <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200 shadow-xs">
           <div className="flex items-center gap-2.5 min-w-0">
             <div
               className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase shrink-0 shadow-xs ${getRoleBadgeColor()}`}
@@ -317,10 +334,10 @@ export function Sidebar() {
               )}
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-white truncate leading-tight">
+              <div className="text-xs font-bold text-slate-900 truncate leading-tight">
                 {user?.name || 'Staff User'}
               </div>
-              <div className="text-[10px] text-slate-400 font-medium uppercase truncate">
+              <div className="text-[10px] text-slate-500 font-semibold uppercase truncate">
                 {role}
               </div>
             </div>
@@ -328,7 +345,7 @@ export function Sidebar() {
 
           <button
             onClick={handleSignOut}
-            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer shrink-0"
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
             title="Sign Out"
           >
             <LogOut className="w-4 h-4" />
@@ -343,11 +360,11 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile Top App Bar (Only visible on small screens) */}
-      <div className="md:hidden bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800 sticky top-0 z-40">
+      <div className="md:hidden bg-white text-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-200 sticky top-0 z-40">
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsMobileOpen(true)}
-            className="p-1.5 rounded-lg bg-slate-800 text-slate-200 hover:text-white transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 transition cursor-pointer"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -355,7 +372,7 @@ export function Sidebar() {
             <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-xs text-white">
               <Wrench className="w-3.5 h-3.5" />
             </div>
-            <span className="font-bold text-sm tracking-tight text-white">TexTech CMMS</span>
+            <span className="font-bold text-sm tracking-tight text-slate-900">Maintenance Module</span>
           </div>
         </div>
 
@@ -365,7 +382,7 @@ export function Sidebar() {
           </span>
           <button
             onClick={handleSignOut}
-            className="p-1.5 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
             title="Sign Out"
           >
             <LogOut className="w-4 h-4" />
@@ -377,17 +394,17 @@ export function Sidebar() {
       {isMobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
             onClick={() => setIsMobileOpen(false)}
           />
-          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10">
+          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10 bg-white">
             {sidebarContent}
           </div>
         </div>
       )}
 
       {/* Desktop Sticky Left Sidebar */}
-      <aside className="hidden md:flex flex-col w-60 shrink-0 sticky top-0 h-screen border-r border-slate-800 z-30">
+      <aside className="hidden md:flex flex-col w-60 shrink-0 sticky top-0 h-screen border-r border-slate-200 bg-white z-30">
         {sidebarContent}
       </aside>
     </>

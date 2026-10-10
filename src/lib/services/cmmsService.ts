@@ -9,17 +9,8 @@ import {
   PartRequisition,
   RequisitionStatus,
 } from '@/types/cmms';
-import {
-  SEED_MACHINES,
-  SEED_PARTS,
-  SEED_REPAIRS,
-  SEED_PPM_SCHEDULES,
-  SEED_REQUISITIONS,
-  SEED_USERS,
-} from '@/lib/seedData';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
-// Local storage keys for offline/demo mode
+// Local storage keys for offline/immediate UI responsiveness
 const STORAGE_KEYS = {
   MACHINES: 'textech_machines',
   PARTS: 'textech_parts',
@@ -29,7 +20,7 @@ const STORAGE_KEYS = {
   SEEDED: 'textech_seeded',
 };
 
-// In-memory subscriber registry for reactive updates in demo mode
+// In-memory subscriber registry for reactive updates
 type Listener<T> = (data: T) => void;
 const listeners = {
   machines: new Set<Listener<Machine[]>>(),
@@ -69,100 +60,75 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
 }
 
 /**
- * Initialize local storage state with seed data if not already present.
+ * Initialize local storage state
  */
 export function initLocalSeedData(): void {
   if (typeof window === 'undefined') return;
-  if (!localStorage.getItem(STORAGE_KEYS.SEEDED)) {
-    localStorage.setItem(STORAGE_KEYS.MACHINES, JSON.stringify(SEED_MACHINES));
-    localStorage.setItem(STORAGE_KEYS.PARTS, JSON.stringify(SEED_PARTS));
-    localStorage.setItem(STORAGE_KEYS.REPAIRS, JSON.stringify(SEED_REPAIRS));
-    localStorage.setItem(STORAGE_KEYS.PPM, JSON.stringify(SEED_PPM_SCHEDULES));
-    localStorage.setItem(STORAGE_KEYS.REQUISITIONS, JSON.stringify(SEED_REQUISITIONS));
-    localStorage.setItem(STORAGE_KEYS.SEEDED, 'true');
-  } else if (!localStorage.getItem(STORAGE_KEYS.REQUISITIONS)) {
-    localStorage.setItem(STORAGE_KEYS.REQUISITIONS, JSON.stringify(SEED_REQUISITIONS));
+  if (localStorage.getItem(STORAGE_KEYS.SEEDED)) {
+    localStorage.removeItem(STORAGE_KEYS.MACHINES);
+    localStorage.removeItem(STORAGE_KEYS.PARTS);
+    localStorage.removeItem(STORAGE_KEYS.REPAIRS);
+    localStorage.removeItem(STORAGE_KEYS.PPM);
+    localStorage.removeItem(STORAGE_KEYS.REQUISITIONS);
+    localStorage.removeItem(STORAGE_KEYS.SEEDED);
   }
 }
 
 /**
- * Reset local and/or Supabase database to initial realistic factory data
+ * Reset local database to empty/initial
  */
 export async function resetToSeedData(): Promise<void> {
   if (typeof window !== 'undefined') {
-    setLocal(STORAGE_KEYS.MACHINES, SEED_MACHINES);
-    setLocal(STORAGE_KEYS.PARTS, SEED_PARTS);
-    setLocal(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
-    setLocal(STORAGE_KEYS.PPM, SEED_PPM_SCHEDULES);
-    setLocal(STORAGE_KEYS.REQUISITIONS, SEED_REQUISITIONS);
-    setLocal(STORAGE_KEYS.SEEDED, 'true');
+    setLocal(STORAGE_KEYS.MACHINES, []);
+    setLocal(STORAGE_KEYS.PARTS, []);
+    setLocal(STORAGE_KEYS.REPAIRS, []);
+    setLocal(STORAGE_KEYS.PPM, []);
+    setLocal(STORAGE_KEYS.REQUISITIONS, []);
+    localStorage.removeItem(STORAGE_KEYS.SEEDED);
 
-    notifyLocal('machines', SEED_MACHINES);
-    notifyLocal('parts', SEED_PARTS);
-    notifyLocal('repairs', SEED_REPAIRS);
-    notifyLocal('ppm', SEED_PPM_SCHEDULES);
-    notifyLocal('requisitions', SEED_REQUISITIONS);
-  }
-
-  if (isSupabaseConfigured) {
-    try {
-      // Upsert seed data to Supabase public tables
-      await supabase.from('users').upsert(SEED_USERS.map(u => ({
-        id: u.uid,
-        uid: u.uid,
-        name: u.name,
-        email: u.email,
-        role: u.role,
-        title: u.title
-      })));
-      await supabase.from('machines').upsert(SEED_MACHINES);
-      await supabase.from('spare_parts').upsert(SEED_PARTS);
-      await supabase.from('repair_tickets').upsert(SEED_REPAIRS);
-      await supabase.from('ppm_schedules').upsert(SEED_PPM_SCHEDULES);
-      await supabase.from('requisitions').upsert(SEED_REQUISITIONS);
-    } catch (err) {
-      console.warn('Supabase batch seed warning:', err);
-    }
+    notifyLocal('machines', []);
+    notifyLocal('parts', []);
+    notifyLocal('repairs', []);
+    notifyLocal('ppm', []);
+    notifyLocal('requisitions', []);
   }
 }
 
 /* ======================================================================
-   MACHINES SERVICE
+   MACHINES SERVICE (MongoDB via /api/machines)
    ====================================================================== */
 
 export function subscribeMachines(callback: (machines: Machine[]) => void): () => void {
-  if (isSupabaseConfigured) {
-    const fetchAndNotify = async () => {
-      const { data } = await supabase.from('machines').select('*');
-      if (data && data.length > 0) callback(data as Machine[]);
-      else callback(getLocal(STORAGE_KEYS.MACHINES, SEED_MACHINES));
-    };
-
-    fetchAndNotify();
-
-    const channelName = `machines-changes-${Math.random().toString(36).substring(2, 9)}`;
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, (payload) => {
-        fetchAndNotify();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }
-
   initLocalSeedData();
-  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, SEED_MACHINES);
+  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   callback(current);
   listeners.machines.add(callback);
+
+  // Fetch from MongoDB API
+  const fetchFromMongo = async () => {
+    try {
+      const res = await fetch('/api/machines');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setLocal(STORAGE_KEYS.MACHINES, json.data);
+        notifyLocal('machines', json.data);
+      }
+    } catch (err) {
+      console.warn('MongoDB fetch machines fallback:', err);
+    }
+  };
+
+  fetchFromMongo();
+  const interval = setInterval(fetchFromMongo, 8000);
+
   return () => {
     listeners.machines.delete(callback);
+    clearInterval(interval);
   };
 }
 
 export async function createMachine(machine: Machine): Promise<void> {
-  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, SEED_MACHINES);
+  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   const existsIndex = current.findIndex((m) => m.id.toLowerCase() === machine.id.toLowerCase());
   let updated: Machine[];
 
@@ -175,14 +141,14 @@ export async function createMachine(machine: Machine): Promise<void> {
   setLocal(STORAGE_KEYS.MACHINES, updated);
   notifyLocal('machines', updated);
 
-  if (isSupabaseConfigured) {
-    try {
-      const { error } = await supabase.from('machines').upsert(machine);
-      if (error) throw new Error(error.message);
-    } catch (e) {
-      console.error('Supabase createMachine error:', e);
-      throw e;
-    }
+  try {
+    await fetch('/api/machines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(machine),
+    });
+  } catch (e) {
+    console.error('MongoDB createMachine error:', e);
   }
 }
 
@@ -193,7 +159,7 @@ export async function relocateMachine(
   reason: string = 'Line rebalancing',
   mechanicName: string = 'Ramesh Kumar'
 ): Promise<void> {
-  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, SEED_MACHINES);
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   const machine = currentMachines.find((m) => m.id === machineId);
   if (!machine) return;
 
@@ -251,29 +217,38 @@ export async function relocateMachine(
     partsUsed: [],
   };
 
-  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   const updatedRepairs = [relocationRecord, ...currentRepairs];
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('machines').update({
-        currentLine: targetLine,
-        stationNo: newStation,
-        status: newStatus,
-        previousLine: oldLine,
-        previousStation: oldStation,
-        lastMovedAt: movedAt,
-        lastMovedReason: reason,
-        lastMovedBy: mechanicName,
-        relocationHistory: [moveRecord, ...(machine.relocationHistory || [])],
-      }).eq('id', machineId);
+  try {
+    await fetch('/api/machines', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: machineId,
+        updates: {
+          currentLine: targetLine,
+          stationNo: newStation,
+          status: newStatus,
+          previousLine: oldLine,
+          previousStation: oldStation,
+          lastMovedAt: movedAt,
+          lastMovedReason: reason,
+          lastMovedBy: mechanicName,
+          relocationHistory: [moveRecord, ...(machine.relocationHistory || [])],
+        },
+      }),
+    });
 
-      await supabase.from('repair_tickets').insert(relocationRecord);
-    } catch (e) {
-      console.error('Supabase relocateMachine error:', e);
-    }
+    await fetch('/api/repairs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(relocationRecord),
+    });
+  } catch (e) {
+    console.error('MongoDB relocateMachine error:', e);
   }
 }
 
@@ -281,59 +256,58 @@ export async function updateMachineStatus(
   machineId: string,
   status: MachineStatus
 ): Promise<void> {
-  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, SEED_MACHINES);
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   const updatedMachines = currentMachines.map((m) =>
     m.id === machineId ? { ...m, status } : m
   );
   setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
   notifyLocal('machines', updatedMachines);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('machines').update({ status }).eq('id', machineId);
-    } catch (e) {
-      console.error('Supabase updateMachineStatus error:', e);
-    }
+  try {
+    await fetch('/api/machines', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: machineId, updates: { status } }),
+    });
+  } catch (e) {
+    console.error('MongoDB updateMachineStatus error:', e);
   }
 }
 
 /* ======================================================================
-   SPARE PARTS SERVICE
+   SPARE PARTS SERVICE (MongoDB via /api/parts)
    ====================================================================== */
 
 export function subscribeParts(callback: (parts: SparePart[]) => void): () => void {
-  if (isSupabaseConfigured) {
-    const fetchAndNotify = async () => {
-      const { data } = await supabase.from('spare_parts').select('*');
-      if (data && data.length > 0) callback(data as SparePart[]);
-      else callback(getLocal(STORAGE_KEYS.PARTS, SEED_PARTS));
-    };
-
-    fetchAndNotify();
-
-    const channelName = `spare-parts-changes-${Math.random().toString(36).substring(2, 9)}`;
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'spare_parts' }, (payload) => {
-        fetchAndNotify();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }
-
   initLocalSeedData();
-  const current = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, SEED_PARTS);
+  const current = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
   callback(current);
   listeners.parts.add(callback);
+
+  const fetchFromMongo = async () => {
+    try {
+      const res = await fetch('/api/parts');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setLocal(STORAGE_KEYS.PARTS, json.data);
+        notifyLocal('parts', json.data);
+      }
+    } catch (err) {
+      console.warn('MongoDB fetch parts fallback:', err);
+    }
+  };
+
+  fetchFromMongo();
+  const interval = setInterval(fetchFromMongo, 8000);
+
   return () => {
     listeners.parts.delete(callback);
+    clearInterval(interval);
   };
 }
 
 export async function adjustPartStock(partId: string, delta: number): Promise<void> {
-  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, SEED_PARTS);
+  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
   const target = currentParts.find((p) => p.partId === partId);
   if (!target) return;
 
@@ -344,18 +318,20 @@ export async function adjustPartStock(partId: string, delta: number): Promise<vo
   setLocal(STORAGE_KEYS.PARTS, updatedParts);
   notifyLocal('parts', updatedParts);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('spare_parts').update({ currentStock: newStock }).eq('id', partId);
-    } catch (e) {
-      console.error('Supabase adjustPartStock error:', e);
-    }
+  try {
+    await fetch('/api/parts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ partId, updates: { stock: newStock } }),
+    });
+  } catch (e) {
+    console.error('MongoDB adjustPartStock error:', e);
   }
 }
 
 export async function restockPart(partId: string, quantity: number, poRef?: string): Promise<void> {
   if (quantity <= 0) return;
-  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, SEED_PARTS);
+  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
   const target = currentParts.find((p) => p.partId === partId);
   if (!target) return;
 
@@ -366,47 +342,46 @@ export async function restockPart(partId: string, quantity: number, poRef?: stri
   setLocal(STORAGE_KEYS.PARTS, updatedParts);
   notifyLocal('parts', updatedParts);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('spare_parts').update({ currentStock: newStock }).eq('id', partId);
-    } catch (e) {
-      console.error('Supabase restockPart error:', e);
-    }
+  try {
+    await fetch('/api/parts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ partId, updates: { stock: newStock } }),
+    });
+  } catch (e) {
+    console.error('MongoDB restockPart error:', e);
   }
 }
 
 /* ======================================================================
-   REPAIRS & WORK ORDERS SERVICE
+   REPAIRS & WORK ORDERS SERVICE (MongoDB via /api/repairs)
    ====================================================================== */
 
 export function subscribeRepairs(callback: (repairs: RepairTicket[]) => void): () => void {
-  if (isSupabaseConfigured) {
-    const fetchAndNotify = async () => {
-      const { data } = await supabase.from('repair_tickets').select('*');
-      if (data && data.length > 0) callback(data as RepairTicket[]);
-      else callback(getLocal(STORAGE_KEYS.REPAIRS, SEED_REPAIRS));
-    };
-
-    fetchAndNotify();
-
-    const channelName = `repair-tickets-changes-${Math.random().toString(36).substring(2, 9)}`;
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'repair_tickets' }, (payload) => {
-        fetchAndNotify();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }
-
   initLocalSeedData();
-  const current = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
+  const current = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   callback(current);
   listeners.repairs.add(callback);
+
+  const fetchFromMongo = async () => {
+    try {
+      const res = await fetch('/api/repairs');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setLocal(STORAGE_KEYS.REPAIRS, json.data);
+        notifyLocal('repairs', json.data);
+      }
+    } catch (err) {
+      console.warn('MongoDB fetch repairs fallback:', err);
+    }
+  };
+
+  fetchFromMongo();
+  const interval = setInterval(fetchFromMongo, 8000);
+
   return () => {
     listeners.repairs.delete(callback);
+    clearInterval(interval);
   };
 }
 
@@ -429,26 +404,32 @@ export async function createBreakdownTicket(
   };
 
   // 1. Update repairs list
-  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   const updatedRepairs = [newTicket, ...currentRepairs];
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
 
   // 2. Set machine status to BREAKDOWN
-  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, SEED_MACHINES);
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   const updatedMachines = currentMachines.map((m) =>
     m.id === ticketData.machineId ? { ...m, status: 'BREAKDOWN' as const } : m
   );
   setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
   notifyLocal('machines', updatedMachines);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('repair_tickets').insert(newTicket);
-      await supabase.from('machines').update({ status: 'BREAKDOWN' }).eq('id', ticketData.machineId);
-    } catch (e) {
-      console.error('Supabase createBreakdownTicket error:', e);
-    }
+  try {
+    await fetch('/api/repairs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTicket),
+    });
+    await fetch('/api/machines', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: ticketData.machineId, updates: { status: 'BREAKDOWN' } }),
+    });
+  } catch (e) {
+    console.error('MongoDB createBreakdownTicket error:', e);
   }
 
   return ticketId;
@@ -461,15 +442,13 @@ export async function resolveRepairTicket(
   attendedBy: string,
   partsUsedInputs: Array<{ partId: string; quantity: number }>
 ): Promise<void> {
-  // Always update local memory/storage state atomically
-  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
-  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, SEED_PARTS);
-  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, SEED_MACHINES);
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
+  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
 
   const ticket = currentRepairs.find((t) => t.id === ticketId);
   if (!ticket) throw new Error(`Ticket ${ticketId} not found`);
 
-  // Build resolved parts usage list
   const resolvedPartsUsed = partsUsedInputs
     .filter((pu) => pu.partId && pu.quantity > 0)
     .map((pu) => {
@@ -525,40 +504,53 @@ export async function resolveRepairTicket(
   notifyLocal('parts', updatedParts);
   notifyLocal('machines', updatedMachines);
 
-  // If Supabase is configured, use rpc for transaction or execute sequentially
-  if (isSupabaseConfigured) {
-    try {
-      // In a real application, you should create a Supabase RPC function for atomic transactions.
-      // Here we will do them sequentially.
-      await supabase.from('repair_tickets').update({
-        status: 'COMPLETED',
-        resolvedAt: new Date().toISOString(),
-        downtimeMinutes,
-        actionTaken,
-        attendedBy,
-        partsUsed: resolvedPartsUsed,
-      }).eq('id', ticketId);
+  try {
+    await fetch('/api/repairs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ticketId,
+        updates: {
+          status: 'COMPLETED',
+          resolvedAt: new Date().toISOString(),
+          downtimeMinutes,
+          actionTaken,
+          attendedBy,
+          partsUsed: resolvedPartsUsed,
+        },
+      }),
+    });
 
-      for (const p of resolvedPartsUsed) {
-        const { data: partData } = await supabase.from('spare_parts').select('current_stock').eq('id', p.partId).single();
-        if (partData) {
-          await supabase.from('spare_parts').update({
-            current_stock: Math.max(0, partData.current_stock - p.quantity)
-          }).eq('id', p.partId);
-        }
+    for (const p of resolvedPartsUsed) {
+      const partDoc = currentParts.find((cp) => cp.partId === p.partId);
+      if (partDoc) {
+        await fetch('/api/parts', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            partId: p.partId,
+            updates: { stock: Math.max(0, partDoc.stock - p.quantity) },
+          }),
+        });
       }
-
-      const { data: machineData } = await supabase.from('machines').select('total_downtime_minutes').eq('id', ticket.machineId).single();
-      if (machineData) {
-        await supabase.from('machines').update({
-          status: 'ACTIVE',
-          totalDowntimeMinutes: (machineData.total_downtime_minutes || 0) + downtimeMinutes
-        }).eq('id', ticket.machineId);
-      }
-
-    } catch (err) {
-      console.error('Supabase resolveRepairTicket error:', err);
     }
+
+    const machineDoc = currentMachines.find((m) => m.id === ticket.machineId);
+    if (machineDoc) {
+      await fetch('/api/machines', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: ticket.machineId,
+          updates: {
+            status: 'ACTIVE',
+            totalDowntimeMinutes: (machineDoc.totalDowntimeMinutes || 0) + downtimeMinutes,
+          },
+        }),
+      });
+    }
+  } catch (err) {
+    console.error('MongoDB resolveRepairTicket error:', err);
   }
 }
 
@@ -567,7 +559,7 @@ export async function assignRepairTicket(
   mechanicName: string,
   assignedBy?: string
 ): Promise<void> {
-  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   const updatedRepairs = currentRepairs.map((r) =>
     r.id === ticketId
       ? {
@@ -581,16 +573,21 @@ export async function assignRepairTicket(
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('repair_tickets').update({
-        attendedBy: mechanicName,
-        assignedBy: assignedBy || 'Senior Mechanic',
-        status: 'ASSIGNED',
-      }).eq('id', ticketId);
-    } catch (e) {
-      console.error('Supabase assignRepairTicket error:', e);
-    }
+  try {
+    await fetch('/api/repairs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ticketId,
+        updates: {
+          attendedBy: mechanicName,
+          assignedBy: assignedBy || 'Senior Mechanic',
+          status: 'ASSIGNED',
+        },
+      }),
+    });
+  } catch (e) {
+    console.error('MongoDB assignRepairTicket error:', e);
   }
 }
 
@@ -608,12 +605,8 @@ export interface AssignMechanicTaskInput {
   taskCategory?: string;
 }
 
-/**
- * Senior Mechanic Dispatch: Assign a maintenance task or breakdown work order
- * to oneself (Senior Mechanic) or another team technician.
- */
 export async function assignMechanicTask(input: AssignMechanicTaskInput): Promise<string> {
-  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, SEED_MACHINES);
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   const targetMachine = currentMachines.find(
     (m) => m.id.toLowerCase() === input.machineId.toLowerCase()
   );
@@ -624,7 +617,7 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
 
   const ticketId = `WO-${Math.floor(1000 + Math.random() * 9000)}`;
   const now = new Date();
-  const timeStr = now.toTimeString().split(' ')[0]; // 'HH:MM:SS'
+  const timeStr = now.toTimeString().split(' ')[0];
   const isoTimestamp = `${input.scheduledDate}T${timeStr}.000Z`;
 
   const newTicket: RepairTicket = {
@@ -646,13 +639,11 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
     partsUsed: [],
   };
 
-  // 1. Update repairs list in memory and localStorage
-  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   const updatedRepairs = [newTicket, ...currentRepairs];
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
 
-  // 2. Adjust machine status
   if (targetMachine) {
     const newStatus: MachineStatus =
       input.urgency === 'CRITICAL' ? 'BREAKDOWN' : 'UNDER_MAINTENANCE';
@@ -662,25 +653,27 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
     setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
     notifyLocal('machines', updatedMachines);
 
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('machines').update({ status: newStatus }).eq('id', targetMachine.id);
-      } catch (e) {
-        console.error('Supabase assignMechanicTask machine update error:', e);
-      }
-    }
-  }
-
-  // 3. Persist to Supabase if available
-  if (isSupabaseConfigured) {
     try {
-      await supabase.from('repair_tickets').insert(newTicket);
+      await fetch('/api/machines', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: targetMachine.id, updates: { status: newStatus } }),
+      });
     } catch (e) {
-      console.error('Supabase assignMechanicTask ticket insert error:', e);
+      console.error('MongoDB assignMechanicTask machine update error:', e);
     }
   }
 
-  // 4. If task is PPM, create corresponding PPM record
+  try {
+    await fetch('/api/repairs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTicket),
+    });
+  } catch (e) {
+    console.error('MongoDB assignMechanicTask ticket insert error:', e);
+  }
+
   if (input.taskCategory === 'PPM') {
     const newPPM: PPMSchedule = {
       id: `PPM-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -692,17 +685,19 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
       nextDue: input.scheduledDate,
       status: 'PENDING',
     };
-    const currentPpm = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, SEED_PPM_SCHEDULES);
+    const currentPpm = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
     const updatedPpm = [newPPM, ...currentPpm];
     setLocal(STORAGE_KEYS.PPM, updatedPpm);
     notifyLocal('ppm', updatedPpm);
 
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('ppm_schedules').insert(newPPM);
-      } catch (e) {
-        console.error('Supabase assignMechanicTask PPM insert error:', e);
-      }
+    try {
+      await fetch('/api/ppm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newPPM),
+      });
+    } catch (e) {
+      console.error('MongoDB assignMechanicTask PPM insert error:', e);
     }
   }
 
@@ -710,37 +705,34 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
 }
 
 /* ======================================================================
-   PREVENTIVE MAINTENANCE (PPM) SERVICE
+   PREVENTIVE MAINTENANCE (PPM) SERVICE (MongoDB via /api/ppm)
    ====================================================================== */
 
 export function subscribePPMSchedules(callback: (schedules: PPMSchedule[]) => void): () => void {
-  if (isSupabaseConfigured) {
-    const fetchAndNotify = async () => {
-      const { data } = await supabase.from('ppm_schedules').select('*');
-      if (data && data.length > 0) callback(data as PPMSchedule[]);
-      else callback(getLocal(STORAGE_KEYS.PPM, SEED_PPM_SCHEDULES));
-    };
-
-    fetchAndNotify();
-
-    const channelName = `ppm-schedules-changes-${Math.random().toString(36).substring(2, 9)}`;
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ppm_schedules' }, (payload) => {
-        fetchAndNotify();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }
-
   initLocalSeedData();
-  const current = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, SEED_PPM_SCHEDULES);
+  const current = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
   callback(current);
   listeners.ppm.add(callback);
+
+  const fetchFromMongo = async () => {
+    try {
+      const res = await fetch('/api/ppm');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setLocal(STORAGE_KEYS.PPM, json.data);
+        notifyLocal('ppm', json.data);
+      }
+    } catch (err) {
+      console.warn('MongoDB fetch ppm fallback:', err);
+    }
+  };
+
+  fetchFromMongo();
+  const interval = setInterval(fetchFromMongo, 8000);
+
   return () => {
     listeners.ppm.delete(callback);
+    clearInterval(interval);
   };
 }
 
@@ -748,7 +740,7 @@ export async function completePPMTask(
   scheduleId: string,
   mechanicName: string = 'Ramesh Kumar'
 ): Promise<void> {
-  const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, SEED_PPM_SCHEDULES);
+  const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
   const target = currentSchedules.find((s) => s.id === scheduleId);
   if (!target) return;
 
@@ -769,7 +761,6 @@ export async function completePPMTask(
   setLocal(STORAGE_KEYS.PPM, updatedSchedules);
   notifyLocal('ppm', updatedSchedules);
 
-  // Append entry to repair/service history ledger
   const ppmHistoryEntry: RepairTicket = {
     id: `HIST-${Math.floor(1000 + Math.random() * 9000)}`,
     machineId: target.machineId,
@@ -788,77 +779,83 @@ export async function completePPMTask(
     partsUsed: [],
   };
 
-  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, SEED_REPAIRS);
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   const updatedRepairs = [ppmHistoryEntry, ...currentRepairs];
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('ppm_schedules').update({
-        lastServiced: today.toISOString().slice(0, 10),
-        nextDue: nextDueDate.toISOString().slice(0, 10),
-        status: 'PENDING',
-      }).eq('id', scheduleId);
-      await supabase.from('repair_tickets').insert(ppmHistoryEntry);
-    } catch (e) {
-      console.error('Supabase completePPMTask error:', e);
-    }
+  try {
+    await fetch('/api/ppm', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: scheduleId,
+        updates: {
+          lastServiced: today.toISOString().slice(0, 10),
+          nextDue: nextDueDate.toISOString().slice(0, 10),
+          status: 'PENDING',
+        },
+      }),
+    });
+
+    await fetch('/api/repairs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ppmHistoryEntry),
+    });
+  } catch (e) {
+    console.error('MongoDB completePPMTask error:', e);
   }
 }
 
 export async function createPPMSchedule(schedule: PPMSchedule): Promise<void> {
-  const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, SEED_PPM_SCHEDULES);
+  const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
   const updatedSchedules = [schedule, ...currentSchedules];
   setLocal(STORAGE_KEYS.PPM, updatedSchedules);
   notifyLocal('ppm', updatedSchedules);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('ppm_schedules').insert(schedule);
-    } catch (e) {
-      console.error('Supabase createPPMSchedule error:', e);
-    }
+  try {
+    await fetch('/api/ppm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(schedule),
+    });
+  } catch (e) {
+    console.error('MongoDB createPPMSchedule error:', e);
   }
 }
 
 /* ======================================================================
-   MONTHLY INDENTS & CRITICAL CEO REQUISITIONS SERVICE
+   MONTHLY INDENTS & CRITICAL CEO REQUISITIONS (MongoDB via /api/requisitions)
    ====================================================================== */
 
 export function subscribeRequisitions(
   callback: (requisitions: PartRequisition[]) => void
 ): () => void {
-  if (isSupabaseConfigured) {
-    const fetchAndNotify = async () => {
-      const { data } = await supabase.from('requisitions').select('*');
-      if (data && data.length > 0) callback(data as PartRequisition[]);
-      else callback(getLocal(STORAGE_KEYS.REQUISITIONS, SEED_REQUISITIONS));
-    };
-
-    fetchAndNotify();
-
-    const channelName = `requisitions-changes-${Math.random().toString(36).substring(2, 9)}`;
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requisitions' }, (payload) => {
-        fetchAndNotify();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }
-
   initLocalSeedData();
-  const current = getLocal<PartRequisition[]>(
-    STORAGE_KEYS.REQUISITIONS,
-    SEED_REQUISITIONS
-  );
+  const current = getLocal<PartRequisition[]>(STORAGE_KEYS.REQUISITIONS, []);
   callback(current);
   listeners.requisitions.add(callback);
+
+  const fetchFromMongo = async () => {
+    try {
+      const res = await fetch('/api/requisitions');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setLocal(STORAGE_KEYS.REQUISITIONS, json.data);
+        notifyLocal('requisitions', json.data);
+      }
+    } catch (err) {
+      console.warn('MongoDB fetch requisitions fallback:', err);
+    }
+  };
+
+  fetchFromMongo();
+  const interval = setInterval(fetchFromMongo, 8000);
+
   return () => {
     listeners.requisitions.delete(callback);
+    clearInterval(interval);
   };
 }
 
@@ -883,20 +880,19 @@ export async function createRequisition(
     createdAt: new Date().toISOString(),
   };
 
-  const currentReqs = getLocal<PartRequisition[]>(
-    STORAGE_KEYS.REQUISITIONS,
-    SEED_REQUISITIONS
-  );
+  const currentReqs = getLocal<PartRequisition[]>(STORAGE_KEYS.REQUISITIONS, []);
   const updated = [newReq, ...currentReqs];
   setLocal(STORAGE_KEYS.REQUISITIONS, updated);
   notifyLocal('requisitions', updated);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('requisitions').insert(newReq);
-    } catch (err) {
-      console.error('Supabase createRequisition error:', err);
-    }
+  try {
+    await fetch('/api/requisitions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newReq),
+    });
+  } catch (err) {
+    console.error('MongoDB createRequisition error:', err);
   }
 
   return reqId;
@@ -907,34 +903,37 @@ export async function updateRequisitionStatus(
   status: RequisitionStatus,
   reviewerNotes?: string
 ): Promise<void> {
-  const currentReqs = getLocal<PartRequisition[]>(
-    STORAGE_KEYS.REQUISITIONS,
-    SEED_REQUISITIONS
-  );
+  const currentReqs = getLocal<PartRequisition[]>(STORAGE_KEYS.REQUISITIONS, []);
   const updated = currentReqs.map((r) =>
     r.id === reqId ? { ...r, status, reviewNotes: reviewerNotes || r.reviewNotes } : r
   );
   setLocal(STORAGE_KEYS.REQUISITIONS, updated);
   notifyLocal('requisitions', updated);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('requisitions').update({
-        status,
-        reviewerNotes: reviewerNotes || undefined
-      }).eq('id', reqId);
-    } catch (err) {
-      console.error('Supabase updateRequisitionStatus error:', err);
-    }
+  try {
+    await fetch('/api/requisitions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: reqId,
+        updates: {
+          status,
+          reviewNotes: reviewerNotes || undefined,
+        },
+      }),
+    });
+  } catch (err) {
+    console.error('MongoDB updateRequisitionStatus error:', err);
   }
 }
+
 export async function approveRequisition(
   reqId: string,
   reviewerName: string,
   notes: string,
   status: RequisitionStatus
 ): Promise<void> {
-  const finalNotes = "Approved by " + reviewerName + ": " + notes;
+  const finalNotes = 'Approved by ' + reviewerName + ': ' + notes;
   await updateRequisitionStatus(reqId, status, finalNotes);
 }
 
@@ -943,7 +942,7 @@ export async function rejectRequisition(
   reviewerName: string,
   notes: string
 ): Promise<void> {
-  const finalNotes = "Rejected by " + reviewerName + ": " + notes;
+  const finalNotes = 'Rejected by ' + reviewerName + ': ' + notes;
   await updateRequisitionStatus(reqId, 'REJECTED', finalNotes);
 }
 
@@ -953,11 +952,7 @@ export async function fulfillMonthlyIndent(
   storeNotes: string = 'Inward shipment received into crib and verified against QC pass',
   actionType: 'RECEIVE_INTO_CRIB' | 'DISPATCH_TO_LINE' = 'RECEIVE_INTO_CRIB'
 ): Promise<void> {
-  const currentReqs = getLocal<PartRequisition[]>(
-    STORAGE_KEYS.REQUISITIONS,
-    SEED_REQUISITIONS
-  );
-
+  const currentReqs = getLocal<PartRequisition[]>(STORAGE_KEYS.REQUISITIONS, []);
   const targetReq = currentReqs.find((r) => r.id === id);
   if (!targetReq) return;
 
@@ -978,9 +973,8 @@ export async function fulfillMonthlyIndent(
   setLocal(STORAGE_KEYS.REQUISITIONS, updatedReqs);
   notifyLocal('requisitions', updatedReqs);
 
-  // If receiving into crib, update part stocks for each item in the indent
   if (actionType === 'RECEIVE_INTO_CRIB' && targetReq.items && targetReq.items.length > 0) {
-    const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, SEED_PARTS);
+    const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
     const updatedParts = currentParts.map((p) => {
       const match = targetReq.items?.find((item) => item.partId === p.partId);
       if (match) {
@@ -991,33 +985,40 @@ export async function fulfillMonthlyIndent(
     setLocal(STORAGE_KEYS.PARTS, updatedParts);
     notifyLocal('parts', updatedParts);
 
-    if (isSupabaseConfigured) {
-      try {
-        for (const item of targetReq.items) {
-          const partDoc = currentParts.find((p) => p.partId === item.partId);
-          if (partDoc) {
-            await supabase.from('spare_parts').update({
-              stock: partDoc.stock + item.quantity,
-            }).eq('partId', item.partId);
-          }
+    try {
+      for (const item of targetReq.items) {
+        const partDoc = currentParts.find((p) => p.partId === item.partId);
+        if (partDoc) {
+          await fetch('/api/parts', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              partId: item.partId,
+              updates: { stock: partDoc.stock + item.quantity },
+            }),
+          });
         }
-      } catch (err) {
-        console.warn('Supabase stock intake warning:', err);
       }
+    } catch (err) {
+      console.warn('MongoDB stock intake warning:', err);
     }
   }
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('requisitions').update({
-        status: newStatus,
-        assigned_store_person: storePersonName,
-        fulfilled_at: new Date().toISOString(),
-        store_notes: storeNotes,
-      }).eq('id', id);
-    } catch (err) {
-      console.error('Supabase fulfillMonthlyIndent error:', err);
-    }
+  try {
+    await fetch('/api/requisitions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        updates: {
+          status: newStatus,
+          assignedStorePerson: storePersonName,
+          fulfilledAt: new Date().toISOString(),
+          storeNotes,
+        },
+      }),
+    });
+  } catch (err) {
+    console.error('MongoDB fulfillMonthlyIndent error:', err);
   }
 }
-

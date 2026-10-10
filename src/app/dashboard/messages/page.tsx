@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -23,8 +24,15 @@ import {
 } from '@/lib/services/cmmsService';
 
 export default function CeoMessagesPage() {
+  const router = useRouter();
   const { user, role } = useAuth();
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
+      router.replace('/dashboard/allowance');
+    }
+  }, [role, router]);
 
   const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
   const [filter, setFilter] = useState<'PENDING' | 'APPROVED' | 'ALL'>('PENDING');

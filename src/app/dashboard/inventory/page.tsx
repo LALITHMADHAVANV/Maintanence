@@ -151,7 +151,7 @@ export default function InventoryPage() {
   const [reqCostOverride, setReqCostOverride] = useState<number>(0);
   const [reqMonthYear, setReqMonthYear] = useState<string>('October 2026');
   const [reqTargetLine, setReqTargetLine] = useState<string>('Line 02');
-  const [reqTargetMachine, setReqTargetMachine] = useState<string>('MC-OVK-204');
+  const [reqTargetMachine, setReqTargetMachine] = useState<string>('');
   const [reqJustification, setReqJustification] = useState<string>('');
 
   // Multi-part list state (for Monthly Indent)

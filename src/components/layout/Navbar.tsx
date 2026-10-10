@@ -17,6 +17,8 @@ import {
   Users,
   UserPlus,
   Zap,
+  LayoutDashboard,
+  IndianRupee,
 } from 'lucide-react';
 import { LiveClock } from './LiveClock';
 import { useAuth } from '@/context/AuthContext';
@@ -89,10 +91,6 @@ export function Navbar() {
     highlight?: boolean;
   }
 
-  // Define role-specific navigation tabs strictly matching the mandatory responsibility matrix
-  const isMechanicOrAdmin =
-    role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ADMIN' || role === 'ASSET_MANAGER';
-
   let navTabs: NavTab[] = [];
 
   if (role === 'CEO') {
@@ -126,98 +124,71 @@ export function Navbar() {
         badgeColor: 'bg-rose-500 text-white',
       },
     ];
-  } else if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
-    // 🦺 LINE MECHANIC / ELECTRICIAN: Monthly work calendar
-    navTabs = [
-      {
-        label: role === 'ELECTRICIAN' ? '⚡ Electrician Work Calendar' : '📅 Mechanic Work Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
-        highlight: true,
-      },
-      ...(role !== 'ELECTRICIAN'
-        ? [
-            {
-              label: 'Tool Crib & Monthly Indents',
-              href: '/dashboard/inventory',
-              icon: Boxes,
-            },
-          ]
-        : [
-            {
-              label: 'Machine History & Services',
-              href: '/dashboard/history',
-              icon: History,
-            },
-          ]),
-    ];
   } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
-    // 🔧 SENIOR MECHANIC / SENIOR ELECTRICIAN: Monthly cloud calendar (PPM), history, team roster
+    // 🔧 Senior Mechanic: Mechanic Calendar & Group Indent
     navTabs = [
       {
-        label: role === 'SENIOR_ELECTRICIAN' ? '⚡ Monthly Calendar & PPM' : '📅 Monthly Calendar & PPM',
+        label: 'Mechanic Calendar',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
-        highlight: true,
-      },
-      ...(role !== 'SENIOR_ELECTRICIAN'
-        ? [
-            {
-              label: 'Tool Crib & Indents',
-              href: '/dashboard/inventory',
-              icon: Boxes,
-              badge: lowStockCount > 0 ? lowStockCount : null,
-              badgeColor: 'bg-rose-500 text-white',
-            },
-          ]
-        : []),
-      {
-        label: 'Machine History & PPM',
-        href: '/dashboard/history',
-        icon: History,
       },
       {
-        label: role === 'SENIOR_ELECTRICIAN' ? '👥 Electrician & Team Roster' : '👥 Team Work Roster',
-        href: '/dashboard/mechanic-roster',
-        icon: Users,
-        highlight: true,
+        label: 'Group Indent',
+        href: '/dashboard/inventory',
+        icon: Package,
+        badge: lowStockCount > 0 ? lowStockCount : null,
+        badgeColor: 'bg-amber-500 text-slate-900',
+      },
+    ];
+  } else if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
+    // 🦺 Mechanic: Mechanic Calendar & Indent
+    navTabs = [
+      {
+        label: 'Mechanic Calendar',
+        href: '/dashboard/calendar',
+        icon: CalendarCheck,
+        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
+        badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
+      },
+      {
+        label: 'Indent',
+        href: '/dashboard/inventory',
+        icon: Boxes,
+        badge: lowStockCount > 0 ? lowStockCount : null,
+        badgeColor: 'bg-amber-500 text-slate-900',
       },
     ];
   } else {
-    // 🛡️ PLANT ADMIN / ASSET MANAGER: Master oversight across operational modules
-    // (Removed: Mechanic Calendar, Team Roster, Store Indents)
+    // 🛡️ Admin & Asset Manager: Admin Dashboard, Asset Registration, Assets, Allowance, History
     navTabs = [
       {
-        label: 'Factory Assets',
-        href: '/dashboard/floor-tracker',
-        icon: Layers,
+        label: 'Admin Dashboard',
+        href: '/dashboard',
+        icon: LayoutDashboard,
       },
       {
-        label: 'Assets & QR',
+        label: 'Asset Registration',
         href: '/dashboard/machines',
         icon: QrCode,
       },
       {
-        label: '👥 User Management',
-        href: '/dashboard/users',
-        icon: UserPlus,
-        highlight: true,
+        label: 'Assets',
+        href: '/dashboard/asset-types',
+        icon: Boxes,
       },
       {
-        label: 'Maintenance History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-      {
-        label: 'CEO Approvals',
+        label: 'Allowance',
         href: '/dashboard/messages',
-        icon: Crown,
+        icon: IndianRupee,
         badge: pendingCeoCount > 0 ? pendingCeoCount : null,
         badgeColor: 'bg-rose-600 text-white',
+      },
+      {
+        label: 'History',
+        href: '/dashboard/history',
+        icon: History,
       },
     ];
   }
@@ -262,10 +233,10 @@ export function Navbar() {
               <div>
                 <div className="flex items-center space-x-2">
                   <span className="font-bold text-base sm:text-lg tracking-tight text-slate-900">
-                    TexTech Garments
+                    Maintenance Module
                   </span>
                   <span className="hidden md:inline-block px-2 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 rounded-md border border-indigo-200">
-                    CMMS v4.2
+                    v4.2
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 hidden sm:block">

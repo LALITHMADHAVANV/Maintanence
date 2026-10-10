@@ -72,14 +72,16 @@ function MobileScanContent() {
           model: searchParams.get('model') || 'Standard',
           type: (searchParams.get('type') as any) || 'SNLS',
           typeName: searchParams.get('typeName') || searchParams.get('type') || 'Plant Asset',
-          currentLine: (searchParams.get('line') as FloorLine) || 'Line 01',
-          stationNo: searchParams.get('station') || 'Station 01',
-          motorType: (searchParams.get('motor') as any) || 'SERVO',
+          currentLine: (searchParams.get('area') || 'Sewing Floor') as FloorLine,
+          stationNo: '',
+          motorType: 'SERVO',
           purchaseDate: searchParams.get('date') || new Date().toISOString().slice(0, 10),
           cost: searchParams.get('cost') ? parseFloat(searchParams.get('cost')!) : 75000,
           status: 'ACTIVE',
           category: qCategory,
-          department: (searchParams.get('line')?.includes('Line') ? 'Sewing Floor' : searchParams.get('line') || 'Sewing Floor') as any,
+          unit: searchParams.get('unit') || 'Unit 01',
+          area: searchParams.get('area') || 'Sewing Floor',
+          department: (searchParams.get('area') || 'Sewing Floor') as any,
           operator: 'Floor Operator',
           totalDowntimeMinutes: 0,
         };
@@ -210,7 +212,7 @@ function MobileScanContent() {
           className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition font-semibold"
         >
           <ArrowLeft className="w-4 h-4 text-slate-500" />
-          <span>{role === 'CEO' ? 'CEO Approvals' : 'CMMS Dashboard'}</span>
+          <span>{role === 'CEO' ? 'CEO Approvals' : 'Maintenance Dashboard'}</span>
         </Link>
 
         {/* Top Actions: History Button + Live Status */}
@@ -252,6 +254,14 @@ function MobileScanContent() {
               <p className="text-sm font-bold text-indigo-700 mt-0.5">
                 {machine.brand} • {machine.model}
               </p>
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="font-black uppercase tracking-wider bg-slate-900 text-white px-2 py-0.5 rounded text-[10px]">
+                  {machine.unit || 'Unit 01'}
+                </span>
+                <span className="text-xs font-bold text-slate-700 truncate max-w-[200px]">
+                  {machine.area || machine.department || 'Sewing Floor'}
+                </span>
+              </div>
             </div>
             <div className="flex flex-col items-end gap-1.5">
               <span
@@ -285,10 +295,10 @@ function MobileScanContent() {
               </span>
             </div>
             <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-[10px] text-slate-500 block font-medium">Current Line</span>
+              <span className="text-[10px] text-slate-500 block font-medium">Located Area</span>
               <span className="font-semibold text-emerald-700 flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-emerald-600" />
-                {machine.currentLine} ({machine.stationNo})
+                {machine.area || machine.department || machine.currentLine}
               </span>
             </div>
           </div>

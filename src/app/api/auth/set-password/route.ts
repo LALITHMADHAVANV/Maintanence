@@ -1,21 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-// Create a Supabase client with the service role key for admin privileges
-function getSupabaseAdmin() {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase URL or Service Role Key is missing in environment variables');
-  }
-  return createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    }
-  });
-}
+import { getDatabase } from '@/lib/mongodb';
 
 export async function POST(req: Request) {
   try {
@@ -35,82 +19,66 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
 
-    // 1. Search for existing user by email
-    // In Supabase, the best way to get a user by email via admin API is to list users or just try creating/updating
-    // Since we don't have a direct "getUserByEmail" that is simple without pagination, we'll try to find them in the public.users table first
-    const { data: existingUser } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('email', email.trim())
-      .single();
+    const db = await getDatabase();
+    const collection = db.collection('users');
+
+    const existingUser = await collection.findOne({
+      $or: [
+        { email: cleanEmail },
+        { uid: cleanEmail },
+        { employeeId: cleanEmail },
+      ],
+    });
 
     if (existingUser) {
-      // User exists, update password via Admin API
-      const { data: updateData, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-        existingUser.id,
-        { password: password.trim() }
+      const updateDoc: any = {
+        password: cleanPassword,
+        defaultPassword: cleanPassword,
+        updatedAt: new Date().toISOString(),
+      };
+      if (name) updateDoc.name = name;
+      if (role) updateDoc.role = role;
+
+      await collection.updateOne(
+        { _id: existingUser._id },
+        { $set: updateDoc }
       );
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // Update public.users profile if needed
-      const updatePayload: any = { defaultPassword: password.trim() };
-      if (name) updatePayload.name = name;
-      if (role) updatePayload.role = role;
-      updatePayload.updatedAt = new Date().toISOString();
-
-      await supabaseAdmin
-        .from('users')
-        .update(updatePayload)
-        .eq('id', existingUser.id);
 
       return NextResponse.json({
         success: true,
-        message: `Password for ${email} has been updated to '${password}' in Supabase Auth!`,
-        uid: existingUser.id,
+        message: `Password for ${cleanEmail} has been updated successfully!`,
+        uid: existingUser.uid,
       });
     } else {
-      // User does not exist, create new user with password
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: email.trim(),
-        password: password.trim(),
-        email_confirm: true, // Auto-confirm email
+      // Create user doc if not found
+      const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
+      await collection.insertOne({
+        uid,
+        email: cleanEmail,
+        password: cleanPassword,
+        defaultPassword: cleanPassword,
+        name: name || cleanEmail.split('@')[0],
+        role: role || 'MECHANIC',
+        title: 'Factory Staff',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
 
-      if (createError) {
-        return NextResponse.json(
-          { error: createError.message || 'Failed to create user in Supabase Auth' },
-          { status: 500 }
-        );
-      }
-
-      if (newUser.user) {
-        // Sync to public.users table
-        await supabaseAdmin
-          .from('users')
-          .insert({
-            id: newUser.user.id,
-            uid: newUser.user.id,
-            email: email.trim(),
-            name: name || email.split('@')[0],
-            role: role || 'MECHANIC',
-            title: 'Factory Staff',
-            created_at: new Date().toISOString(),
-          });
-
-        return NextResponse.json({
-          success: true,
-          message: `User ${email} created with password '${password}' in Supabase Auth!`,
-          uid: newUser.user.id,
-        });
-      }
+      return NextResponse.json({
+        success: true,
+        message: `User created and password set for ${cleanEmail}!`,
+        uid,
+      });
     }
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    console.error('Error updating password in MongoDB:', err);
+    return NextResponse.json(
+      { error: 'Internal server error while updating password' },
+      { status: 500 }
+    );
   }
 }

@@ -729,7 +729,7 @@ export function TeamScheduleModal({
         {/* Modal Bottom Action Footer */}
         <div className="bg-white px-6 py-3.5 border-t border-slate-200 flex items-center justify-between shrink-0">
           <div className="text-xs text-slate-500">
-            Senior Mechanic Shift Supervisory Control • Syncs directly with Supabase.
+            Senior Mechanic Shift Supervisory Control • Syncs directly with MongoDB.
           </div>
           <button
             onClick={onClose}

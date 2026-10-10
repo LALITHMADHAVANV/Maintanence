@@ -1,29 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { SEED_USERS } from '@/lib/seedData';
+import { getDatabase } from '@/lib/mongodb';
 import { UserProfile, UserRole } from '@/types/cmms';
-
-// Helper to get Supabase Admin client
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  if (!url || !serviceKey) {
-    throw new Error('Supabase URL or Service Role Key is missing in environment variables');
-  }
-  return createClient(url, serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    }
-  });
-}
-
-// Helper to get Supabase Anon client for public data fetching if admin not available
-function getSupabaseAnon() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-  return createClient(url, anonKey);
-}
 
 function getDefaultTitle(role: UserRole): string {
   switch (role) {
@@ -47,64 +24,142 @@ function getDefaultTitle(role: UserRole): string {
   }
 }
 
-// GET /api/users - Fetch all factory users from Supabase and Seed data
+const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
+  {
+    uid: 'CEO-01',
+    name: 'Executive Board Director',
+    email: 'ceo@textech.com',
+    role: 'CEO',
+    title: 'Chief Executive Officer (Managing Director)',
+    phone: '+91 98401 11001',
+    department: 'Executive Management',
+    employeeId: 'EMP-CEO-01',
+    status: 'ACTIVE',
+    defaultPassword: 'ceo123',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    uid: 'ADM-01',
+    name: 'Plant Administrator',
+    email: 'admin@textech.com',
+    role: 'ADMIN',
+    title: 'Plant Administrator & Asset Director',
+    phone: '+91 98401 22002',
+    department: 'Factory Operations',
+    employeeId: 'EMP-ADM-01',
+    status: 'ACTIVE',
+    defaultPassword: 'admin123',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    uid: 'SNR-01',
+    name: 'R. Veeramani',
+    email: 'seniormechanic@textech.com',
+    role: 'SENIOR_MECHANIC',
+    title: 'Senior Master Technician & PPM Lead',
+    phone: '+91 98401 33003',
+    department: 'Maintenance Workshop',
+    employeeId: 'EMP-SNR-01',
+    status: 'ACTIVE',
+    defaultPassword: 'senior123',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    uid: 'MEC-01',
+    name: 'K. Murugan',
+    email: 'mechanic@textech.com',
+    role: 'MECHANIC',
+    title: 'Industrial Sewing Machine Mechanic',
+    phone: '+91 98401 44004',
+    department: 'Sewing Floor Lines',
+    employeeId: 'EMP-MEC-01',
+    status: 'ACTIVE',
+    defaultPassword: 'mechanic123',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    uid: 'SELE-01',
+    name: 'M. Senthil Kumar',
+    email: 'seniorelectrician@textech.com',
+    role: 'SENIOR_ELECTRICIAN',
+    title: 'Senior Plant Electrician & Power Specialist',
+    phone: '+91 98401 55005',
+    department: 'Electrical & Power Plant',
+    employeeId: 'EMP-SELE-01',
+    status: 'ACTIVE',
+    defaultPassword: 'senior123',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    uid: 'ELE-01',
+    name: 'P. Anand',
+    email: 'electrician@textech.com',
+    role: 'ELECTRICIAN',
+    title: 'Industrial Plant Electrician',
+    phone: '+91 98401 66006',
+    department: 'Electrical & Utilities',
+    employeeId: 'EMP-ELE-01',
+    status: 'ACTIVE',
+    defaultPassword: 'electrician123',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    uid: 'STR-01',
+    name: 'M. Arumugam',
+    email: 'stores@textech.com',
+    role: 'STORE_PERSON',
+    title: 'Tool Crib & Inventory Custodian',
+    phone: '+91 98401 77007',
+    department: 'Central Spare Store',
+    employeeId: 'EMP-STR-01',
+    status: 'ACTIVE',
+    defaultPassword: 'stores123',
+    createdAt: new Date().toISOString(),
+  },
+];
+
+// GET /api/users - Fetch all factory users from MongoDB
 export async function GET() {
   try {
-    const supabase = getSupabaseAnon();
-    const { data: dbUsers, error } = await supabase.from('users').select('*');
+    const db = await getDatabase();
+    const collection = db.collection('users');
+    let users = await collection.find({}).toArray();
 
-    if (error) throw error;
+    // If users collection is empty, seed initial factory roles
+    if (users.length === 0) {
+      await collection.insertMany(DEFAULT_USERS);
+      users = await collection.find({}).toArray();
+    }
 
-    const fetchedUsers: UserProfile[] = (dbUsers || []).map((data: any) => ({
-      uid: data.uid || data.id,
+    const fetchedUsers: UserProfile[] = users.map(({ _id, password, ...data }: any) => ({
+      uid: data.uid || String(_id),
       name: data.name || 'Factory Staff',
       email: data.email || '',
       role: (data.role || 'MECHANIC') as UserRole,
-      title: data.title || getDefaultTitle(data.role as UserRole || 'MECHANIC'),
+      title: data.title || getDefaultTitle((data.role as UserRole) || 'MECHANIC'),
       phone: data.phone || '',
       department: data.department || 'Floor Maintenance',
-      employeeId: data.employee_id || `EMP-${(data.id || '').slice(0, 4)}`,
+      employeeId: data.employeeId || data.employee_id || `EMP-${(data.uid || '').slice(0, 4)}`,
       status: data.status || 'ACTIVE',
-      defaultPassword: data.default_password,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
+      defaultPassword: data.defaultPassword || data.default_password || password,
+      createdAt: data.createdAt || data.created_at,
+      updatedAt: data.updatedAt || data.updated_at,
     }));
 
-    // Merge seed users if not already in DB
-    const allUsersMap = new Map<string, UserProfile>();
-
-    // Add seed users first
-    SEED_USERS.forEach((su, idx) => {
-      allUsersMap.set(su.email.toLowerCase(), {
-        ...su,
-        employeeId: su.employeeId || `EMP-00${idx + 1}`,
-        phone: su.phone || '+91 98421 0000' + (idx + 1),
-        department: su.department || (su.role === 'CEO' ? 'Executive Board' : su.role === 'STORE_PERSON' ? 'Tool Crib & Stores' : 'Maintenance Workshop'),
-        status: 'ACTIVE',
-      });
-    });
-
-    // Merge DB users
-    fetchedUsers.forEach((fu) => {
-      allUsersMap.set(fu.email.toLowerCase(), fu);
-    });
-
     return NextResponse.json({
       success: true,
-      users: Array.from(allUsersMap.values()),
+      users: fetchedUsers,
     });
   } catch (err: unknown) {
-    console.error('Error fetching users:', err);
-    // Return seed users as reliable fallback
+    console.error('Error fetching users from MongoDB:', err);
     return NextResponse.json({
       success: true,
-      users: SEED_USERS,
-      fallback: true,
+      users: DEFAULT_USERS,
     });
   }
 }
 
-// POST /api/users - Create new user in Supabase Auth and public.users
+// POST /api/users - Create new user in MongoDB
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -131,78 +186,76 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
     const cleanRole: UserRole = role;
     const finalTitle = title?.trim() || getDefaultTitle(cleanRole);
     const finalEmpId = employeeId?.trim() || `EMP-${Math.floor(100 + Math.random() * 900)}`;
+    const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
 
-    let uid = '';
+    const db = await getDatabase();
+    const collection = db.collection('users');
 
-    // 1. Try creating user in Supabase Auth via Admin API
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: cleanEmail,
-      password: cleanPass,
-      email_confirm: true,
-    });
-
-    if (createError) {
-      // If user already exists in Supabase Auth, attempt to find them and update
-      if (createError.message.includes('already registered')) {
-        const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-        const existing = existingUsers.users.find(u => u.email === cleanEmail);
-        
-        if (existing) {
-          uid = existing.id;
-          await supabaseAdmin.auth.admin.updateUserById(uid, { password: cleanPass });
-        } else {
-          return NextResponse.json(
-            { error: 'User email already registered but could not be located.' },
-            { status: 400 }
-          );
+    // Check if email already exists
+    const existing = await collection.findOne({ email: cleanEmail });
+    if (existing) {
+      // Update password and profile
+      await collection.updateOne(
+        { email: cleanEmail },
+        {
+          $set: {
+            name: name.trim(),
+            role: cleanRole,
+            title: finalTitle,
+            password: cleanPass,
+            defaultPassword: cleanPass,
+            phone: phone?.trim() || '',
+            department: department?.trim() || '',
+            employeeId: finalEmpId,
+            updatedAt: new Date().toISOString(),
+          },
         }
-      } else {
-        return NextResponse.json(
-          { error: createError.message || 'Failed to create user in Supabase Auth' },
-          { status: 400 }
-        );
-      }
-    } else if (newUser?.user) {
-      uid = newUser.user.id;
-    } else {
-       return NextResponse.json(
-          { error: 'Unknown error occurred while creating user.' },
-          { status: 500 }
-       );
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: `User ${cleanEmail} profile updated!`,
+      });
     }
 
-    // 2. Write full user profile to Supabase public.users
-    const userPayload = {
-      id: uid,
+    const newUserDoc = {
       uid,
       name: name.trim(),
       email: cleanEmail,
       role: cleanRole,
       title: finalTitle,
+      password: cleanPass,
+      defaultPassword: cleanPass,
+      phone: phone?.trim() || '',
+      department: department?.trim() || 'Floor Maintenance',
+      employeeId: finalEmpId,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
-    const { error: dbError } = await supabaseAdmin
-      .from('users')
-      .upsert(userPayload);
-
-    if (dbError) {
-       console.error("Database insert error:", dbError);
-    }
+    await collection.insertOne(newUserDoc);
 
     return NextResponse.json({
       success: true,
       message: `User ${name} (${cleanEmail}) successfully created with role ${cleanRole}!`,
-      user: userPayload,
+      user: {
+        uid,
+        name: newUserDoc.name,
+        email: newUserDoc.email,
+        role: newUserDoc.role,
+        title: newUserDoc.title,
+        employeeId: newUserDoc.employeeId,
+      },
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('Error creating user:', err);
+    console.error('Error creating user in MongoDB:', err);
     return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }
