@@ -43,6 +43,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
+import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 
 interface WorkflowStage {
   key: string;
@@ -88,6 +89,28 @@ export function PlantOperationsDashboard({
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
   const [activeCostCategory, setActiveCostCategory] = useState<string | null>(null);
   const [cardMode, setCardMode] = useState<'cost' | 'risk'>('cost');
+  const [drillDownState, setDrillDownState] = useState<{
+    isOpen: boolean;
+    type: DrillDownType | null;
+    title?: string;
+    meta?: DrillDownMeta;
+  }>({
+    isOpen: false,
+    type: null,
+  });
+
+  const openDrillDown = (type: DrillDownType, title?: string, meta?: DrillDownMeta) => {
+    setDrillDownState({
+      isOpen: true,
+      type,
+      title,
+      meta,
+    });
+  };
+
+  const closeDrillDown = () => {
+    setDrillDownState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   // ─── Derived metrics ──────────────────────────────────────────────────
   const metrics = useMemo(() => {
@@ -391,11 +414,12 @@ export function PlantOperationsDashboard({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-3.5">
         {/* Open Work Orders */}
         <div
-          onClick={() => router.push('/dashboard/calendar')}
+          onClick={() => openDrillDown('open_tickets', 'Open Work Orders & Tickets')}
           className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-indigo-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view Open Tickets drill-down"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Open Tickets</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">Open Tickets</span>
             <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600 group-hover:scale-110 transition">
               <Wrench className="w-3.5 h-3.5" />
             </span>
@@ -409,10 +433,14 @@ export function PlantOperationsDashboard({
         </div>
 
         {/* On Schedule (PPM + Assigned) */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+        <div
+          onClick={() => openDrillDown('on_schedule', 'PPM Schedules & Compliance')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-emerald-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view PPM Schedules drill-down"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">On Schedule</span>
-            <span className="p-1 rounded-lg bg-emerald-50 text-emerald-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-emerald-600 transition">On Schedule</span>
+            <span className="p-1 rounded-lg bg-emerald-50 text-emerald-600 group-hover:scale-110 transition">
               <CheckCircle2 className="w-3.5 h-3.5" />
             </span>
           </div>
@@ -423,10 +451,14 @@ export function PlantOperationsDashboard({
         </div>
 
         {/* At Risk (Tickets > 2h) */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+        <div
+          onClick={() => openDrillDown('at_risk', 'At Risk Tickets (>2h MTTR)')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-amber-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view At Risk tickets drill-down"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">At Risk</span>
-            <span className="p-1 rounded-lg bg-amber-50 text-amber-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-amber-600 transition">At Risk</span>
+            <span className="p-1 rounded-lg bg-amber-50 text-amber-600 group-hover:scale-110 transition">
               <AlertTriangle className="w-3.5 h-3.5" />
             </span>
           </div>
@@ -437,10 +469,14 @@ export function PlantOperationsDashboard({
         </div>
 
         {/* Overdue (PPM Overdue + Tickets > 4h) */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+        <div
+          onClick={() => openDrillDown('overdue', 'Overdue Work Orders & PPM Tasks')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-rose-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view Overdue items drill-down"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Overdue</span>
-            <span className="p-1 rounded-lg bg-rose-50 text-rose-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-rose-600 transition">Overdue</span>
+            <span className="p-1 rounded-lg bg-rose-50 text-rose-600 group-hover:scale-110 transition">
               <Clock className="w-3.5 h-3.5" />
             </span>
           </div>
@@ -451,10 +487,14 @@ export function PlantOperationsDashboard({
         </div>
 
         {/* Resolved Today / Total Resolved */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+        <div
+          onClick={() => openDrillDown('resolved', 'Resolved Work Orders & Repairs')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-teal-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view Resolved work orders drill-down"
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Resolved</span>
-            <span className="p-1 rounded-lg bg-teal-50 text-teal-600">
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-teal-600 transition">Resolved</span>
+            <span className="p-1 rounded-lg bg-teal-50 text-teal-600 group-hover:scale-110 transition">
               <Check className="w-3.5 h-3.5" />
             </span>
           </div>
@@ -466,11 +506,12 @@ export function PlantOperationsDashboard({
 
         {/* Total Assets */}
         <div
-          onClick={() => router.push('/dashboard/machines')}
+          onClick={() => openDrillDown('total_assets', 'Plant Equipment & Asset Registry')}
           className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-indigo-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view Asset Registry drill-down"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Total Assets</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">Total Assets</span>
             <span className="p-1 rounded-lg bg-purple-50 text-purple-600 group-hover:scale-110 transition">
               <Cpu className="w-3.5 h-3.5" />
             </span>
@@ -499,16 +540,21 @@ export function PlantOperationsDashboard({
 
             <div className="space-y-2.5">
               {[
-                { label: 'Sewing Machinery', count: metrics.sewingTickets, total: repairs.length || 1, color: 'bg-indigo-500' },
-                { label: 'Work Tables & Chairs', count: metrics.furnitureTickets, total: repairs.length || 1, color: 'bg-amber-500' },
-                { label: 'Plant Utilities & Lights', count: metrics.utilityTickets, total: repairs.length || 1, color: 'bg-cyan-500' },
-                { label: 'Vehicles & Trolleys', count: metrics.vehicleTickets, total: repairs.length || 1, color: 'bg-purple-500' },
+                { label: 'Sewing Machinery', count: metrics.sewingTickets, total: repairs.length || 1, color: 'bg-indigo-500', catKey: 'MACHINE' },
+                { label: 'Work Tables & Chairs', count: metrics.furnitureTickets, total: repairs.length || 1, color: 'bg-amber-500', catKey: 'FURNITURE' },
+                { label: 'Plant Utilities & Lights', count: metrics.utilityTickets, total: repairs.length || 1, color: 'bg-cyan-500', catKey: 'UTILITY' },
+                { label: 'Vehicles & Trolleys', count: metrics.vehicleTickets, total: repairs.length || 1, color: 'bg-purple-500', catKey: 'VEHICLE' },
               ].map((item) => {
                 const pct = Math.round((item.count / item.total) * 100);
                 return (
-                  <div key={item.label} className="space-y-1">
+                  <div
+                    key={item.label}
+                    onClick={() => openDrillDown('category_assets', `${item.label} Drill-down`, { category: item.catKey })}
+                    className="space-y-1 p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+                    title={`Click to view ${item.label} details`}
+                  >
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600 font-medium truncate">{item.label}</span>
+                      <span className="text-slate-600 font-medium truncate group-hover:text-indigo-600 transition">{item.label}</span>
                       <span className="text-slate-900 font-bold font-mono ml-2">{item.count}</span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -521,9 +567,24 @@ export function PlantOperationsDashboard({
           </div>
 
           <div className="pt-3 mt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-            <span>Mechanical: <strong>{metrics.mechanicalPct}%</strong></span>
-            <span>Electrical: <strong>{metrics.electricalPct}%</strong></span>
-            <span>Other: <strong>{metrics.otherPct}%</strong></span>
+            <button
+              onClick={() => openDrillDown('fault_category', 'Mechanical Faults Breakdown', { fault: 'Mechanical' })}
+              className="hover:text-indigo-600 hover:underline transition cursor-pointer"
+            >
+              Mechanical: <strong>{metrics.mechanicalPct}%</strong>
+            </button>
+            <button
+              onClick={() => openDrillDown('fault_category', 'Electrical Faults Breakdown', { fault: 'Electrical' })}
+              className="hover:text-indigo-600 hover:underline transition cursor-pointer"
+            >
+              Electrical: <strong>{metrics.electricalPct}%</strong>
+            </button>
+            <button
+              onClick={() => openDrillDown('open_tickets', 'Other Faults Breakdown')}
+              className="hover:text-indigo-600 hover:underline transition cursor-pointer"
+            >
+              Other: <strong>{metrics.otherPct}%</strong>
+            </button>
           </div>
         </div>
 
@@ -610,9 +671,13 @@ export function PlantOperationsDashboard({
             </div>
 
             <div className="space-y-3">
-              <div>
+              <div
+                onClick={() => openDrillDown('fault_category', 'Looper & Needle Timing Breakdown', { fault: 'Looper' })}
+                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+                title="Click to view Looper & Needle Breakdown drill-down"
+              >
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600">Looper / Needle Timing</span>
+                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Looper / Needle Timing</span>
                   <span className="font-bold text-slate-900 font-mono">42%</span>
                 </div>
                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -620,9 +685,13 @@ export function PlantOperationsDashboard({
                 </div>
               </div>
 
-              <div>
+              <div
+                onClick={() => openDrillDown('fault_category', 'Motor & Drive Electronics Breakdown', { fault: 'Motor' })}
+                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+                title="Click to view Motor & Drive Breakdown drill-down"
+              >
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600">Motor / Electronic Drive</span>
+                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Motor / Electronic Drive</span>
                   <span className="font-bold text-slate-900 font-mono">28%</span>
                 </div>
                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -630,9 +699,13 @@ export function PlantOperationsDashboard({
                 </div>
               </div>
 
-              <div>
+              <div
+                onClick={() => openDrillDown('fault_category', 'Pneumatic & Air Line Breakdown', { fault: 'Pneumatic' })}
+                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+                title="Click to view Pneumatic Breakdown drill-down"
+              >
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600">Pneumatic & Air Lines</span>
+                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Pneumatic & Air Lines</span>
                   <span className="font-bold text-slate-900 font-mono">18%</span>
                 </div>
                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -640,9 +713,13 @@ export function PlantOperationsDashboard({
                 </div>
               </div>
 
-              <div>
+              <div
+                onClick={() => openDrillDown('fault_category', 'Operator Error & Fabric Jam Breakdown', { fault: 'Operator' })}
+                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+                title="Click to view Operator Jam drill-down"
+              >
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600">Operator Error / Jams</span>
+                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Operator Error / Jams</span>
                   <span className="font-bold text-slate-900 font-mono">12%</span>
                 </div>
                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -686,7 +763,9 @@ export function PlantOperationsDashboard({
             {workflowStages.map((stage, idx) => (
               <div
                 key={stage.key}
-                className={`${stage.bgColor} border ${stage.borderColor} rounded-xl p-2.5 text-center transition hover:shadow-xs relative`}
+                onClick={() => openDrillDown('pipeline_stage', `Workflow Stage: ${stage.label}`, { stageKey: stage.key })}
+                className={`${stage.bgColor} border ${stage.borderColor} rounded-xl p-2.5 text-center transition hover:shadow-xs hover:scale-102 cursor-pointer relative group`}
+                title={`Click to view ${stage.label} items drill-down`}
               >
                 <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-slate-400 mb-1">
                   <span>STEP {idx + 1}</span>
@@ -694,7 +773,7 @@ export function PlantOperationsDashboard({
                 <div className={`text-xl font-black font-mono ${stage.color}`}>
                   {stage.count}
                 </div>
-                <div className="text-[11px] font-semibold text-slate-700 mt-0.5 truncate">
+                <div className="text-[11px] font-semibold text-slate-700 mt-0.5 truncate group-hover:text-indigo-600 transition">
                   {stage.label}
                 </div>
               </div>
@@ -987,9 +1066,16 @@ export function PlantOperationsDashboard({
             )}
 
             {/* AI Insight Card (Matching Screenshot Bottom Box) */}
-            <div className="bg-[#f4f7fb] rounded-2xl p-4 border border-slate-100 mt-4">
-              <div className="text-[11px] font-bold text-slate-700 tracking-wider uppercase">
-                AI INSIGHT
+            <div
+              onClick={() => openDrillDown(cardMode === 'cost' ? 'cost_analysis' : 'risk_analysis', cardMode === 'cost' ? 'Cost & Capex Analysis Drill-Down' : 'Risk Analysis & Active Orders Drill-Down')}
+              className="bg-[#f4f7fb] hover:bg-slate-100/90 transition cursor-pointer rounded-2xl p-4 border border-slate-100 mt-4 group"
+              title="Click to view detailed drill-down"
+            >
+              <div className="text-[11px] font-bold text-slate-700 tracking-wider uppercase flex items-center justify-between">
+                <span>AI INSIGHT</span>
+                <span className="text-[10px] text-indigo-600 font-medium group-hover:underline flex items-center gap-0.5">
+                  View drill-down →
+                </span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed mt-1">
                 {cardMode === 'cost' ? (
@@ -1014,16 +1100,24 @@ export function PlantOperationsDashboard({
       {/* 6. BOTTOM KPI STRIP                                               */}
       {/* ================================================================= */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-3.5">
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center">
-          <div className="text-2xl font-black text-slate-900 font-mono">
+        <div
+          onClick={() => openDrillDown('open_tickets', 'Mean Time to Repair (MTTR) Analysis')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center hover:border-indigo-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view MTTR tickets drill-down"
+        >
+          <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-indigo-600 transition">
             {metrics.avgMTTR}<span className="text-xs font-bold text-slate-400 ml-1">Mins</span>
           </div>
           <div className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-wider">Avg MTTR</div>
           <div className="text-[10px] text-slate-400">Mean Time to Repair</div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center">
-          <div className="text-2xl font-black text-slate-900 font-mono">
+        <div
+          onClick={() => openDrillDown('overdue', 'Downtime & Failure Frequency Analysis')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center hover:border-indigo-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view Downtime & MTBF drill-down"
+        >
+          <div className="text-2xl font-black text-slate-900 font-mono group-hover:text-indigo-600 transition">
             {metrics.totalDowntimeMins > 0 ? Math.round(metrics.totalDowntimeMins / Math.max(1, metrics.breakdownMachines) / 60) : 0}
             <span className="text-xs font-bold text-slate-400 ml-1">Hrs</span>
           </div>
@@ -1031,9 +1125,13 @@ export function PlantOperationsDashboard({
           <div className="text-[10px] text-slate-400">Mean Time Between Failures</div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center">
+        <div
+          onClick={() => openDrillDown('on_schedule', 'Preventive Maintenance (PPM) Compliance')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center hover:border-emerald-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view PPM Compliance drill-down"
+        >
           <div
-            className="text-2xl font-black font-mono"
+            className="text-2xl font-black font-mono group-hover:scale-105 transition"
             style={{ color: metrics.ppmComplianceRate >= 90 ? '#10b981' : metrics.ppmComplianceRate >= 70 ? '#f59e0b' : '#ef4444' }}
           >
             {metrics.ppmComplianceRate}<span className="text-xs font-bold text-slate-400 ml-0.5">%</span>
@@ -1042,9 +1140,13 @@ export function PlantOperationsDashboard({
           <div className="text-[10px] text-slate-400">Preventive Maintenance Rate</div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center">
+        <div
+          onClick={() => openDrillDown('total_assets', 'Plant Availability & Fleet Health')}
+          className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center hover:border-indigo-400 hover:shadow-sm transition cursor-pointer group"
+          title="Click to view Plant Availability drill-down"
+        >
           <div
-            className="text-2xl font-black font-mono"
+            className="text-2xl font-black font-mono group-hover:scale-105 transition"
             style={{ color: metrics.operationalPct >= 90 ? '#10b981' : metrics.operationalPct >= 75 ? '#f59e0b' : '#ef4444' }}
           >
             {metrics.operationalPct}<span className="text-xs font-bold text-slate-400 ml-0.5">%</span>
@@ -1053,6 +1155,22 @@ export function PlantOperationsDashboard({
           <div className="text-[10px] text-slate-400">Overall equipment availability</div>
         </div>
       </div>
+
+      {/* ================================================================= */}
+      {/* 7. WIDGET DRILL-DOWN SIDEBAR (SLIDE-OVER RIGHT TO LEFT)           */}
+      {/* ================================================================= */}
+      <WidgetDrilldownDrawer
+        isOpen={drillDownState.isOpen}
+        onClose={closeDrillDown}
+        type={drillDownState.type}
+        title={drillDownState.title}
+        meta={drillDownState.meta}
+        machines={machines}
+        repairs={repairs}
+        ppmSchedules={ppmSchedules}
+        parts={parts}
+        requisitions={requisitions}
+      />
     </div>
   );
 }

@@ -1,0 +1,941 @@
+'use client';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  X,
+  Search,
+  Wrench,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Cpu,
+  FileText,
+  Package,
+  IndianRupee,
+  ArrowRight,
+  ExternalLink,
+  Calendar,
+  Layers,
+  Check,
+  Truck,
+  Armchair,
+  Zap,
+} from 'lucide-react';
+import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
+
+export type DrillDownType =
+  | 'open_tickets'
+  | 'on_schedule'
+  | 'at_risk'
+  | 'overdue'
+  | 'resolved'
+  | 'total_assets'
+  | 'operational_assets'
+  | 'breakdown_assets'
+  | 'maintenance_assets'
+  | 'buffer_assets'
+  | 'pipeline_stage'
+  | 'category_assets'
+  | 'fault_category'
+  | 'cost_analysis'
+  | 'risk_analysis'
+  | 'low_stock_parts'
+  | 'pending_requisitions';
+
+export interface DrillDownMeta {
+  category?: string;
+  stageKey?: string;
+  fault?: string;
+  riskLevel?: 'HIGH' | 'MEDIUM' | 'LOW';
+  [key: string]: any;
+}
+
+interface WidgetDrilldownDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  type: DrillDownType | null;
+  title?: string;
+  meta?: DrillDownMeta;
+  machines: Machine[];
+  repairs: RepairTicket[];
+  ppmSchedules: PPMSchedule[];
+  parts: SparePart[];
+  requisitions: PartRequisition[];
+}
+
+export function WidgetDrilldownDrawer({
+  isOpen,
+  onClose,
+  type,
+  title,
+  meta,
+  machines,
+  repairs,
+  ppmSchedules,
+  parts,
+  requisitions,
+}: WidgetDrilldownDrawerProps) {
+  const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+
+  // Reset filters when drawer opens or type changes
+  useEffect(() => {
+    if (isOpen) {
+      setSearchTerm('');
+      setActiveFilter('all');
+    }
+  }, [isOpen, type, meta]);
+
+  // Handle ESC key to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Lock body scroll when open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  // ─── Data Extraction & Filtering ─────────────────────────────────────
+  const drawerData = useMemo(() => {
+    if (!type) {
+      return {
+        categoryTitle: 'OPERATIONS DRILL-DOWN',
+        mainTitle: 'Widget Drill-Down',
+        kpiCards: [],
+        filterPills: [],
+        tableHeaders: [],
+        rows: [],
+        bottomAction: { label: 'View Master Records →', url: '/dashboard' },
+      };
+    }
+
+    // 1. OPEN TICKETS
+    if (type === 'open_tickets') {
+      const open = repairs.filter((r) => r.status !== 'COMPLETED');
+      const criticalCount = open.filter((r) => r.urgency === 'CRITICAL').length;
+      const inProgressCount = open.filter((r) => r.status === 'IN_PROGRESS').length;
+      const assignedCount = open.filter((r) => r.status === 'ASSIGNED').length;
+      const pendingCount = open.filter((r) => r.status === 'PENDING').length;
+      const totalDowntime = open.reduce((sum, r) => sum + (r.downtimeMinutes || 0), 0);
+      const avgDowntime = open.length > 0 ? Math.round(totalDowntime / open.length) : 0;
+
+      let filtered = open;
+      if (activeFilter === 'critical') filtered = open.filter((r) => r.urgency === 'CRITICAL');
+      else if (activeFilter === 'in_progress') filtered = open.filter((r) => r.status === 'IN_PROGRESS');
+      else if (activeFilter === 'assigned') filtered = open.filter((r) => r.status === 'ASSIGNED');
+      else if (activeFilter === 'pending') filtered = open.filter((r) => r.status === 'PENDING');
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.id.toLowerCase().includes(q) ||
+            r.machineId.toLowerCase().includes(q) ||
+            r.line.toLowerCase().includes(q) ||
+            r.faultCategory?.toLowerCase().includes(q) ||
+            r.faultDetails?.toLowerCase().includes(q) ||
+            (r.attendedBy && r.attendedBy.toLowerCase().includes(q))
+        );
+      }
+
+      return {
+        categoryTitle: 'MAINTENANCE DRILL-DOWN',
+        mainTitle: title || `Open Tickets: ${open.length}`,
+        kpiCards: [
+          { label: 'Total Open', value: open.length, color: 'text-indigo-600' },
+          { label: 'Critical', value: criticalCount, color: 'text-rose-600' },
+          { label: 'In Progress', value: inProgressCount, color: 'text-amber-600' },
+          { label: 'Avg Downtime', value: `${avgDowntime}m`, color: 'text-slate-800' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All (${open.length})` },
+          { id: 'critical', label: `Critical (${criticalCount})` },
+          { id: 'in_progress', label: `In Progress (${inProgressCount})` },
+          { id: 'assigned', label: `Assigned (${assignedCount})` },
+          { id: 'pending', label: `Pending (${pendingCount})` },
+        ],
+        tableHeaders: ['TICKET ID', 'MACHINE & LINE', 'FAULT CATEGORY', 'PRIORITY', 'STAGE', 'ACTIONS'],
+        rows: filtered.map((r) => ({
+          id: r.id,
+          col1: r.id,
+          col2: `${r.machineId} • ${r.line}`,
+          col3: r.faultCategory || 'Uncategorized',
+          badge1: {
+            text: r.urgency,
+            bg: r.urgency === 'CRITICAL' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700',
+          },
+          badge2: {
+            text: r.status.replace('_', ' '),
+            bg:
+              r.status === 'IN_PROGRESS'
+                ? 'bg-amber-100 text-amber-800'
+                : r.status === 'ASSIGNED'
+                ? 'bg-blue-100 text-blue-800'
+                : 'bg-slate-100 text-slate-800',
+          },
+          actionText: 'Open Ticket',
+          actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
+        })),
+        bottomAction: { label: 'View filtered in Repairs Master Page →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 2. ON SCHEDULE (PPM)
+    if (type === 'on_schedule') {
+      const completed = ppmSchedules.filter((p) => p.status === 'COMPLETED').length;
+      const dueSoon = ppmSchedules.filter((p) => p.status === 'DUE_SOON').length;
+      const overdue = ppmSchedules.filter((p) => p.status === 'OVERDUE').length;
+      const pending = ppmSchedules.filter((p) => p.status === 'PENDING').length;
+      const complianceRate = ppmSchedules.length > 0 ? Math.round((completed / ppmSchedules.length) * 100) : 100;
+
+      let filtered = ppmSchedules;
+      if (activeFilter === 'completed') filtered = ppmSchedules.filter((p) => p.status === 'COMPLETED');
+      else if (activeFilter === 'due_soon') filtered = ppmSchedules.filter((p) => p.status === 'DUE_SOON');
+      else if (activeFilter === 'overdue') filtered = ppmSchedules.filter((p) => p.status === 'OVERDUE');
+      else if (activeFilter === 'pending') filtered = ppmSchedules.filter((p) => p.status === 'PENDING');
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filtered = filtered.filter(
+          (p) =>
+            p.id.toLowerCase().includes(q) ||
+            p.machineId.toLowerCase().includes(q) ||
+            p.task?.toLowerCase().includes(q) ||
+            p.frequency?.toLowerCase().includes(q)
+        );
+      }
+
+      return {
+        categoryTitle: 'PREVENTIVE DRILL-DOWN',
+        mainTitle: title || `PPM Schedules & Compliance: ${ppmSchedules.length}`,
+        kpiCards: [
+          { label: 'Total PPM', value: ppmSchedules.length, color: 'text-indigo-600' },
+          { label: 'Completed', value: completed, color: 'text-emerald-600' },
+          { label: 'Due Soon', value: dueSoon, color: 'text-blue-600' },
+          { label: 'Compliance', value: `${complianceRate}%`, color: 'text-emerald-600' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All (${ppmSchedules.length})` },
+          { id: 'completed', label: `Completed (${completed})` },
+          { id: 'due_soon', label: `Due Soon (${dueSoon})` },
+          { id: 'pending', label: `Pending (${pending})` },
+          { id: 'overdue', label: `Overdue (${overdue})` },
+        ],
+        tableHeaders: ['SCHEDULE ID', 'MACHINE ID', 'TASK', 'FREQUENCY', 'STATUS', 'ACTIONS'],
+        rows: filtered.map((p) => ({
+          id: p.id,
+          col1: p.id,
+          col2: p.machineId,
+          col3: p.task,
+          badge1: { text: p.frequency, bg: 'bg-slate-100 text-slate-700' },
+          badge2: {
+            text: p.status.replace('_', ' '),
+            bg:
+              p.status === 'COMPLETED'
+                ? 'bg-emerald-100 text-emerald-800'
+                : p.status === 'DUE_SOON'
+                ? 'bg-indigo-100 text-indigo-800'
+                : p.status === 'OVERDUE'
+                ? 'bg-rose-100 text-rose-800'
+                : 'bg-slate-100 text-slate-700',
+          },
+          actionText: 'View Schedule',
+          actionUrl: `/dashboard/calendar`,
+        })),
+        bottomAction: { label: 'Manage in Maintenance Schedule Calendar →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 3. AT RISK TICKETS (>2h MTTR)
+    if (type === 'at_risk') {
+      const atRisk = repairs.filter(
+        (r) => r.status !== 'COMPLETED' && (r.downtimeMinutes >= 120 || r.urgency === 'CRITICAL')
+      );
+      const criticalCount = atRisk.filter((r) => r.urgency === 'CRITICAL').length;
+      const inProgressCount = atRisk.filter((r) => r.status === 'IN_PROGRESS').length;
+
+      let filtered = atRisk;
+      if (activeFilter === 'critical') filtered = atRisk.filter((r) => r.urgency === 'CRITICAL');
+      else if (activeFilter === 'in_progress') filtered = atRisk.filter((r) => r.status === 'IN_PROGRESS');
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.id.toLowerCase().includes(q) ||
+            r.machineId.toLowerCase().includes(q) ||
+            r.line.toLowerCase().includes(q) ||
+            r.faultCategory?.toLowerCase().includes(q)
+        );
+      }
+
+      return {
+        categoryTitle: 'SLA & RISK DRILL-DOWN',
+        mainTitle: title || `At Risk Tickets (>2h MTTR): ${atRisk.length}`,
+        kpiCards: [
+          { label: 'At Risk', value: atRisk.length, color: 'text-amber-600' },
+          { label: 'Critical', value: criticalCount, color: 'text-rose-600' },
+          { label: 'In Progress', value: inProgressCount, color: 'text-blue-600' },
+          { label: 'SLA Target', value: '< 2h', color: 'text-slate-700' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All (${atRisk.length})` },
+          { id: 'critical', label: `Critical (${criticalCount})` },
+          { id: 'in_progress', label: `In Progress (${inProgressCount})` },
+        ],
+        tableHeaders: ['TICKET ID', 'MACHINE & LINE', 'DOWNTIME', 'PRIORITY', 'STATUS', 'ACTIONS'],
+        rows: filtered.map((r) => ({
+          id: r.id,
+          col1: r.id,
+          col2: `${r.machineId} • ${r.line}`,
+          col3: `${r.downtimeMinutes || 0} mins elapsed`,
+          badge1: {
+            text: r.urgency,
+            bg: r.urgency === 'CRITICAL' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800',
+          },
+          badge2: {
+            text: 'At Risk',
+            bg: 'bg-amber-100 text-amber-800 font-bold',
+          },
+          actionText: 'Accelerate',
+          actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
+        })),
+        bottomAction: { label: 'View in Repairs Master Page →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 4. OVERDUE WORK ORDERS & PPM
+    if (type === 'overdue') {
+      const overduePpm = ppmSchedules.filter((p) => p.status === 'OVERDUE');
+      const overdueTickets = repairs.filter(
+        (r) => r.status !== 'COMPLETED' && (r.downtimeMinutes >= 240 || r.urgency === 'CRITICAL')
+      );
+      const totalOverdue = overduePpm.length + overdueTickets.length;
+
+      let filteredTickets = overdueTickets;
+      let filteredPpm = overduePpm;
+
+      if (activeFilter === 'ppm') {
+        filteredTickets = [];
+      } else if (activeFilter === 'tickets') {
+        filteredPpm = [];
+      }
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filteredTickets = filteredTickets.filter(
+          (r) =>
+            r.id.toLowerCase().includes(q) ||
+            r.machineId.toLowerCase().includes(q) ||
+            r.line.toLowerCase().includes(q)
+        );
+        filteredPpm = filteredPpm.filter(
+          (p) =>
+            p.id.toLowerCase().includes(q) ||
+            p.machineId.toLowerCase().includes(q) ||
+            p.task?.toLowerCase().includes(q)
+        );
+      }
+
+      const rows = [
+        ...filteredTickets.map((r) => ({
+          id: r.id,
+          col1: r.id,
+          col2: `${r.machineId} • ${r.line}`,
+          col3: `Repair Ticket (${r.downtimeMinutes}m)`,
+          badge1: { text: 'TICKET', bg: 'bg-rose-100 text-rose-800' },
+          badge2: { text: 'OVERDUE', bg: 'bg-rose-600 text-white font-bold' },
+          actionText: 'Attend Now',
+          actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
+        })),
+        ...filteredPpm.map((p) => ({
+          id: p.id,
+          col1: p.id,
+          col2: p.machineId,
+          col3: `PPM: ${p.task}`,
+          badge1: { text: 'PPM', bg: 'bg-purple-100 text-purple-800' },
+          badge2: { text: 'OVERDUE', bg: 'bg-rose-600 text-white font-bold' },
+          actionText: 'Execute PPM',
+          actionUrl: `/dashboard/calendar`,
+        })),
+      ];
+
+      return {
+        categoryTitle: 'ESCALATION DRILL-DOWN',
+        mainTitle: title || `Overdue Work Orders & PPM: ${totalOverdue}`,
+        kpiCards: [
+          { label: 'Total Overdue', value: totalOverdue, color: 'text-rose-600' },
+          { label: 'PPM Overdue', value: overduePpm.length, color: 'text-purple-600' },
+          { label: 'Tickets > 4h', value: overdueTickets.length, color: 'text-rose-600' },
+          { label: 'Resolution SLA', value: 'Immediate', color: 'text-amber-600' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All Overdue (${totalOverdue})` },
+          { id: 'tickets', label: `Tickets (${overdueTickets.length})` },
+          { id: 'ppm', label: `PPM (${overduePpm.length})` },
+        ],
+        tableHeaders: ['ITEM ID', 'EQUIPMENT / LINE', 'DESCRIPTION', 'TYPE', 'STATUS', 'ACTIONS'],
+        rows,
+        bottomAction: { label: 'Resolve Escalations in Calendar →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 5. RESOLVED TODAY & COMPLETED
+    if (type === 'resolved') {
+      const completed = repairs.filter((r) => r.status === 'COMPLETED');
+      const totalDowntime = completed.reduce((sum, r) => sum + (r.downtimeMinutes || 0), 0);
+      const avgMTTR = completed.length > 0 ? Math.round(totalDowntime / completed.length) : 0;
+      const mechanical = completed.filter((r) => r.faultCategory?.toLowerCase().includes('mechanical')).length;
+      const electrical = completed.filter((r) => r.faultCategory?.toLowerCase().includes('electrical')).length;
+
+      let filtered = completed;
+      if (activeFilter === 'mechanical') {
+        filtered = completed.filter((r) => r.faultCategory?.toLowerCase().includes('mechanical'));
+      } else if (activeFilter === 'electrical') {
+        filtered = completed.filter((r) => r.faultCategory?.toLowerCase().includes('electrical'));
+      }
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.id.toLowerCase().includes(q) ||
+            r.machineId.toLowerCase().includes(q) ||
+            r.line.toLowerCase().includes(q) ||
+            r.actionTaken?.toLowerCase().includes(q)
+        );
+      }
+
+      return {
+        categoryTitle: 'PERFORMANCE DRILL-DOWN',
+        mainTitle: title || `Resolved Work Orders & Repairs: ${completed.length}`,
+        kpiCards: [
+          { label: 'Total Resolved', value: completed.length, color: 'text-teal-600' },
+          { label: 'Avg MTTR', value: `${avgMTTR}m`, color: 'text-indigo-600' },
+          { label: 'Mechanical', value: mechanical, color: 'text-slate-800' },
+          { label: 'Electrical', value: electrical, color: 'text-slate-800' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All (${completed.length})` },
+          { id: 'mechanical', label: `Mechanical (${mechanical})` },
+          { id: 'electrical', label: `Electrical (${electrical})` },
+        ],
+        tableHeaders: ['TICKET ID', 'MACHINE & LINE', 'ACTION TAKEN', 'DOWNTIME', 'STATUS', 'ACTIONS'],
+        rows: filtered.map((r) => ({
+          id: r.id,
+          col1: r.id,
+          col2: `${r.machineId} • ${r.line}`,
+          col3: r.actionTaken || 'Repair completed and tested',
+          badge1: { text: `${r.downtimeMinutes || 0}m`, bg: 'bg-slate-100 text-slate-700' },
+          badge2: { text: 'COMPLETED', bg: 'bg-emerald-100 text-emerald-800 font-bold' },
+          actionText: 'View Report',
+          actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
+        })),
+        bottomAction: { label: 'View Repairs History in Master Page →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 6. TOTAL ASSETS / ASSET STATUS DRILL-DOWNS
+    if (
+      type === 'total_assets' ||
+      type === 'operational_assets' ||
+      type === 'breakdown_assets' ||
+      type === 'maintenance_assets' ||
+      type === 'buffer_assets' ||
+      type === 'category_assets'
+    ) {
+      let baseList = machines;
+      if (type === 'operational_assets') baseList = machines.filter((m) => m.status === 'ACTIVE');
+      else if (type === 'breakdown_assets') baseList = machines.filter((m) => m.status === 'BREAKDOWN');
+      else if (type === 'maintenance_assets') baseList = machines.filter((m) => m.status === 'UNDER_MAINTENANCE');
+      else if (type === 'buffer_assets') baseList = machines.filter((m) => m.status === 'BUFFER');
+      else if (type === 'category_assets' && meta?.category) {
+        baseList = machines.filter((m) => {
+          if (meta.category === 'MACHINE') return !m.category || m.category === 'MACHINE';
+          if (meta.category === 'FURNITURE') return m.category === 'FURNITURE' || m.category === 'TABLE' || m.category === 'CHAIR';
+          if (meta.category === 'UTILITY') return m.category === 'UTILITY' || m.category === 'LIGHT' || m.category === 'FAN';
+          if (meta.category === 'VEHICLE') return m.category === 'VEHICLE';
+          return m.category === meta.category;
+        });
+      }
+
+      const activeCount = baseList.filter((m) => m.status === 'ACTIVE').length;
+      const breakdownCount = baseList.filter((m) => m.status === 'BREAKDOWN').length;
+      const maintCount = baseList.filter((m) => m.status === 'UNDER_MAINTENANCE').length;
+      const bufferCount = baseList.filter((m) => m.status === 'BUFFER').length;
+      const availPct = baseList.length > 0 ? Math.round((activeCount / baseList.length) * 100) : 100;
+
+      let filtered = baseList;
+      if (activeFilter === 'active') filtered = baseList.filter((m) => m.status === 'ACTIVE');
+      else if (activeFilter === 'breakdown') filtered = baseList.filter((m) => m.status === 'BREAKDOWN');
+      else if (activeFilter === 'maintenance') filtered = baseList.filter((m) => m.status === 'UNDER_MAINTENANCE');
+      else if (activeFilter === 'buffer') filtered = baseList.filter((m) => m.status === 'BUFFER');
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filtered = filtered.filter(
+          (m) =>
+            m.id.toLowerCase().includes(q) ||
+            m.model?.toLowerCase().includes(q) ||
+            m.brand?.toLowerCase().includes(q) ||
+            m.currentLine?.toLowerCase().includes(q) ||
+            m.stationNo?.toLowerCase().includes(q)
+        );
+      }
+
+      return {
+        categoryTitle: 'EQUIPMENT ASSET DRILL-DOWN',
+        mainTitle: title || `Plant Asset Registry: ${baseList.length}`,
+        kpiCards: [
+          { label: 'Total Assets', value: baseList.length, color: 'text-indigo-600' },
+          { label: 'Active', value: activeCount, color: 'text-emerald-600' },
+          { label: 'Breakdown', value: breakdownCount, color: 'text-rose-600' },
+          { label: 'Availability', value: `${availPct}%`, color: 'text-emerald-600' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All (${baseList.length})` },
+          { id: 'active', label: `Active (${activeCount})` },
+          { id: 'breakdown', label: `Breakdown (${breakdownCount})` },
+          { id: 'maintenance', label: `Maintenance (${maintCount})` },
+          { id: 'buffer', label: `Buffer (${bufferCount})` },
+        ],
+        tableHeaders: ['ASSET CODE', 'BRAND & MODEL', 'LINE & STATION', 'CATEGORY', 'STATUS', 'ACTIONS'],
+        rows: filtered.map((m) => ({
+          id: m.id,
+          col1: m.id,
+          col2: `${m.brand} ${m.model}`,
+          col3: `${m.currentLine} • ${m.stationNo}`,
+          badge1: { text: m.category || 'MACHINE', bg: 'bg-slate-100 text-slate-700' },
+          badge2: {
+            text: m.status,
+            bg:
+              m.status === 'ACTIVE'
+                ? 'bg-emerald-100 text-emerald-800'
+                : m.status === 'BREAKDOWN'
+                ? 'bg-rose-100 text-rose-800 font-bold'
+                : m.status === 'UNDER_MAINTENANCE'
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-blue-100 text-blue-800',
+          },
+          actionText: 'View Asset',
+          actionUrl: `/dashboard/machines?id=${m.id}`,
+        })),
+        bottomAction: { label: 'View in Equipment Registry Master Page →', url: '/dashboard/machines' },
+      };
+    }
+
+    // 7. WORKFLOW PIPELINE STAGE
+    if (type === 'pipeline_stage') {
+      const stageKey = meta?.stageKey || 'logged';
+      let stageRepairs = repairs;
+      let stagePpm: PPMSchedule[] = [];
+      let stageReqs: PartRequisition[] = [];
+
+      if (stageKey === 'logged') stageRepairs = repairs.filter((r) => r.status === 'PENDING');
+      else if (stageKey === 'assigned') stageRepairs = repairs.filter((r) => r.status === 'ASSIGNED');
+      else if (stageKey === 'in_progress') stageRepairs = repairs.filter((r) => r.status === 'IN_PROGRESS');
+      else if (stageKey === 'ppm_due') {
+        stageRepairs = [];
+        stagePpm = ppmSchedules.filter((p) => p.status === 'DUE_SOON' || p.status === 'PENDING');
+      } else if (stageKey === 'ppm_overdue') {
+        stageRepairs = [];
+        stagePpm = ppmSchedules.filter((p) => p.status === 'OVERDUE');
+      } else if (stageKey === 'awaiting_parts') {
+        stageRepairs = [];
+        stageReqs = requisitions.filter((r) => r.status.startsWith('PENDING'));
+      } else if (stageKey === 'qa_signoff') {
+        stageRepairs = repairs.filter((r) => r.status === 'COMPLETED').slice(0, 3);
+      } else if (stageKey === 'resolved') {
+        stageRepairs = repairs.filter((r) => r.status === 'COMPLETED');
+      }
+
+      const totalItems = stageRepairs.length + stagePpm.length + stageReqs.length;
+
+      const rows = [
+        ...stageRepairs.map((r) => ({
+          id: r.id,
+          col1: r.id,
+          col2: `${r.machineId} • ${r.line}`,
+          col3: r.faultCategory || 'Repair Work Order',
+          badge1: { text: r.urgency, bg: r.urgency === 'CRITICAL' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700' },
+          badge2: { text: r.status, bg: 'bg-indigo-100 text-indigo-800' },
+          actionText: 'Open Ticket',
+          actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
+        })),
+        ...stagePpm.map((p) => ({
+          id: p.id,
+          col1: p.id,
+          col2: p.machineId,
+          col3: `PPM: ${p.task}`,
+          badge1: { text: p.frequency, bg: 'bg-purple-100 text-purple-700' },
+          badge2: { text: p.status, bg: 'bg-indigo-100 text-indigo-800' },
+          actionText: 'View PPM',
+          actionUrl: `/dashboard/calendar`,
+        })),
+        ...stageReqs.map((req) => ({
+          id: req.id,
+          col1: req.id,
+          col2: `For Machine: ${req.targetMachineId || 'General'}`,
+          col3: `Parts Requisition: ${req.items?.length || 1} item(s)`,
+          badge1: { text: `₹${(req.estimatedCost || 0).toLocaleString()}`, bg: 'bg-slate-100 text-slate-800' },
+          badge2: { text: req.status, bg: 'bg-amber-100 text-amber-800' },
+          actionText: 'View Indent',
+          actionUrl: `/dashboard/requisition`,
+        })),
+      ];
+
+      return {
+        categoryTitle: 'PIPELINE STAGE DRILL-DOWN',
+        mainTitle: title || `Workflow Stage: ${stageKey.toUpperCase()}`,
+        kpiCards: [
+          { label: 'Stage Items', value: totalItems, color: 'text-indigo-600' },
+          { label: 'Work Orders', value: stageRepairs.length, color: 'text-blue-600' },
+          { label: 'PPM Tasks', value: stagePpm.length, color: 'text-purple-600' },
+          { label: 'Requisitions', value: stageReqs.length, color: 'text-amber-600' },
+        ],
+        filterPills: [{ id: 'all', label: `All Stage Items (${totalItems})` }],
+        tableHeaders: ['RECORD ID', 'EQUIPMENT / TARGET', 'DETAILS', 'TYPE / VALUE', 'STAGE', 'ACTIONS'],
+        rows,
+        bottomAction: { label: 'View Pipeline in Calendar / Repairs →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 8. FAULT CATEGORY / ROOT CAUSE DRILL-DOWN
+    if (type === 'fault_category') {
+      const fault = meta?.fault || 'Mechanical';
+      const faultRepairs = repairs.filter((r) =>
+        r.faultCategory?.toLowerCase().includes(fault.toLowerCase())
+      );
+      const totalDowntime = faultRepairs.reduce((s, r) => s + (r.downtimeMinutes || 0), 0);
+      const criticalCount = faultRepairs.filter((r) => r.urgency === 'CRITICAL').length;
+      const completedCount = faultRepairs.filter((r) => r.status === 'COMPLETED').length;
+
+      return {
+        categoryTitle: 'ROOT CAUSE ANALYSIS DRILL-DOWN',
+        mainTitle: title || `${fault} Faults Breakdown: ${faultRepairs.length}`,
+        kpiCards: [
+          { label: 'Total Incidents', value: faultRepairs.length, color: 'text-indigo-600' },
+          { label: 'Total Downtime', value: `${totalDowntime}m`, color: 'text-rose-600' },
+          { label: 'Critical', value: criticalCount, color: 'text-amber-600' },
+          { label: 'Resolved', value: completedCount, color: 'text-emerald-600' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All (${faultRepairs.length})` },
+          { id: 'critical', label: `Critical (${criticalCount})` },
+          { id: 'completed', label: `Resolved (${completedCount})` },
+        ],
+        tableHeaders: ['TICKET ID', 'MACHINE & LINE', 'DETAILS', 'DOWNTIME', 'STATUS', 'ACTIONS'],
+        rows: faultRepairs.map((r) => ({
+          id: r.id,
+          col1: r.id,
+          col2: `${r.machineId} • ${r.line}`,
+          col3: r.faultDetails || r.faultCategory,
+          badge1: { text: `${r.downtimeMinutes}m`, bg: 'bg-slate-100 text-slate-700' },
+          badge2: { text: r.status, bg: r.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' },
+          actionText: 'Open Ticket',
+          actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
+        })),
+        bottomAction: { label: 'Analyze Root Causes in Master Page →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 9. COST & EXPENDITURE ANALYSIS
+    if (type === 'cost_analysis') {
+      const totalPlantCost = machines.reduce((sum, m) => sum + (m.cost || 45000), 0);
+      const totalReqCost = requisitions.reduce((sum, r) => sum + (r.estimatedCost || 0), 0);
+
+      return {
+        categoryTitle: 'FINANCIAL & CAPEX DRILL-DOWN',
+        mainTitle: title || 'Plant Cost & Expenditure Breakdown',
+        kpiCards: [
+          { label: 'Asset Capital Value', value: `₹${(totalPlantCost / 100000).toFixed(1)}L`, color: 'text-indigo-600' },
+          { label: 'Maintenance Spend', value: `₹${(totalReqCost / 1000).toFixed(0)}k`, color: 'text-amber-600' },
+          { label: 'Asset Count', value: machines.length, color: 'text-slate-800' },
+          { label: 'Cost Efficiency', value: '96.4%', color: 'text-emerald-600' },
+        ],
+        filterPills: [
+          { id: 'all', label: `All Assets (${machines.length})` },
+        ],
+        tableHeaders: ['ASSET ID', 'EQUIPMENT / MODEL', 'LINE LOCATION', 'CAPITAL VALUE', 'STATUS', 'ACTIONS'],
+        rows: machines.slice(0, 50).map((m) => ({
+          id: m.id,
+          col1: m.id,
+          col2: `${m.brand} ${m.model}`,
+          col3: m.currentLine,
+          badge1: { text: `₹${(m.cost || 45000).toLocaleString()}`, bg: 'bg-emerald-50 text-emerald-700 font-bold' },
+          badge2: { text: m.status, bg: 'bg-slate-100 text-slate-800' },
+          actionText: 'View Valuation',
+          actionUrl: `/dashboard/machines?id=${m.id}`,
+        })),
+        bottomAction: { label: 'View Full Asset Capex Registry →', url: '/dashboard/machines' },
+      };
+    }
+
+    // 10. LOW STOCK SPARE PARTS
+    if (type === 'low_stock_parts') {
+      const lowStock = parts.filter((p) => p.stock <= p.minStock);
+
+      return {
+        categoryTitle: 'INVENTORY & STORE DRILL-DOWN',
+        mainTitle: title || `Low Stock Spare Parts: ${lowStock.length}`,
+        kpiCards: [
+          { label: 'Low Stock Items', value: lowStock.length, color: 'text-rose-600' },
+          { label: 'Total Catalog', value: parts.length, color: 'text-indigo-600' },
+          { label: 'Critical Threshold', value: 'Min Stock', color: 'text-slate-700' },
+          { label: 'Pending Reqs', value: requisitions.length, color: 'text-purple-600' },
+        ],
+        filterPills: [{ id: 'all', label: `Low Stock (${lowStock.length})` }],
+        tableHeaders: ['PART ID & SKU', 'NAME & COMPATIBILITY', 'CATEGORY', 'CURRENT STOCK', 'STATUS', 'ACTIONS'],
+        rows: lowStock.map((p) => ({
+          id: p.partId,
+          col1: `${p.partId} • ${p.sku}`,
+          col2: p.name,
+          col3: p.category,
+          badge1: { text: `${p.stock} / ${p.minStock} min`, bg: 'bg-rose-100 text-rose-800 font-bold' },
+          badge2: { text: 'REORDER NEEDED', bg: 'bg-amber-100 text-amber-800 font-bold' },
+          actionText: 'Reorder Part',
+          actionUrl: `/dashboard/requisition`,
+        })),
+        bottomAction: { label: 'Create Purchase Requisition in Store →', url: '/dashboard/requisition' },
+      };
+    }
+
+    // 11. PENDING REQUISITIONS
+    if (type === 'pending_requisitions') {
+      const pending = requisitions.filter((r) => r.status.startsWith('PENDING'));
+
+      return {
+        categoryTitle: 'APPROVALS & REQUISITIONS DRILL-DOWN',
+        mainTitle: title || `Pending Parts Requisitions: ${pending.length}`,
+        kpiCards: [
+          { label: 'Pending Indents', value: pending.length, color: 'text-amber-600' },
+          { label: 'Total Requisitions', value: requisitions.length, color: 'text-indigo-600' },
+          { label: 'CEO Approval', value: pending.filter((r) => r.status.includes('CEO')).length, color: 'text-purple-600' },
+          { label: 'Manager Review', value: pending.filter((r) => r.status.includes('MANAGER')).length, color: 'text-blue-600' },
+        ],
+        filterPills: [{ id: 'all', label: `Pending Indents (${pending.length})` }],
+        tableHeaders: ['REQUISITION ID', 'TARGET MACHINE', 'REQUESTED BY', 'EST. COST', 'APPROVAL STATUS', 'ACTIONS'],
+        rows: pending.map((req) => ({
+          id: req.id,
+          col1: req.id,
+          col2: req.targetMachineId || 'Plant Floor',
+          col3: req.requestedBy || 'Store Supervisor',
+          badge1: { text: `₹${(req.estimatedCost || 0).toLocaleString()}`, bg: 'bg-slate-100 text-slate-800 font-bold' },
+          badge2: { text: req.status.replace(/_/g, ' '), bg: 'bg-amber-100 text-amber-800' },
+          actionText: 'Review Indent',
+          actionUrl: `/dashboard/requisition`,
+        })),
+        bottomAction: { label: 'Manage Approvals in Store Desk →', url: '/dashboard/requisition' },
+      };
+    }
+
+    // Fallback
+    return {
+      categoryTitle: 'OPERATIONS DRILL-DOWN',
+      mainTitle: title || 'Widget Drill-Down',
+      kpiCards: [],
+      filterPills: [],
+      tableHeaders: [],
+      rows: [],
+      bottomAction: { label: 'View Master Records →', url: '/dashboard' },
+    };
+  }, [type, title, meta, machines, repairs, ppmSchedules, parts, requisitions, activeFilter, searchTerm]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-hidden select-none animate-fade-in">
+      {/* ─── Backdrop ─────────────────────────────────────────────────── */}
+      <div
+        onClick={onClose}
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-300"
+      />
+
+      {/* ─── Slide-over Right Panel ──────────────────────────────────── */}
+      <div className="fixed inset-y-0 right-0 z-50 w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out">
+        {/* TOP BAR: Title & Close Button */}
+        <div className="p-5 sm:p-6 border-b border-slate-100 flex items-start justify-between bg-white shrink-0">
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block mb-1">
+              {drawerData.categoryTitle}
+            </span>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+              {drawerData.mainTitle}
+            </h2>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-800 hover:bg-slate-50 flex items-center justify-center transition cursor-pointer shrink-0 ml-4"
+            title="Close drill-down panel (Esc)"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* DRAWER CONTENT (Scrollable) */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
+          {/* 1. 4 KPI Summary Cards Grid */}
+          {drawerData.kpiCards && drawerData.kpiCards.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {drawerData.kpiCards.map((kpi, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs flex flex-col justify-between"
+                >
+                  <span className="text-xs font-medium text-slate-500">{kpi.label}</span>
+                  <span className={`text-xl sm:text-2xl font-black font-mono mt-1 ${kpi.color || 'text-slate-900'}`}>
+                    {kpi.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 2. Filter Pills & Search Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+            {/* Filter Pills */}
+            {drawerData.filterPills && drawerData.filterPills.length > 1 && (
+              <div className="flex items-center flex-wrap gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                {drawerData.filterPills.map((pill) => {
+                  const isActive = activeFilter === pill.id;
+                  return (
+                    <button
+                      key={pill.id}
+                      onClick={() => setActiveFilter(pill.id)}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {pill.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Quick Search Box */}
+            <div className="relative min-w-[200px] sm:max-w-[260px] w-full">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search records..."
+                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 focus:bg-white transition"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 3. Detailed Records Table */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 overflow-hidden shadow-2xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {drawerData.tableHeaders.map((head, idx) => (
+                      <th
+                        key={idx}
+                        className={`p-3 sm:px-4 ${idx === drawerData.tableHeaders.length - 1 ? 'text-right' : ''}`}
+                      >
+                        {head}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {drawerData.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={drawerData.tableHeaders.length} className="p-8 text-center text-slate-400">
+                        No matching records found for this drill-down.
+                      </td>
+                    </tr>
+                  ) : (
+                    drawerData.rows.map((row) => (
+                      <tr key={row.id} className="hover:bg-slate-50/80 transition group">
+                        <td className="p-3 sm:px-4 font-bold text-indigo-600 font-mono">
+                          {row.col1}
+                        </td>
+                        <td className="p-3 sm:px-4 font-medium text-slate-800">
+                          {row.col2}
+                        </td>
+                        <td className="p-3 sm:px-4 text-slate-600 truncate max-w-[200px]">
+                          {row.col3}
+                        </td>
+                        {row.badge1 && (
+                          <td className="p-3 sm:px-4">
+                            <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${row.badge1.bg}`}>
+                              {row.badge1.text}
+                            </span>
+                          </td>
+                        )}
+                        {row.badge2 && (
+                          <td className="p-3 sm:px-4">
+                            <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${row.badge2.bg}`}>
+                              {row.badge2.text}
+                            </span>
+                          </td>
+                        )}
+                        <td className="p-3 sm:px-4 text-right">
+                          <button
+                            onClick={() => {
+                              onClose();
+                              router.push(row.actionUrl);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-800 transition cursor-pointer"
+                          >
+                            <span>{row.actionText}</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. STICKY BOTTOM ACTION BANNER (Matching Screenshot) */}
+        <div className="p-4 sm:p-5 border-t border-slate-100 bg-white shrink-0">
+          <button
+            onClick={() => {
+              onClose();
+              router.push(drawerData.bottomAction.url);
+            }}
+            className="w-full py-3 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>{drawerData.bottomAction.label}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
