@@ -6,8 +6,11 @@ import {
   CalendarDays,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Clock,
   CheckCircle2,
+  CheckCheck,
+  Wrench,
   X,
   ShieldCheck,
   Truck,
@@ -47,6 +50,13 @@ export interface MyTaskItem {
   ppmObj?: PPMSchedule;
 }
 
+function toDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function MaintenanceMilestonesAndTasks({
   repairs = [],
   ppmSchedules = [],
@@ -60,9 +70,11 @@ export function MaintenanceMilestonesAndTasks({
   onOpenFullCalendar,
 }: MaintenanceMilestonesAndTasksProps) {
   const router = useRouter();
+  const todayKey = useMemo(() => toDateKey(new Date()), []);
   const [activeTab, setActiveTab] = useState<'schedules' | 'month_grid'>(defaultTab);
   const [workerFilter, setWorkerFilter] = useState<string>('ALL'); // 'ALL' | 'MY' | specific name
-  const [selectedGridDate, setSelectedGridDate] = useState<string>('2026-10-31');
+  const [selectedGridDate, setSelectedGridDate] = useState<string>(() => toDateKey(new Date()));
+  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(true);
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<{
     id: string;
@@ -84,201 +96,111 @@ export function MaintenanceMilestonesAndTasks({
     );
   }, []);
 
-  // Month grid navigation state (defaults to October 2026 matching screenshot)
-  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => new Date(2026, 9, 1));
+  // Month grid navigation state (defaults to current month)
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
 
-  // ─── 1. DERIVED DATA FOR LEFT CARD: MILESTONE SCHEDULES ─────────────────
-  const milestonesList = useMemo(() => {
+  // ─── 1. DERIVED DATA FOR LEFT CARD: DELIVERIES / TODAY'S WORK ───────────
+  const deliveriesList = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Merge PPM tasks & repair tickets as scheduled milestone items
-    const ppmItems = ppmSchedules
-      .filter((p) => p.status !== 'COMPLETED')
-      .map((ppm) => {
-        const mch = machines.find((m) => m.id === ppm.machineId);
-        const dueDate = ppm.nextDue ? new Date(ppm.nextDue) : new Date(today.getTime() + 86400000 * 21);
-        dueDate.setHours(0, 0, 0, 0);
-        const diffTime = dueDate.getTime() - today.getTime();
-        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-        const interval = ppm.intervalDays || (ppm.frequency === 'Monthly' ? 40 : ppm.frequency === 'Weekly' ? 14 : 60);
-        const daysElapsed = Math.max(1, interval - Math.max(0, diffDays));
-        const progressPct = Math.min(100, Math.max(25, Math.round((daysElapsed / interval) * 100)));
-
-        const isOverdue = diffDays < 0 || ppm.status === 'OVERDUE';
-        const isAtRisk = isOverdue || diffDays <= 21 || ppm.status === 'DUE_SOON';
-
-        const dueDateFormatted = dueDate.toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        });
-
-        const daysLeftText = isOverdue
-          ? `${Math.abs(diffDays)} days overdue`
-          : diffDays === 0
-          ? 'Due today'
-          : diffDays === 1
-          ? 'Tomorrow'
-          : `${diffDays} days left`;
-
-        return {
-          id: ppm.id,
-          type: 'PPM' as const,
-          machineId: ppm.machineId,
-          machineName: mch?.type || mch?.brand || ppm.machineId,
-          stationCode: mch?.stationNo || '800',
-          line: mch?.currentLine || 'Line 01',
-          dueDateFormatted,
-          daysLeftText,
-          isOverdue,
-          currentStage: ppm.task || 'Knitting (Process)',
-          subStage: ppm.frequency || 'Process',
-          progressPct,
-          progressText: `${daysElapsed}/${interval} (${progressPct}%)`,
-          riskBadgeText: isOverdue ? 'Overdue' : isAtRisk ? 'At Risk' : 'On Schedule',
-          riskBadgeStyle: isOverdue
-            ? 'bg-rose-50 text-rose-800 border border-rose-200'
-            : isAtRisk
-            ? 'bg-amber-50 text-amber-800 border border-amber-200'
-            : 'bg-emerald-50 text-emerald-800 border border-emerald-200',
-          progressBarColor: isOverdue
-            ? 'bg-rose-500'
-            : isAtRisk
-            ? 'bg-amber-500'
-            : 'bg-emerald-500',
-          rawDueDays: diffDays,
-          ppmObj: ppm,
-        };
-      });
-
-    const ticketItems = repairs
+    // Active repairs relevant for today
+    const activeRepairs = repairs
       .filter((r) => r.status !== 'COMPLETED')
       .map((t) => {
         const mch = machines.find((m) => m.id === t.machineId);
         const reported = t.reportedAt ? new Date(t.reportedAt) : today;
         reported.setHours(0, 0, 0, 0);
         const isCritical = t.urgency === 'CRITICAL';
-        const diffDays = isCritical ? 0 : 21;
+        const isReportedToday = t.reportedAt && t.reportedAt.startsWith(todayKey);
 
-        const dueDate = new Date(reported.getTime() + (isCritical ? 0 : 86400000 * 21));
+        const dueDateFormatted = reported.toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+
+        const progressPct = t.status === 'IN_PROGRESS' ? 65 : t.status === 'ASSIGNED' ? 35 : 15;
+
+        return {
+          id: t.id,
+          type: 'TICKET' as const,
+          machineId: t.machineId,
+          machineName: mch?.type || mch?.brand || t.machineId,
+          stationCode: mch?.stationNo || 'Station 01',
+          line: t.line || mch?.currentLine || 'Line 01',
+          dueDateFormatted: isReportedToday ? 'Reported Today' : dueDateFormatted,
+          daysLeftText: isCritical
+            ? 'Critical Action Required'
+            : t.status === 'IN_PROGRESS'
+            ? 'In Progress Today'
+            : isReportedToday
+            ? 'New Today'
+            : 'Pending Action',
+          isOverdue: isCritical,
+          currentStage: t.faultCategory || t.faultDetails || 'Breakdown Inspection',
+          subStage: t.status === 'IN_PROGRESS' ? 'In Progress' : t.status === 'ASSIGNED' ? 'Assigned' : 'Reported',
+          progressPct,
+          progressText: t.status === 'IN_PROGRESS' ? 'Active repair' : t.status === 'ASSIGNED' ? 'Dispatched' : 'Reported',
+          riskBadgeText: isCritical ? 'Critical' : 'Warning',
+          riskBadgeStyle: isCritical
+            ? 'bg-rose-50 text-rose-800 border border-rose-200'
+            : 'bg-amber-50 text-amber-800 border border-amber-200',
+          progressBarColor: isCritical ? 'bg-rose-500' : 'bg-indigo-600',
+          rawPriority: isCritical ? 0 : isReportedToday ? 1 : 2,
+          assignedTo: t.attendedBy || 'Unassigned',
+          ticketObj: t,
+        };
+      });
+
+    // Active PPMs relevant for today
+    const activePpms = ppmSchedules
+      .filter((p) => p.status !== 'COMPLETED')
+      .map((ppm) => {
+        const mch = machines.find((m) => m.id === ppm.machineId);
+        const dueDate = ppm.nextDue ? new Date(ppm.nextDue) : today;
+        dueDate.setHours(0, 0, 0, 0);
+        const isDueToday = ppm.nextDue === todayKey;
+        const isOverdue = ppm.status === 'OVERDUE';
+
         const dueDateFormatted = dueDate.toLocaleDateString('en-GB', {
           day: 'numeric',
           month: 'short',
           year: 'numeric',
         });
 
-        const progressPct = t.status === 'IN_PROGRESS' ? 35 : t.status === 'ASSIGNED' ? 36 : 20;
+        const progressPct = isOverdue ? 90 : isDueToday ? 50 : 25;
 
         return {
-          id: t.id,
-          type: 'TICKET' as const,
-          machineId: t.machineId,
-          machineName: mch?.type || t.machineId,
-          stationCode: mch?.stationNo || '800',
-          line: t.line || mch?.currentLine || 'Line 01',
-          dueDateFormatted,
-          daysLeftText: isCritical ? 'Immediate Action' : '21 days left',
-          isOverdue: isCritical,
-          currentStage: t.faultCategory || 'Knitting (Process)',
-          subStage: t.status === 'IN_PROGRESS' ? 'In Progress' : 'Process',
+          id: ppm.id,
+          type: 'PPM' as const,
+          machineId: ppm.machineId,
+          machineName: mch?.type || mch?.brand || ppm.machineId,
+          stationCode: mch?.stationNo || 'Station 01',
+          line: mch?.currentLine || 'Line 01',
+          dueDateFormatted: isDueToday ? 'Due Today' : dueDateFormatted,
+          daysLeftText: isOverdue ? 'Overdue Overhaul' : isDueToday ? 'Due Today' : 'Scheduled',
+          isOverdue,
+          currentStage: ppm.task || `${ppm.frequency} Routine Overhaul`,
+          subStage: ppm.frequency || 'Preventive',
           progressPct,
-          progressText: `14/40 (${progressPct}%)`,
-          riskBadgeText: isCritical ? 'At Risk' : 'At Risk',
-          riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
-          progressBarColor: 'bg-amber-500',
-          rawDueDays: isCritical ? -1 : diffDays,
-          ticketObj: t,
+          progressText: `${ppm.frequency} Overhaul`,
+          riskBadgeText: isOverdue ? 'Overdue' : 'On Schedule',
+          riskBadgeStyle: isOverdue
+            ? 'bg-rose-50 text-rose-800 border border-rose-200'
+            : 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+          progressBarColor: isOverdue ? 'bg-rose-500' : 'bg-emerald-500',
+          rawPriority: isOverdue ? 0 : isDueToday ? 1 : 3,
+          assignedTo: 'PPM Team',
+          ppmObj: ppm,
         };
       });
 
-    const combined = [...ticketItems, ...ppmItems].sort((a, b) => a.rawDueDays - b.rawDueDays);
-
-    // If no active schedules are present, provide realistic high-fidelity milestone cards matching screenshot
-    if (combined.length === 0) {
-      return [
-        {
-          id: 'demo-1',
-          type: 'DEMO' as const,
-          machineId: '7186464',
-          machineName: '7186464',
-          stationCode: '800',
-          line: 'Line A',
-          dueDateFormatted: '31 Oct 2026',
-          daysLeftText: '21 days left',
-          isOverdue: false,
-          currentStage: 'Knitting',
-          subStage: 'Process',
-          progressPct: 35,
-          progressText: '14/40 (35%)',
-          riskBadgeText: 'At Risk',
-          riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
-          progressBarColor: 'bg-amber-500',
-          rawDueDays: 21,
-        },
-        {
-          id: 'demo-2',
-          type: 'DEMO' as const,
-          machineId: '71B4356',
-          machineName: '71b4356',
-          stationCode: '800',
-          line: 'Line A',
-          dueDateFormatted: '31 Oct 2026',
-          daysLeftText: '21 days left',
-          isOverdue: false,
-          currentStage: 'Knitting',
-          subStage: 'Process',
-          progressPct: 35,
-          progressText: '13/37 (35%)',
-          riskBadgeText: 'At Risk',
-          riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
-          progressBarColor: 'bg-amber-500',
-          rawDueDays: 21,
-        },
-        {
-          id: 'demo-3',
-          type: 'DEMO' as const,
-          machineId: '71Y9856',
-          machineName: '71Y9856',
-          stationCode: '800',
-          line: 'Line B',
-          dueDateFormatted: '31 Oct 2026',
-          daysLeftText: '21 days left',
-          isOverdue: false,
-          currentStage: 'Knitting',
-          subStage: 'Process',
-          progressPct: 36,
-          progressText: '14/39 (36%)',
-          riskBadgeText: 'At Risk',
-          riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
-          progressBarColor: 'bg-amber-500',
-          rawDueDays: 21,
-        },
-        {
-          id: 'demo-4',
-          type: 'DEMO' as const,
-          machineId: 'BGW2705-CW1',
-          machineName: 'BGW2705-CW1',
-          stationCode: '234-M',
-          line: 'Line C',
-          dueDateFormatted: '2 Nov 2026',
-          daysLeftText: '23 days left',
-          isOverdue: false,
-          currentStage: 'PP Sample',
-          subStage: 'Sample',
-          progressPct: 20,
-          progressText: '8/40 (20%)',
-          riskBadgeText: 'On Schedule',
-          riskBadgeStyle: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
-          progressBarColor: 'bg-emerald-500',
-          rawDueDays: 23,
-        },
-      ];
-    }
-
+    const combined = [...activeRepairs, ...activePpms].sort((a, b) => a.rawPriority - b.rawPriority);
     return combined;
-  }, [repairs, ppmSchedules, machines]);
+  }, [repairs, ppmSchedules, machines, todayKey]);
 
   // ─── 2. DERIVED DATA FOR RIGHT CARD: MY TASKS (FOR JUNIOR WORKERS) ────────
   const myTasksList = useMemo(() => {
@@ -318,9 +240,9 @@ export function MaintenanceMilestonesAndTasks({
         title: t.faultCategory || t.faultDetails || 'Breakdown Inspection',
         code: t.machineId,
         machineId: t.machineId,
-        machineType: mch?.type || 'Overlock 4T',
+        machineType: mch?.type || 'Sewing Machine',
         line: t.line || 'Line 01',
-        stationNo: mch?.stationNo || '234-M',
+        stationNo: mch?.stationNo || 'Station 01',
         assignedTo: t.attendedBy || 'Unassigned',
         dueBadgeText: isCritical ? 'Due Today' : 'Due Today',
         dueBadgeStyle: isCritical
@@ -367,9 +289,9 @@ export function MaintenanceMilestonesAndTasks({
         title: ppm.task || 'Routine Preventive Check',
         code: ppm.machineId,
         machineId: ppm.machineId,
-        machineType: mch?.type || 'Sewing Machine',
+        machineType: mch?.type || 'Machine Unit',
         line: mch?.currentLine || 'Line 01',
-        stationNo: mch?.stationNo || '234-M',
+        stationNo: mch?.stationNo || 'Station 01',
         assignedTo: 'PPM Specialist',
         dueBadgeText,
         dueBadgeStyle,
@@ -381,82 +303,10 @@ export function MaintenanceMilestonesAndTasks({
     });
 
     const combined: MyTaskItem[] = [...ticketTasks, ...ppmTasks].sort((a, b) => a.duePriority - b.duePriority);
-
-    // If zero tasks found, populate the exact 4 tasks from user screenshot
-    if (combined.length === 0) {
-      const demoTasks: MyTaskItem[] = [
-        {
-          id: 'demo-t-1',
-          rawId: 'demo-t-1',
-          title: 'lab dip given',
-          code: 'LGW27205-CW3',
-          machineId: 'LGW27205-CW3',
-          machineType: 'LGW27205-CW3',
-          line: 'Line 01',
-          stationNo: '234-M',
-          assignedTo: 'Suresh Babu',
-          dueBadgeText: 'Due Today',
-          dueBadgeStyle: 'bg-rose-50 text-rose-700 border-rose-100',
-          duePriority: 1,
-          type: 'DEMO' as const,
-          stage: 'IN_PROGRESS',
-        },
-        {
-          id: 'demo-t-2',
-          rawId: 'demo-t-2',
-          title: 'lab dip received',
-          code: 'LGW27205-CW3',
-          machineId: 'LGW27205-CW3',
-          machineType: 'LGW27205-CW3',
-          line: 'Line 01',
-          stationNo: '234-M',
-          assignedTo: 'Praveen Raj',
-          dueBadgeText: 'Tomorrow',
-          dueBadgeStyle: 'bg-amber-50 text-amber-800 border-amber-100',
-          duePriority: 2,
-          type: 'DEMO' as const,
-          stage: 'ASSIGNED',
-        },
-        {
-          id: 'demo-t-3',
-          rawId: 'demo-t-3',
-          title: 'Lab Dip Approval',
-          code: 'LGW27205-CW3',
-          machineId: 'LGW27205-CW3',
-          machineType: 'LGW27205-CW3',
-          line: 'Line 02',
-          stationNo: '234-M',
-          assignedTo: 'Karthik S',
-          dueBadgeText: 'In 2 Days',
-          dueBadgeStyle: 'bg-sky-50 text-sky-700 border-sky-100',
-          duePriority: 3,
-          type: 'DEMO' as const,
-          stage: 'SCHEDULED',
-        },
-        {
-          id: 'demo-t-4',
-          rawId: 'demo-t-4',
-          title: 'Art work given',
-          code: 'LGW27205-CW3',
-          machineId: 'LGW27205-CW3',
-          machineType: 'LGW27205-CW3',
-          line: 'Line 02',
-          stationNo: '234-M',
-          assignedTo: 'Murugan K',
-          dueBadgeText: 'Due Today',
-          dueBadgeStyle: 'bg-rose-50 text-rose-700 border-rose-100',
-          duePriority: 1,
-          type: 'DEMO' as const,
-          stage: 'IN_PROGRESS',
-        },
-      ];
-      return demoTasks;
-    }
-
     return combined;
   }, [repairs, ppmSchedules, machines, userName, workerFilter]);
 
-  // ─── 3. SCREENSHOT-MATCHED 35-CELL MONTH GRID (OCTOBER 2026) ─────────────
+  // ─── 3. MONTH GRID CELLS (CALCULATED DIRECTLY FROM LIVE DATA) ───────────
   const monthGridCells = useMemo(() => {
     const year = currentMonthDate.getFullYear();
     const month = currentMonthDate.getMonth();
@@ -471,73 +321,67 @@ export function MaintenanceMilestonesAndTasks({
       dateString: string;
       isCurrentMonth: boolean;
       isToday: boolean;
-      shipmentCount: number;
+      workCount: number;
       hasCritical: boolean;
     }[] = [];
 
-    // 1. Previous month trailing days (e.g. 27, 28, 29, 30 for Oct 2026)
+    // 1. Previous month trailing days
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const dNum = daysInPrevMonth - i;
       const prevDate = new Date(year, month - 1, dNum);
-      const dStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+      const dStr = toDateKey(prevDate);
       cells.push({
         dayNumber: dNum,
         dateString: dStr,
         isCurrentMonth: false,
         isToday: false,
-        shipmentCount: 0,
+        workCount: 0,
         hasCritical: false,
       });
     }
 
-    // 2. Current month days (1 through 31 for Oct 2026)
+    // 2. Current month days
     for (let d = 1; d <= daysInCurrentMonth; d++) {
-      const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isToday = dStr === '2026-10-10' || (d === 10 && month === 9 && year === 2026);
+      const curDate = new Date(year, month, d);
+      const dStr = toDateKey(curDate);
+      const isToday = dStr === todayKey;
 
-      // In screenshot: Day 31 has 3 Ship badge
-      let shipmentCount = 0;
-      if (dStr === '2026-10-31' || (d === 31 && month === 9 && year === 2026)) {
-        shipmentCount = 3;
-      } else {
-        const liveCount =
-          ppmSchedules.filter((p) => p.status !== 'COMPLETED' && p.nextDue === dStr).length +
-          repairs.filter((r) => r.status !== 'COMPLETED' && r.reportedAt && r.reportedAt.startsWith(dStr)).length;
-        shipmentCount = liveCount;
-      }
-
-      const hasCritical = repairs.some(
-        (r) => r.status !== 'COMPLETED' && r.urgency === 'CRITICAL' && r.reportedAt && r.reportedAt.startsWith(dStr)
+      const dayRepairs = repairs.filter(
+        (r) => r.status !== 'COMPLETED' && r.reportedAt && r.reportedAt.startsWith(dStr)
       );
+      const dayPpms = ppmSchedules.filter((p) => p.status !== 'COMPLETED' && p.nextDue === dStr);
+      const workCount = dayRepairs.length + dayPpms.length;
+
+      const hasCritical = dayRepairs.some((r) => r.urgency === 'CRITICAL');
 
       cells.push({
         dayNumber: d,
         dateString: dStr,
         isCurrentMonth: true,
         isToday,
-        shipmentCount,
+        workCount,
         hasCritical,
       });
     }
 
-    // 3. Next month trailing days to complete 35 or 42 cells (uniform 5 or 6 rows)
+    // 3. Next month trailing days to complete 35 or 42 cells (uniform grid)
     const targetCellCount = cells.length <= 35 ? 35 : 42;
     const remaining = targetCellCount - cells.length;
     for (let d = 1; d <= remaining; d++) {
       const nextDate = new Date(year, month + 1, d);
-      const dStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dStr = toDateKey(nextDate);
       cells.push({
         dayNumber: d,
         dateString: dStr,
         isCurrentMonth: false,
         isToday: false,
-        shipmentCount: 0,
+        workCount: 0,
         hasCritical: false,
       });
     }
 
     return cells;
-  }, [currentMonthDate, repairs, ppmSchedules]);
+  }, [currentMonthDate, repairs, ppmSchedules, todayKey]);
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -556,86 +400,124 @@ export function MaintenanceMilestonesAndTasks({
   };
 
   const handleGoToToday = () => {
-    setCurrentMonthDate(new Date(2026, 9, 1));
-    setSelectedGridDate('2026-10-10');
+    const now = new Date();
+    setCurrentMonthDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSelectedGridDate(toDateKey(now));
+    setIsDateDropdownOpen(true);
   };
 
-  const handleGoToDecShipments = () => {
-    setCurrentMonthDate(new Date(2026, 11, 1));
-    setSelectedGridDate('2026-12-15');
-  };
+  // ─── 4. SCHEDULED WORKS ON SELECTED DATE (FOR DROPDOWN) ───────────────────
+  const scheduledWorksForSelectedDate = useMemo(() => {
+    const isToday = selectedGridDate === todayKey;
 
-  // ─── 4. ORDERS SCHEDULED ON SELECTED DATE (MATCHING SCREENSHOT) ───────────
-  const ordersForSelectedDate = useMemo(() => {
-    // If selected date is 2026-10-31, display the exact 3 orders from screenshot
-    if (selectedGridDate === '2026-10-31') {
-      return [
-        {
-          id: 'ord-1',
-          title: '7186464 · 7186464',
-          buyer: '800',
-          qty: '5,180 pcs',
-          statusText: 'At Risk',
-          statusBadgeStyle: 'bg-[#FEF5E7] text-[#B9770E] border border-[#FAD7A0]',
-        },
-        {
-          id: 'ord-2',
-          title: '71B4356 · 71b4356',
-          buyer: '800',
-          qty: '2,770 pcs',
-          statusText: 'At Risk',
-          statusBadgeStyle: 'bg-[#FEF5E7] text-[#B9770E] border border-[#FAD7A0]',
-        },
-        {
-          id: 'ord-3',
-          title: '71Y9856 · 71Y9856',
-          buyer: '800',
-          qty: '2,610 pcs',
-          statusText: 'At Risk',
-          statusBadgeStyle: 'bg-[#FEF5E7] text-[#B9770E] border border-[#FAD7A0]',
-        },
-      ];
-    }
-
-    // Otherwise, check live repairs and PPMs on this date
     const dateRepairs = repairs.filter(
-      (r) => r.status !== 'COMPLETED' && r.reportedAt && r.reportedAt.startsWith(selectedGridDate)
+      (r) =>
+        r.status !== 'COMPLETED' &&
+        r.reportedAt &&
+        r.reportedAt.startsWith(selectedGridDate)
     );
+
     const datePpms = ppmSchedules.filter(
       (p) => p.status !== 'COMPLETED' && p.nextDue === selectedGridDate
     );
 
-    const mappedRepairs = dateRepairs.map((r) => {
+    // If selected date is today, also include active critical/in-progress repairs that need attention today
+    const additionalRepairs = isToday
+      ? repairs.filter(
+          (r) =>
+            r.status !== 'COMPLETED' &&
+            (r.urgency === 'CRITICAL' || r.status === 'IN_PROGRESS') &&
+            !dateRepairs.some((dr) => dr.id === r.id)
+        )
+      : [];
+
+    const allDateRepairs = [...dateRepairs, ...additionalRepairs];
+
+    interface ScheduledWorkCard {
+      id: string;
+      rawId: string;
+      type: 'TICKET' | 'PPM';
+      machineId: string;
+      machineName: string;
+      title: string;
+      stationNo: string;
+      line: string;
+      downtime: string;
+      urgency: string;
+      status: string;
+      statusText: string;
+      statusBadgeStyle: string;
+      attendedBy: string;
+      ticketObj?: RepairTicket;
+      ppmObj?: PPMSchedule;
+    }
+
+    const mappedRepairs: ScheduledWorkCard[] = allDateRepairs.map((r) => {
       const mch = machines.find((m) => m.id === r.machineId);
       const isCrit = r.urgency === 'CRITICAL';
       return {
         id: r.id,
-        title: `${r.machineId} · ${mch?.type || r.faultCategory || 'Breakdown Work Order'}`,
-        buyer: mch?.stationNo || '800',
-        qty: `${r.downtimeMinutes || 30}m repair time`,
-        statusText: isCrit ? 'At Risk' : 'In Progress',
+        rawId: r.id,
+        type: 'TICKET',
+        machineId: r.machineId,
+        machineName: mch?.type || mch?.brand || r.machineId,
+        title: r.faultCategory || r.faultDetails || 'Breakdown Work Order',
+        stationNo: mch?.stationNo || 'Station 01',
+        line: r.line || mch?.currentLine || 'Line 01',
+        downtime: `${r.downtimeMinutes || 30}m downtime`,
+        urgency: r.urgency,
+        status: r.status,
+        statusText: isCrit ? 'Critical Action' : r.status === 'IN_PROGRESS' ? 'In Progress' : 'Assigned',
         statusBadgeStyle: isCrit
           ? 'bg-rose-50 text-rose-800 border border-rose-200'
+          : r.status === 'IN_PROGRESS'
+          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
           : 'bg-amber-50 text-amber-800 border border-amber-200',
+        attendedBy: r.attendedBy || 'Unassigned',
+        ticketObj: r,
       };
     });
 
-    const mappedPpms = datePpms.map((p) => {
+    const mappedPpms: ScheduledWorkCard[] = datePpms.map((p) => {
       const mch = machines.find((m) => m.id === p.machineId);
+      const isOverdue = p.status === 'OVERDUE';
       return {
         id: p.id,
-        title: `${p.machineId} · ${p.task}`,
-        buyer: mch?.stationNo || '800',
-        qty: `${p.frequency} PPM Overhaul`,
-        statusText: p.status === 'OVERDUE' ? 'At Risk' : 'On Schedule',
-        statusBadgeStyle: p.status === 'OVERDUE'
+        rawId: p.id,
+        type: 'PPM',
+        machineId: p.machineId,
+        machineName: mch?.type || mch?.brand || p.machineId,
+        title: p.task || `${p.frequency} Routine Overhaul`,
+        stationNo: mch?.stationNo || 'Station 01',
+        line: mch?.currentLine || 'Line 01',
+        downtime: `${p.frequency} Maintenance`,
+        urgency: isOverdue ? 'CRITICAL' : 'NORMAL',
+        status: p.status,
+        statusText: isOverdue ? 'Overdue Overhaul' : 'On Schedule',
+        statusBadgeStyle: isOverdue
           ? 'bg-rose-50 text-rose-800 border border-rose-200'
           : 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+        attendedBy: 'PPM Specialist',
+        ppmObj: p,
       };
     });
 
     return [...mappedRepairs, ...mappedPpms];
-  }, [selectedGridDate, repairs, ppmSchedules, machines]);
+  }, [selectedGridDate, todayKey, repairs, ppmSchedules, machines]);
+
+  const formattedSelectedDate = useMemo(() => {
+    try {
+      const [y, m, d] = selectedGridDate.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      return dateObj.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return selectedGridDate;
+    }
+  }, [selectedGridDate]);
 
   // Handle task click
   const handleTaskClick = (task: MyTaskItem) => {
@@ -663,10 +545,10 @@ export function MaintenanceMilestonesAndTasks({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 w-full">
       {/* =================================================================== */}
-      {/* LEFT CARD: DELIVERY SCHEDULE & MILESTONES (7 COLS)                 */}
+      {/* LEFT CARD: DELIVERIES & MAINTENANCE SCHEDULE (7 COLS)              */}
       {/* =================================================================== */}
       <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between">
-        {/* Header Strip matching Screenshot */}
+        {/* Header Strip */}
         <div className="shrink-0">
           <div className="flex items-start gap-3">
             <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600 mt-0.5 shrink-0">
@@ -674,10 +556,10 @@ export function MaintenanceMilestonesAndTasks({
             </span>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                Delivery Schedule &amp; Milestones
+                Maintenance Schedule &amp; Deliveries
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Real production shipment deadlines &amp; active stage progress
+                Real floor breakdown tickets, preventive maintenance &amp; active schedules
               </p>
             </div>
           </div>
@@ -685,7 +567,7 @@ export function MaintenanceMilestonesAndTasks({
           {/* Toggle Pills & Full Calendar Link */}
           <div className="flex items-center justify-between gap-3 mt-4 pb-3 border-b border-slate-100 flex-wrap">
             <div className="flex items-center gap-2">
-              {/* Tab 1: Maintenance / Deliveries (123) */}
+              {/* Tab 1: Maintenance Deliveries */}
               <button
                 type="button"
                 onClick={() => setActiveTab('schedules')}
@@ -696,10 +578,10 @@ export function MaintenanceMilestonesAndTasks({
                 }`}
               >
                 <Truck className="w-3.5 h-3.5 text-slate-600" />
-                <span>Deliveries ({milestonesList.length})</span>
+                <span>Deliveries ({deliveriesList.length})</span>
               </button>
 
-              {/* Tab 2: Month Grid (Active state with purple outline as in screenshot) */}
+              {/* Tab 2: Month Grid */}
               <button
                 type="button"
                 onClick={() => setActiveTab('month_grid')}
@@ -731,72 +613,107 @@ export function MaintenanceMilestonesAndTasks({
           </div>
         </div>
 
-        {/* Card Body: Tab 1 (Schedules List) */}
+        {/* Card Body: Tab 1 (Deliveries Column / Today's Work) */}
         {activeTab === 'schedules' ? (
           <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
-            {milestonesList.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-2xl border border-slate-200/90 p-4 space-y-2.5 hover:border-indigo-300 hover:shadow-xs transition"
-              >
-                {/* Top Row: ID, Serial, Purple Badge & Blue Due Badge */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                    <span className="font-extrabold text-sm text-slate-900 font-mono tracking-tight">
-                      {item.machineId}
-                    </span>
-                    <span className="text-xs text-slate-400 font-mono truncate">
-                      · {item.machineName}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-700 font-mono">
-                      {item.stationCode}
-                    </span>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border border-blue-200 bg-blue-50/70 text-blue-700">
-                      <Truck className="w-3 h-3 text-blue-600" />
-                      <span>Ship: {item.dueDateFormatted}</span>
-                    </div>
-                    <div
-                      className={`text-[10px] mt-0.5 font-medium ${
-                        item.isOverdue ? 'text-rose-600 font-bold' : 'text-slate-400'
-                      }`}
-                    >
-                      {item.daysLeftText}
-                    </div>
-                  </div>
+            {deliveriesList.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-5 h-5" />
                 </div>
-
-                {/* Middle Row: Current Stage */}
-                <div className="text-xs text-slate-500">
-                  <span>Current stage: </span>
-                  <strong className="text-slate-800 font-bold">{item.currentStage}</strong>
-                  <span className="text-slate-400 ml-1">({item.subStage})</span>
-                </div>
-
-                {/* Bottom Row: Progress Bar + Fraction + At Risk Badge */}
-                <div className="flex items-center gap-3 pt-0.5">
-                  <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${item.progressBarColor}`}
-                      style={{ width: `${item.progressPct}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-semibold text-slate-500 font-mono shrink-0">
-                    {item.progressText}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${item.riskBadgeStyle}`}
-                  >
-                    {item.riskBadgeText}
-                  </span>
-                </div>
+                <p className="font-bold text-slate-700">All today&apos;s maintenance deliveries are up to date</p>
+                <p className="text-slate-400">No pending breakdown tickets or overdue PPM overhauls for today.</p>
               </div>
-            ))}
+            ) : (
+              deliveriesList.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 p-4 space-y-2.5 hover:border-indigo-300 hover:shadow-xs transition"
+                >
+                  {/* Top Row: ID, Serial, Purple Badge & Blue Due Badge */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                      <span className="font-extrabold text-sm text-slate-900 font-mono tracking-tight">
+                        {item.machineId}
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono truncate">
+                        · {item.machineName}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-700 font-mono">
+                        {item.stationCode}
+                      </span>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border border-blue-200 bg-blue-50/70 text-blue-700">
+                        <Clock className="w-3 h-3 text-blue-600" />
+                        <span>Due: {item.dueDateFormatted}</span>
+                      </div>
+                      <div
+                        className={`text-[10px] mt-0.5 font-medium ${
+                          item.isOverdue ? 'text-rose-600 font-bold' : 'text-slate-500'
+                        }`}
+                      >
+                        {item.daysLeftText}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle Row: Current Task & Line */}
+                  <div className="text-xs text-slate-600 flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <span>Work: </span>
+                      <strong className="text-slate-800 font-bold">{item.currentStage}</strong>
+                      <span className="text-slate-400 ml-1">({item.line})</span>
+                    </div>
+                    {item.assignedTo && (
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        Technician: <strong className="text-slate-700">{item.assignedTo}</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Bottom Row: Progress Bar + Action Button */}
+                  <div className="flex items-center gap-3 pt-0.5">
+                    <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${item.progressBarColor}`}
+                        style={{ width: `${item.progressPct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500 font-mono shrink-0">
+                      {item.progressText}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${item.riskBadgeStyle}`}
+                    >
+                      {item.riskBadgeText}
+                    </span>
+                    {item.type === 'TICKET' && item.ticketObj && onOpenResolve && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenResolve(item.ticketObj!)}
+                        className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                      >
+                        Resolve
+                      </button>
+                    )}
+                    {item.type === 'PPM' && item.ppmObj && onCompletePPM && (
+                      <button
+                        type="button"
+                        onClick={() => onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId)}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                      >
+                        Complete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         ) : (
-          /* Tab 2: EXACT SCREENSHOT MONTH GRID VIEW */
+          /* Tab 2: MONTH GRID VIEW WITH WORK ORDERS DROPDOWN */
           <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 mt-3 space-y-3">
             {/* Month Navigation Toolbar */}
             <div className="flex items-center justify-between gap-2 pt-0.5 pb-1 flex-wrap">
@@ -830,14 +747,6 @@ export function MaintenanceMilestonesAndTasks({
                 >
                   Today ({currentMonthShort})
                 </button>
-                <button
-                  type="button"
-                  onClick={handleGoToDecShipments}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 border border-slate-200 bg-white hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                >
-                  <span>🚢</span>
-                  <span>Dec Shipments</span>
-                </button>
               </div>
             </div>
 
@@ -857,7 +766,7 @@ export function MaintenanceMilestonesAndTasks({
               {monthGridCells.map((cell, idx) => {
                 const isSelected = cell.dateString === selectedGridDate;
                 const isToday = cell.isToday;
-                const hasShipment = cell.shipmentCount > 0;
+                const hasWorks = cell.workCount > 0;
 
                 return (
                   <button
@@ -866,6 +775,7 @@ export function MaintenanceMilestonesAndTasks({
                     onClick={() => {
                       if (cell.dateString) {
                         setSelectedGridDate(cell.dateString);
+                        setIsDateDropdownOpen(true);
                         if (onOpenCalendarDate) {
                           onOpenCalendarDate(cell.dateString);
                         }
@@ -874,11 +784,13 @@ export function MaintenanceMilestonesAndTasks({
                     className={`h-[54px] sm:h-[60px] rounded-xl p-1.5 flex flex-col justify-between text-left transition cursor-pointer relative ${
                       !cell.isCurrentMonth
                         ? 'border border-slate-100 bg-white text-slate-300'
-                        : isToday || isSelected || hasShipment
-                        ? 'border border-indigo-400 bg-[#F0EFFE] text-slate-900 shadow-2xs'
+                        : isToday || isSelected
+                        ? 'border border-indigo-500 bg-[#F0EFFE] text-slate-900 shadow-2xs'
+                        : hasWorks
+                        ? 'border border-indigo-200/80 bg-indigo-50/30 hover:border-indigo-400 text-slate-900'
                         : 'border border-slate-200/70 bg-white hover:border-indigo-300 text-slate-700'
                     } ${
-                      isSelected ? 'ring-2 ring-indigo-500' : ''
+                      isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''
                     }`}
                   >
                     {/* Top Row: Day Number and Today Purple Dot */}
@@ -889,7 +801,7 @@ export function MaintenanceMilestonesAndTasks({
                             ? 'text-slate-300'
                             : isToday
                             ? 'text-indigo-700 font-extrabold'
-                            : hasShipment || isSelected
+                            : isSelected || hasWorks
                             ? 'text-slate-900 font-extrabold'
                             : 'text-slate-700'
                         }`}
@@ -901,12 +813,18 @@ export function MaintenanceMilestonesAndTasks({
                       )}
                     </div>
 
-                    {/* Bottom Row: Shipment Badge */}
-                    {hasShipment && (
+                    {/* Bottom Row: Work Orders Badge */}
+                    {hasWorks && (
                       <div className="w-full">
-                        <span className="inline-flex items-center justify-center gap-1 w-full bg-[#B45309] text-white rounded-md py-0.5 px-1 text-[10px] font-black tracking-tight shadow-2xs">
-                          <span>🚢</span>
-                          <span>{cell.shipmentCount} Ship</span>
+                        <span
+                          className={`inline-flex items-center justify-center gap-1 w-full rounded-md py-0.5 px-1 text-[10px] font-black tracking-tight shadow-2xs ${
+                            cell.hasCritical
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-indigo-600 text-white'
+                          }`}
+                        >
+                          <Wrench className="w-2.5 h-2.5" />
+                          <span>{cell.workCount} {cell.workCount === 1 ? 'Work' : 'Works'}</span>
                         </span>
                       </div>
                     )}
@@ -915,46 +833,132 @@ export function MaintenanceMilestonesAndTasks({
               })}
             </div>
 
-            {/* Scheduled Orders Detail Panel (Matching Screenshot) */}
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 space-y-2 mt-2 shadow-2xs">
-              <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-100">
-                <span className="font-extrabold text-slate-900">
-                  Scheduled on {selectedGridDate}:
-                </span>
-                <span className="font-semibold text-slate-400">
-                  {ordersForSelectedDate.length} order(s)
-                </span>
-              </div>
-
-              <div className="space-y-2 max-h-[190px] overflow-y-auto pr-0.5">
-                {ordersForSelectedDate.length === 0 ? (
-                  <div className="py-4 text-center text-xs text-slate-400">
-                    No shipments or maintenance orders scheduled on this date. Click Oct 31 to inspect ship orders.
+            {/* Scheduled Works Dropdown Panel on Selected Date */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden mt-2">
+              <button
+                type="button"
+                onClick={() => setIsDateDropdownOpen((prev) => !prev)}
+                className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-50/70 transition cursor-pointer border-b border-slate-100"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <CalendarDays className="w-4 h-4" />
                   </div>
-                ) : (
-                  ordersForSelectedDate.map((order) => (
-                    <div
-                      key={order.id}
-                      className="bg-white rounded-xl border border-slate-200/80 p-3 flex items-center justify-between gap-3 hover:border-indigo-300 hover:shadow-2xs transition"
-                    >
-                      <div className="min-w-0 space-y-0.5">
-                        <div className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono truncate">
-                          {order.title}
+                  <div>
+                    <div className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                      <span>Scheduled Works: {formattedSelectedDate}</span>
+                      {selectedGridDate === todayKey && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-700">
+                          TODAY
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      {scheduledWorksForSelectedDate.length} maintenance {scheduledWorksForSelectedDate.length === 1 ? 'order' : 'orders'} scheduled
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">
+                    {scheduledWorksForSelectedDate.length} Works
+                  </span>
+                  <div
+                    className={`p-1 rounded-md text-slate-400 transition-transform duration-200 ${
+                      isDateDropdownOpen ? 'rotate-180' : ''
+                    }`}
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+              </button>
+
+              {isDateDropdownOpen && (
+                <div className="p-3.5 space-y-2.5 max-h-[240px] overflow-y-auto bg-slate-50/40">
+                  {scheduledWorksForSelectedDate.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-slate-400 space-y-1">
+                      <p className="font-semibold text-slate-600">No scheduled works on {formattedSelectedDate}</p>
+                      <p className="text-[11px] text-slate-400">Click any date with a works badge or check Today&apos;s deliveries.</p>
+                    </div>
+                  ) : (
+                    scheduledWorksForSelectedDate.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-white rounded-xl border border-slate-200/90 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-indigo-300 hover:shadow-xs transition"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono">
+                              {item.machineId}
+                            </span>
+                            <span className="text-xs text-slate-500 font-medium truncate">
+                              · {item.machineName}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 font-mono">
+                              {item.line} ({item.stationNo})
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${item.statusBadgeStyle}`}>
+                              {item.statusText}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-700 font-semibold truncate">
+                            {item.title}
+                          </p>
+                          <div className="text-[11px] text-slate-400 flex items-center gap-3">
+                            <span>Technician: <strong className="text-slate-600">{item.attendedBy}</strong></span>
+                            <span>•</span>
+                            <span>{item.downtime}</span>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono truncate">
-                          Buyer: {order.buyer} · Qty: {order.qty}
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          {item.type === 'TICKET' && item.ticketObj && onOpenResolve && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenResolve(item.ticketObj!)}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                            >
+                              <Wrench className="w-3.5 h-3.5" />
+                              <span>Resolve</span>
+                            </button>
+                          )}
+                          {item.type === 'PPM' && item.ppmObj && onCompletePPM && (
+                            <button
+                              type="button"
+                              onClick={() => onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId)}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                            >
+                              <CheckCheck className="w-3.5 h-3.5" />
+                              <span>Complete PPM</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTaskDetail({
+                                id: item.id,
+                                title: item.title,
+                                type: item.type,
+                                machineId: item.machineId,
+                                line: item.line,
+                                stage: item.statusText,
+                                dueText: item.downtime,
+                                dueBadgeStyle: item.statusBadgeStyle,
+                                ticketObj: item.ticketObj,
+                                ppmObj: item.ppmObj,
+                              });
+                              setIsTaskDrawerOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                          >
+                            Inspect
+                          </button>
                         </div>
                       </div>
-
-                      <span
-                        className={`px-2.5 py-0.5 rounded-lg text-xs font-bold shrink-0 ${order.statusBadgeStyle}`}
-                      >
-                        {order.statusText}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -997,38 +1001,47 @@ export function MaintenanceMilestonesAndTasks({
           </button>
         </div>
 
-        {/* List of Tasks matching Screenshot */}
+        {/* List of Tasks */}
         <div className="divide-y divide-slate-100 flex-1 min-h-0 overflow-y-auto pr-1">
-          {myTasksList.map((task) => (
-            <div
-              key={task.id}
-              onClick={() => handleTaskClick(task)}
-              className="py-3 px-1 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition cursor-pointer group"
-              title="Click to view and complete this task"
-            >
-              {/* Left: Task Title & Subtitle */}
-              <div className="min-w-0 space-y-0.5">
-                <div className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition truncate">
-                  {task.title}
-                </div>
-                <div className="text-[11px] text-slate-400 font-mono truncate">
-                  .{task.code} · {task.machineType} · {task.stationNo}
-                  {workerFilter === 'ALL' && task.assignedTo && (
-                    <span className="text-indigo-600 font-sans ml-1.5 font-semibold">· {task.assignedTo}</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Right: Soft Rounded Badge */}
-              <div className="shrink-0">
-                <span
-                  className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${task.dueBadgeStyle}`}
-                >
-                  {task.dueBadgeText}
-                </span>
-              </div>
+          {myTasksList.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-400 space-y-1">
+              <p className="font-semibold text-slate-600">No active tasks assigned</p>
+              <p className="text-[11px] text-slate-400">
+                All tasks for {workerFilter === 'ALL' ? 'junior workers' : workerFilter} are completed.
+              </p>
             </div>
-          ))}
+          ) : (
+            myTasksList.map((task) => (
+              <div
+                key={task.id}
+                onClick={() => handleTaskClick(task)}
+                className="py-3 px-1 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition cursor-pointer group"
+                title="Click to view and complete this task"
+              >
+                {/* Left: Task Title & Subtitle */}
+                <div className="min-w-0 space-y-0.5">
+                  <div className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition truncate">
+                    {task.title}
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-mono truncate">
+                    .{task.code} · {task.machineType} · {task.stationNo}
+                    {workerFilter === 'ALL' && task.assignedTo && (
+                      <span className="text-indigo-600 font-sans ml-1.5 font-semibold">· {task.assignedTo}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Soft Rounded Badge */}
+                <div className="shrink-0">
+                  <span
+                    className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${task.dueBadgeStyle}`}
+                  >
+                    {task.dueBadgeText}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -1058,49 +1071,143 @@ export function MaintenanceMilestonesAndTasks({
             </div>
 
             <div className="divide-y divide-slate-100 flex-1 min-h-0 overflow-y-auto pr-1 my-3">
-              {myTasksList.map((task) => (
-                <div
-                  key={task.id}
-                  className="py-3 px-1 flex items-center justify-between gap-3 hover:bg-slate-50 rounded-xl transition"
-                >
-                  <div className="min-w-0 space-y-0.5">
-                    <div className="text-xs sm:text-sm font-bold text-slate-900">
-                      {task.title}
-                    </div>
-                    <div className="text-[11px] text-slate-500 font-mono">
-                      .{task.code} • {task.machineType} • {task.stationNo}
-                      {task.assignedTo && (
-                        <span className="text-indigo-600 font-sans ml-1 font-semibold">({task.assignedTo})</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${task.dueBadgeStyle}`}
-                    >
-                      {task.dueBadgeText}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsTaskDrawerOpen(false);
-                        handleTaskClick(task);
-                      }}
-                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                    >
-                      Attend
-                    </button>
-                  </div>
+              {myTasksList.length === 0 ? (
+                <div className="py-12 text-center text-xs text-slate-400 space-y-1">
+                  <p className="font-semibold text-slate-600">No active tasks in queue</p>
+                  <p className="text-[11px] text-slate-400">All maintenance tasks have been handled.</p>
                 </div>
-              ))}
+              ) : (
+                myTasksList.map((task) => (
+                  <div
+                    key={task.id}
+                    className="py-3 px-1 flex items-center justify-between gap-3 hover:bg-slate-50 rounded-xl transition"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="text-xs sm:text-sm font-bold text-slate-900">
+                        {task.title}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        .{task.code} • {task.machineType} • {task.stationNo}
+                        {task.assignedTo && (
+                          <span className="text-indigo-600 font-sans ml-1 font-semibold">({task.assignedTo})</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${task.dueBadgeStyle}`}
+                      >
+                        {task.dueBadgeText}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsTaskDrawerOpen(false);
+                          handleTaskClick(task);
+                        }}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                      >
+                        Attend
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-end shrink-0">
               <button
                 type="button"
                 onClick={() => setIsTaskDrawerOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TASK DETAIL POPUP INSPECTOR */}
+      {selectedTaskDetail && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in duration-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+                  <Wrench className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Task Details</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">#{selectedTaskDetail.id}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTaskDetail(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="bg-slate-50 p-3 rounded-2xl space-y-1.5 border border-slate-100">
+                <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Title / Task</div>
+                <div className="text-sm font-bold text-slate-900">{selectedTaskDetail.title}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Machine</div>
+                  <div className="text-xs font-bold text-slate-800 font-mono mt-0.5">{selectedTaskDetail.machineId}</div>
+                </div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Line / Stage</div>
+                  <div className="text-xs font-bold text-slate-800 mt-0.5">{selectedTaskDetail.line} · {selectedTaskDetail.stage}</div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center justify-between">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Schedule Status</span>
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${selectedTaskDetail.dueBadgeStyle}`}>
+                  {selectedTaskDetail.dueText}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              {selectedTaskDetail.ticketObj && onOpenResolve && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const t = selectedTaskDetail.ticketObj!;
+                    setSelectedTaskDetail(null);
+                    onOpenResolve(t);
+                  }}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Resolve &amp; Log Parts
+                </button>
+              )}
+              {selectedTaskDetail.ppmObj && onCompletePPM && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = selectedTaskDetail.ppmObj!;
+                    setSelectedTaskDetail(null);
+                    onCompletePPM(p.id, p.machineId);
+                  }}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Complete PPM Task
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedTaskDetail(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
               >
                 Close
               </button>
