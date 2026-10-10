@@ -83,46 +83,47 @@ export function ExecutiveDashboard({
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
-      {/* ─── 1. HEADER ─────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-indigo-900/40 relative overflow-hidden">
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-400/30">
-                <Crown className="w-3.5 h-3.5 text-purple-400" />
-                Executive Leadership Desk
+      {/* ─── 1. CLEAN COMPACT HEADER ─────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
+            <Crown className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                Executive Plant Health & Capital Approvals
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                Executive Desk
               </span>
-              <span className="text-xs text-slate-400">
-                Plant Availability: <span className="text-emerald-400 font-bold">{plantAvailabilityPct}%</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                {plantAvailabilityPct}% Availability
               </span>
             </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Executive Plant Health & Capital Approvals
-            </h1>
-            <p className="text-sm text-slate-300 max-w-xl">
+            <p className="text-xs text-slate-500">
               High-level manufacturing plant availability, fleet uptime, and critical budget approvals.
             </p>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={() => router.push('/dashboard/messages')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-purple-600/30 transition cursor-pointer"
-            >
-              <Crown className="w-4 h-4" />
-              <span>CEO Approvals Inbox ({ceoPendingReqs.length})</span>
-            </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            onClick={() => router.push('/dashboard/messages')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-purple-600 hover:bg-purple-700 text-white transition shadow-xs cursor-pointer"
+          >
+            <Crown className="w-3.5 h-3.5" />
+            <span>Approvals Inbox ({ceoPendingReqs.length})</span>
+          </button>
 
-            <button
-              onClick={onRefresh}
-              disabled={isLoading}
-              title="Refresh Executive Data"
-              className="p-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl border border-white/15 transition cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
+          <button
+            onClick={onRefresh}
+            disabled={isLoading}
+            title="Refresh Executive Data"
+            className="p-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 

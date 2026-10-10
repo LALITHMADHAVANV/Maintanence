@@ -76,13 +76,13 @@ export default function DashboardPage() {
     <div className="space-y-4">
       {/* ─── ADMIN ROLE SWITCHER STRIP (Only visible to Admin & Asset Manager) ─── */}
       {isAdminOrManager && (
-        <div className="bg-slate-900 text-white rounded-2xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-md border border-slate-800">
+        <div className="bg-white rounded-2xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs border border-slate-200/90 text-slate-700">
           <div className="flex items-center gap-2 text-xs">
-            <span className="p-1 rounded-md bg-indigo-500/20 text-indigo-400">
+            <span className="p-1 rounded-md bg-indigo-50 text-indigo-600">
               <Eye className="w-3.5 h-3.5" />
             </span>
-            <span className="font-bold text-slate-300">Admin Perspective:</span>
-            <span className="text-slate-400">Preview role-specific dashboards live:</span>
+            <span className="font-bold text-slate-800">Admin Perspective:</span>
+            <span className="text-slate-500">Preview role-specific dashboards:</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -101,7 +101,7 @@ export default function DashboardPage() {
                   className={`px-3 py-1 rounded-xl font-semibold transition cursor-pointer text-xs ${
                     isSelected
                       ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                   }`}
                 >
                   {tab.label}

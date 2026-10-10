@@ -68,54 +68,52 @@ export function StoreDashboard({
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
-      {/* ─── 1. HEADER ─────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-indigo-900/40 relative overflow-hidden">
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                <Package className="w-3.5 h-3.5 text-emerald-400" />
-                Tool Crib & Inventory Desk
-              </span>
-              <span className="text-xs text-slate-400">
-                Live Stock Sync • {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      {/* ─── 1. CLEAN COMPACT HEADER ─────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+            <Package className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                Stores & Spare Parts Inventory
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                Tool Crib Desk
               </span>
             </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Stores & Spare Parts Inventory
-            </h1>
-            <p className="text-sm text-slate-300 max-w-xl">
+            <p className="text-xs text-slate-500">
               Manage spare parts stock levels, monthly mechanic indents, and fast dispatching.
             </p>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={() => router.push('/dashboard/store-inbox')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition cursor-pointer"
-            >
-              <Package className="w-4 h-4" />
-              <span>Monthly Indent Inbox</span>
-            </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            onClick={() => router.push('/dashboard/store-inbox')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-xs cursor-pointer"
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>Monthly Indents</span>
+          </button>
 
-            <button
-              onClick={() => router.push('/dashboard/inventory')}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-medium text-xs rounded-xl border border-white/15 transition cursor-pointer"
-            >
-              <Boxes className="w-4 h-4 text-amber-300" />
-              <span>All Spare Catalog</span>
-            </button>
+          <button
+            onClick={() => router.push('/dashboard/inventory')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+          >
+            <Boxes className="w-3.5 h-3.5 text-amber-600" />
+            <span>Spare Catalog</span>
+          </button>
 
-            <button
-              onClick={onRefresh}
-              disabled={isLoading}
-              title="Refresh Store Inventory"
-              className="p-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl border border-white/15 transition cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
+          <button
+            onClick={onRefresh}
+            disabled={isLoading}
+            title="Refresh Store Inventory"
+            className="p-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
