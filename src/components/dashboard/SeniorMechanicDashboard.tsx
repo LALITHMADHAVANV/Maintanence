@@ -506,8 +506,8 @@ export function SeniorMechanicDashboard({
 
       {/* ─── 3. CRITICAL FLOOR BREAKDOWN EMERGENCY ALERT STRIP ────────── */}
       {activeBreakdowns.length > 0 ? (
-        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 shadow-sm max-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between mb-3 shrink-0">
             <div className="flex items-center gap-2">
               <span className="p-1.5 rounded-lg bg-rose-600 text-white animate-pulse">
                 <AlertTriangle className="w-4 h-4" />
@@ -519,7 +519,7 @@ export function SeniorMechanicDashboard({
             <span className="text-xs text-rose-700 font-medium">Requires immediate technician dispatch</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
             {activeBreakdowns.map((mach) => {
               const activeTicket = repairs.find(
                 (r) => r.machineId === mach.id && r.status !== 'COMPLETED'
@@ -612,16 +612,16 @@ export function SeniorMechanicDashboard({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Team Work Orders (8 cols = ~66%) */}
         <div className="lg:col-span-8 space-y-4">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
             {/* Header & Filter Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <Wrench className="w-5 h-5 text-indigo-600" />
                   <span>Floor Work Orders & Ticket Queue</span>
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Manage active repairs, assign mechanics, and review floor tickets.
+                  Manage active repairs, assign mechanics, and review floor tickets ({filteredTickets.length} tickets).
                 </p>
               </div>
 
@@ -644,7 +644,7 @@ export function SeniorMechanicDashboard({
             </div>
 
             {/* Search and Tabs */}
-            <div className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
               {/* Tab Pills */}
               <div className="flex flex-wrap items-center gap-1.5">
                 {[
@@ -693,7 +693,7 @@ export function SeniorMechanicDashboard({
             </div>
 
             {/* Tickets Table / List */}
-            <div className="mt-2 overflow-x-auto">
+            <div className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-auto">
               {filteredTickets.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs">
                   <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500" />
@@ -701,8 +701,8 @@ export function SeniorMechanicDashboard({
                 </div>
               ) : (
                 <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <thead className="sticky top-0 bg-white/95 backdrop-blur-xs z-10 border-b border-slate-200 shadow-2xs">
+                    <tr className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                       <th className="py-2.5 px-3">Ticket</th>
                       <th className="py-2.5 px-3">Machine & Line</th>
                       <th className="py-2.5 px-3">Fault Details</th>
@@ -712,7 +712,7 @@ export function SeniorMechanicDashboard({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
-                    {filteredTickets.slice(0, 15).map((t) => {
+                    {filteredTickets.map((t) => {
                       const isCritical = t.urgency === 'CRITICAL';
                       const isUnassigned = !t.attendedBy;
                       const isCompleted = t.status === 'COMPLETED';
@@ -814,8 +814,8 @@ export function SeniorMechanicDashboard({
 
         {/* Right Column: Shift Duty Roster & Workload (4 cols = ~34%) */}
         <div className="lg:col-span-4 space-y-4">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <Users className="w-4 h-4 text-indigo-600" />
@@ -854,7 +854,7 @@ export function SeniorMechanicDashboard({
             </div>
 
             {/* Mechanics list */}
-            <div className="divide-y divide-slate-100 mt-2 space-y-1">
+            <div className="divide-y divide-slate-100 mt-2 space-y-1 flex-1 min-h-0 overflow-y-auto pr-1">
               {roster.map((m) => {
                 // Check if mechanic is actively attending any ticket
                 const activeTicket = repairs.find(
@@ -914,7 +914,7 @@ export function SeniorMechanicDashboard({
               })}
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100">
+            <div className="mt-3 pt-3 border-t border-slate-100 shrink-0">
               <button
                 onClick={() => router.push('/dashboard/mechanic-roster')}
                 className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
@@ -930,14 +930,14 @@ export function SeniorMechanicDashboard({
       {/* ─── 5. SECONDARY WORKSPACE: PPM & REQUISITIONS (50% / 50%) ───── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column: Upcoming PPM Schedule */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <CalendarCheck className="w-4 h-4 text-amber-500" />
                 <span>PPM Preventive Maintenance Schedule</span>
               </h3>
-              <p className="text-xs text-slate-500">Upcoming routine inspections for floor assets</p>
+              <p className="text-xs text-slate-500">Upcoming routine inspections for floor assets ({ppmSchedules.length} schedules)</p>
             </div>
             <button
               onClick={() => router.push('/dashboard/calendar')}
@@ -948,65 +948,71 @@ export function SeniorMechanicDashboard({
             </button>
           </div>
 
-          <div className="space-y-2.5">
-            {ppmSchedules.slice(0, 5).map((ppm) => {
-              const isOverdue = ppm.status === 'OVERDUE';
-              const isDueSoon = ppm.status === 'DUE_SOON';
-              const isDone = ppm.status === 'COMPLETED';
+          <div className="space-y-2.5 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
+            {ppmSchedules.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400">
+                No PPM schedules found.
+              </div>
+            ) : (
+              ppmSchedules.map((ppm) => {
+                const isOverdue = ppm.status === 'OVERDUE';
+                const isDueSoon = ppm.status === 'DUE_SOON';
+                const isDone = ppm.status === 'COMPLETED';
 
-              return (
-                <div
-                  key={ppm.id}
-                  className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between gap-3 hover:bg-slate-100/60 transition"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`p-2 rounded-xl text-xs font-bold ${
-                        isDone
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : isOverdue
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}
-                    >
-                      <CalendarCheck className="w-4 h-4" />
-                    </span>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 font-mono flex items-center gap-2">
-                        <span>{ppm.machineId}</span>
-                        <span className="text-[10px] font-sans font-medium text-slate-500">
-                          {ppm.frequency} • Next: {ppm.nextDue ? new Date(ppm.nextDue).toLocaleDateString() : 'Pending'}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        Task: {ppm.task || 'Routine Preventive Check'}
+                return (
+                  <div
+                    key={ppm.id}
+                    className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between gap-3 hover:bg-slate-100/60 transition"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`p-2 rounded-xl text-xs font-bold ${
+                          isDone
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : isOverdue
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        <CalendarCheck className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 font-mono flex items-center gap-2">
+                          <span>{ppm.machineId}</span>
+                          <span className="text-[10px] font-sans font-medium text-slate-500">
+                            {ppm.frequency} • Next: {ppm.nextDue ? new Date(ppm.nextDue).toLocaleDateString() : 'Pending'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          Task: {ppm.task || 'Routine Preventive Check'}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {!isDone && (
-                    <button
-                      onClick={() => handleQuickCompletePPM(ppm.id, ppm.machineId)}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition cursor-pointer"
-                    >
-                      Complete
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                    {!isDone && (
+                      <button
+                        onClick={() => handleQuickCompletePPM(ppm.id, ppm.machineId)}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition cursor-pointer"
+                      >
+                        Complete
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
         {/* Right Column: Spare Parts Requisitions */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Boxes className="w-4 h-4 text-emerald-600" />
                 <span>Group Indents & Parts Requisitions</span>
               </h3>
-              <p className="text-xs text-slate-500">Status of spare requests submitted by team</p>
+              <p className="text-xs text-slate-500">Status of spare requests submitted by team ({requisitions.length} requests)</p>
             </div>
             <button
               onClick={() => router.push('/dashboard/inventory')}
@@ -1017,13 +1023,13 @@ export function SeniorMechanicDashboard({
             </button>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2.5 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
             {requisitions.length === 0 ? (
               <div className="text-center py-8 text-xs text-slate-400">
                 No active parts requisitions submitted.
               </div>
             ) : (
-              requisitions.slice(0, 5).map((req) => (
+              requisitions.map((req) => (
                 <div
                   key={req.id}
                   className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between gap-3 hover:bg-slate-100/60 transition"

@@ -230,18 +230,18 @@ export function ExecutiveDashboard({
       </div>
 
       {/* ─── 3. PENDING CEO APPROVALS DESK ─────────────────────────────── */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Crown className="w-4 h-4 text-purple-600" />
               <span>High-Value & Critical Spare Requisitions Awaiting Sign-off</span>
             </h3>
-            <p className="text-xs text-slate-500">Fast review and authorization for spare part procurement</p>
+            <p className="text-xs text-slate-500">Fast review and authorization for spare part procurement ({ceoPendingReqs.length} pending)</p>
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
           {ceoPendingReqs.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-400">
               <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500" />

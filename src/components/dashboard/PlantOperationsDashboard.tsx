@@ -736,8 +736,8 @@ export function PlantOperationsDashboard({
       {/* ================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-3.5">
         {/* Left Column (3 cols): Tickets by Category */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs flex flex-col justify-between">
-          <div>
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs max-h-[500px] flex flex-col justify-between">
+          <div className="shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <BarChart3 className="w-3.5 h-3.5 text-indigo-600" />
@@ -745,36 +745,36 @@ export function PlantOperationsDashboard({
               </h2>
               <span className="text-[10px] text-slate-400">{repairs.length} total</span>
             </div>
-
-            <div className="space-y-2.5">
-              {[
-                { label: 'Sewing Machinery', count: metrics.sewingTickets, total: repairs.length || 1, color: 'bg-indigo-500', catKey: 'MACHINE' },
-                { label: 'Work Tables & Chairs', count: metrics.furnitureTickets, total: repairs.length || 1, color: 'bg-amber-500', catKey: 'FURNITURE' },
-                { label: 'Plant Utilities & Lights', count: metrics.utilityTickets, total: repairs.length || 1, color: 'bg-cyan-500', catKey: 'UTILITY' },
-                { label: 'Vehicles & Trolleys', count: metrics.vehicleTickets, total: repairs.length || 1, color: 'bg-purple-500', catKey: 'VEHICLE' },
-              ].map((item) => {
-                const pct = Math.round((item.count / item.total) * 100);
-                return (
-                  <div
-                    key={item.label}
-                    onClick={() => openDrillDown('category_assets', `${item.label} Drill-down`, { category: item.catKey })}
-                    className="space-y-1 p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-                    title={`Click to view ${item.label} details`}
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600 font-medium truncate group-hover:text-indigo-600 transition">{item.label}</span>
-                      <span className="text-slate-900 font-bold font-mono ml-2">{item.count}</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full ${item.color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
 
-          <div className="pt-3 mt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1 py-1">
+            {[
+              { label: 'Sewing Machinery', count: metrics.sewingTickets, total: repairs.length || 1, color: 'bg-indigo-500', catKey: 'MACHINE' },
+              { label: 'Work Tables & Chairs', count: metrics.furnitureTickets, total: repairs.length || 1, color: 'bg-amber-500', catKey: 'FURNITURE' },
+              { label: 'Plant Utilities & Lights', count: metrics.utilityTickets, total: repairs.length || 1, color: 'bg-cyan-500', catKey: 'UTILITY' },
+              { label: 'Vehicles & Trolleys', count: metrics.vehicleTickets, total: repairs.length || 1, color: 'bg-purple-500', catKey: 'VEHICLE' },
+            ].map((item) => {
+              const pct = Math.round((item.count / item.total) * 100);
+              return (
+                <div
+                  key={item.label}
+                  onClick={() => openDrillDown('category_assets', `${item.label} Drill-down`, { category: item.catKey })}
+                  className="space-y-1 p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+                  title={`Click to view ${item.label} details`}
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-medium truncate group-hover:text-indigo-600 transition">{item.label}</span>
+                    <span className="text-slate-900 font-bold font-mono ml-2">{item.count}</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full ${item.color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="shrink-0 pt-3 mt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
             <button
               onClick={() => openDrillDown('fault_category', 'Mechanical Faults Breakdown', { fault: 'Mechanical' })}
               className="hover:text-indigo-600 hover:underline transition cursor-pointer"
@@ -797,8 +797,8 @@ export function PlantOperationsDashboard({
         </div>
 
         {/* Middle Column (6 cols): SLA Performance Trend & Weekly Breakdown */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs max-h-[500px] flex flex-col justify-between">
+          <div className="shrink-0 flex items-center justify-between mb-2">
             <div>
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
@@ -814,7 +814,7 @@ export function PlantOperationsDashboard({
           </div>
 
           {/* SVG Sparkline / Multi-bar Chart */}
-          <div className="py-2">
+          <div className="py-2 flex-1 min-h-0 flex items-center justify-center">
             <svg viewBox="0 0 500 120" className="w-full h-28 overflow-visible">
               <defs>
                 <linearGradient id="slaGradient" x1="0" y1="0" x2="0" y2="1">
@@ -855,7 +855,7 @@ export function PlantOperationsDashboard({
             </svg>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <div className="shrink-0 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded bg-indigo-500" />
               <span>Resolved on SLA: <strong>94.2%</strong></span>
@@ -868,8 +868,8 @@ export function PlantOperationsDashboard({
         </div>
 
         {/* Right Column (3 cols): Breakdown Fault Distribution */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs flex flex-col justify-between">
-          <div>
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs max-h-[500px] flex flex-col justify-between">
+          <div className="shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Flame className="w-3.5 h-3.5 text-rose-500" />
@@ -877,67 +877,67 @@ export function PlantOperationsDashboard({
               </h2>
               <span className="text-[10px] text-slate-400">Past 30 Days</span>
             </div>
+          </div>
 
-            <div className="space-y-3">
-              <div
-                onClick={() => openDrillDown('fault_category', 'Looper & Needle Timing Breakdown', { fault: 'Looper' })}
-                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-                title="Click to view Looper & Needle Breakdown drill-down"
-              >
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Looper / Needle Timing</span>
-                  <span className="font-bold text-slate-900 font-mono">42%</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-rose-500 rounded-full" style={{ width: '42%' }} />
-                </div>
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1 py-1">
+            <div
+              onClick={() => openDrillDown('fault_category', 'Looper & Needle Timing Breakdown', { fault: 'Looper' })}
+              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+              title="Click to view Looper & Needle Breakdown drill-down"
+            >
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-slate-600 group-hover:text-indigo-600 transition">Looper / Needle Timing</span>
+                <span className="font-bold text-slate-900 font-mono">42%</span>
               </div>
-
-              <div
-                onClick={() => openDrillDown('fault_category', 'Motor & Drive Electronics Breakdown', { fault: 'Motor' })}
-                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-                title="Click to view Motor & Drive Breakdown drill-down"
-              >
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Motor / Electronic Drive</span>
-                  <span className="font-bold text-slate-900 font-mono">28%</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-amber-500 rounded-full" style={{ width: '28%' }} />
-                </div>
+              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-rose-500 rounded-full" style={{ width: '42%' }} />
               </div>
+            </div>
 
-              <div
-                onClick={() => openDrillDown('fault_category', 'Pneumatic & Air Line Breakdown', { fault: 'Pneumatic' })}
-                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-                title="Click to view Pneumatic Breakdown drill-down"
-              >
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Pneumatic & Air Lines</span>
-                  <span className="font-bold text-slate-900 font-mono">18%</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: '18%' }} />
-                </div>
+            <div
+              onClick={() => openDrillDown('fault_category', 'Motor & Drive Electronics Breakdown', { fault: 'Motor' })}
+              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+              title="Click to view Motor & Drive Breakdown drill-down"
+            >
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-slate-600 group-hover:text-indigo-600 transition">Motor / Electronic Drive</span>
+                <span className="font-bold text-slate-900 font-mono">28%</span>
               </div>
+              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-amber-500 rounded-full" style={{ width: '28%' }} />
+              </div>
+            </div>
 
-              <div
-                onClick={() => openDrillDown('fault_category', 'Operator Error & Fabric Jam Breakdown', { fault: 'Operator' })}
-                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-                title="Click to view Operator Jam drill-down"
-              >
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-slate-600 group-hover:text-indigo-600 transition">Operator Error / Jams</span>
-                  <span className="font-bold text-slate-900 font-mono">12%</span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-slate-400 rounded-full" style={{ width: '12%' }} />
-                </div>
+            <div
+              onClick={() => openDrillDown('fault_category', 'Pneumatic & Air Line Breakdown', { fault: 'Pneumatic' })}
+              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+              title="Click to view Pneumatic Breakdown drill-down"
+            >
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-slate-600 group-hover:text-indigo-600 transition">Pneumatic & Air Lines</span>
+                <span className="font-bold text-slate-900 font-mono">18%</span>
+              </div>
+              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full" style={{ width: '18%' }} />
+              </div>
+            </div>
+
+            <div
+              onClick={() => openDrillDown('fault_category', 'Operator Error & Fabric Jam Breakdown', { fault: 'Operator' })}
+              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+              title="Click to view Operator Jam drill-down"
+            >
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-slate-600 group-hover:text-indigo-600 transition">Operator Error / Jams</span>
+                <span className="font-bold text-slate-900 font-mono">12%</span>
+              </div>
+              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-slate-400 rounded-full" style={{ width: '12%' }} />
               </div>
             </div>
           </div>
 
-          <div className="pt-3 mt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+          <div className="shrink-0 pt-3 mt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
             <span>Total Downtime:</span>
             <span className="font-bold text-slate-900 font-mono">{metrics.totalDowntimeMins} mins</span>
           </div>
@@ -995,14 +995,14 @@ export function PlantOperationsDashboard({
       {/* ================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-3.5">
         {/* Left Column (8 cols): Shop Floor Machinery */}
-        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs max-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
             <div>
               <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-indigo-600" />
                 Shop Floor Equipment Status
               </h2>
-              <p className="text-[10px] text-slate-400">Live machinery status across production lines</p>
+              <p className="text-[10px] text-slate-400">Live machinery status across production lines ({machines.length} total assets)</p>
             </div>
             <button
               onClick={() => router.push('/dashboard/machines')}
@@ -1013,24 +1013,24 @@ export function PlantOperationsDashboard({
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto mt-2">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-2 px-2.5">Machine ID</th>
-                  <th className="py-2 px-2.5">Type & Model</th>
-                  <th className="py-2 px-2.5">Line</th>
-                  <th className="py-2 px-2.5">Status</th>
-                  <th className="py-2 px-2.5 text-right">Action</th>
+              <thead className="sticky top-0 bg-white/95 backdrop-blur-xs z-10 border-b border-slate-200 shadow-2xs">
+                <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="py-2.5 px-2.5">Machine ID</th>
+                  <th className="py-2.5 px-2.5">Type & Model</th>
+                  <th className="py-2.5 px-2.5">Line</th>
+                  <th className="py-2.5 px-2.5">Status</th>
+                  <th className="py-2.5 px-2.5 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {machines.slice(0, 8).map((m) => (
+                {machines.map((m) => (
                   <tr key={m.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-2 px-2.5 font-mono font-bold text-slate-900">{m.id}</td>
-                    <td className="py-2 px-2.5 text-slate-700 font-medium truncate max-w-[180px]">{m.type}</td>
-                    <td className="py-2 px-2.5 text-slate-500">{m.currentLine || 'Line 01'}</td>
-                    <td className="py-2 px-2.5">
+                    <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900">{m.id}</td>
+                    <td className="py-2.5 px-2.5 text-slate-700 font-medium truncate max-w-[180px]">{m.type}</td>
+                    <td className="py-2.5 px-2.5 text-slate-500">{m.currentLine || 'Line 01'}</td>
+                    <td className="py-2.5 px-2.5">
                       <span
                         className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           m.status === 'ACTIVE'
@@ -1045,7 +1045,7 @@ export function PlantOperationsDashboard({
                         {m.status}
                       </span>
                     </td>
-                    <td className="py-2 px-2.5 text-right">
+                    <td className="py-2.5 px-2.5 text-right">
                       <button
                         onClick={() => router.push(`/scan/${m.id}`)}
                         className="px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
@@ -1061,7 +1061,7 @@ export function PlantOperationsDashboard({
         </div>
 
         {/* Right Column (4 cols): COST ANALYSIS (Pie Chart view matching screenshot) */}
-        <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col justify-between">
+        <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-xs max-h-[500px] flex flex-col justify-between overflow-y-auto">
           <div>
             {/* Header: Title on Left, Subtitle below, View Switcher on Right */}
             <div className="flex items-start justify-between">

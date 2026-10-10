@@ -1048,11 +1048,11 @@ export function WidgetDrilldownDrawer({
           </div>
 
           {/* 3. Detailed Records Table */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 overflow-hidden shadow-2xs">
-            <div className="overflow-x-auto">
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs max-h-[500px] flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 z-10 shadow-2xs">
+                  <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     {drawerData.tableHeaders.map((head, idx) => (
                       <th
                         key={idx}

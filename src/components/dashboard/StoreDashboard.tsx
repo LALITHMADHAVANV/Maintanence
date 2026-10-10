@@ -224,14 +224,14 @@ export function StoreDashboard({
       {/* ─── 3. LOW STOCK PARTS & REQUISITIONS QUEUE ───────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Low Stock Parts */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-rose-600" />
                 <span>Critical Low Stock Items</span>
               </h3>
-              <p className="text-xs text-slate-500">Parts below threshold needing fast replenishment</p>
+              <p className="text-xs text-slate-500">Parts below threshold needing fast replenishment ({lowStockParts.length} SKUs)</p>
             </div>
             <button
               onClick={() => router.push('/dashboard/inventory')}
@@ -242,14 +242,14 @@ export function StoreDashboard({
             </button>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
             {lowStockParts.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400">
                 <CheckCircle2 className="w-7 h-7 mx-auto mb-1 text-emerald-500" />
                 All stock levels healthy.
               </div>
             ) : (
-              lowStockParts.slice(0, 6).map((p) => (
+              lowStockParts.map((p) => (
                 <div
                   key={p.partId}
                   className="p-3 bg-rose-50/50 rounded-2xl border border-rose-200/70 flex items-center justify-between gap-3"
@@ -277,14 +277,14 @@ export function StoreDashboard({
         </div>
 
         {/* Indents to Dispatch */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Package className="w-4 h-4 text-emerald-600" />
                 <span>Indents Awaiting Dispatch</span>
               </h3>
-              <p className="text-xs text-slate-500">Requisitions requested by floor technicians</p>
+              <p className="text-xs text-slate-500">Requisitions requested by floor technicians ({pendingRequisitions.length} requests)</p>
             </div>
             <button
               onClick={() => router.push('/dashboard/store-inbox')}
@@ -295,14 +295,14 @@ export function StoreDashboard({
             </button>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
             {pendingRequisitions.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400">
                 <CheckCircle2 className="w-7 h-7 mx-auto mb-1 text-emerald-500" />
                 All indents fulfilled!
               </div>
             ) : (
-              pendingRequisitions.slice(0, 6).map((r) => (
+              pendingRequisitions.map((r) => (
                 <div
                   key={r.id}
                   className="p-3 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between gap-3"
