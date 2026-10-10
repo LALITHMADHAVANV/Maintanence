@@ -28,6 +28,7 @@ import {
   Info,
   Users,
   Search,
+  Truck,
 } from 'lucide-react';
 import { RepairTicket, RepairUrgency, Machine, SparePart, PPMSchedule } from '@/types/cmms';
 import {
@@ -44,6 +45,7 @@ import {
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { TeamScheduleModal } from '@/components/calendar/TeamScheduleModal';
+import { MaintenanceMilestonesAndTasks } from '@/components/dashboard/MaintenanceMilestonesAndTasks';
 import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
 
 // Helper to format Date to 'YYYY-MM-DD'
@@ -66,7 +68,7 @@ export default function CalendarPage() {
   // Navigation & View state
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
-  const [viewMode, setViewMode] = useState<'month' | 'agenda'>('month');
+  const [viewMode, setViewMode] = useState<'month' | 'agenda' | 'milestones'>('month');
   const [filterType, setFilterType] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
 
   // Pop-up Day Details Slide-over Drawer State ("Short page as like dashboard")
@@ -85,10 +87,16 @@ export default function CalendarPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isDayDrawerOpen]);
 
-  // Handle URL ticketId param if arriving directly from dashboard drilldown
+  // Handle URL params and set default view for junior workers
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      if (viewParam === 'milestones' || viewParam === 'month' || viewParam === 'agenda') {
+        setViewMode(viewParam);
+      } else if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
+        setViewMode('milestones');
+      }
       const ticketId = params.get('ticketId');
       if (ticketId && repairs.length > 0) {
         const ticket = repairs.find((r) => r.id === ticketId);
@@ -99,7 +107,7 @@ export default function CalendarPage() {
         }
       }
     }
-  }, [repairs]);
+  }, [repairs, role]);
 
   // Senior Mechanic and Senior Electrician have authority to schedule new PPM overhauls
   const canSchedulePPM = role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN';
@@ -701,8 +709,19 @@ export default function CalendarPage() {
               </>
             )}
 
-            {/* View Mode Toggle (Month vs Agenda) */}
+            {/* View Mode Toggle (Schedule Milestones vs Month vs Agenda) */}
             <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-semibold text-slate-600">
+              <button
+                onClick={() => setViewMode('milestones')}
+                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'milestones'
+                    ? 'bg-white text-indigo-700 font-bold shadow-sm'
+                    : 'hover:text-slate-900'
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>Milestones &amp; Tasks</span>
+              </button>
               <button
                 onClick={() => setViewMode('month')}
                 className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
@@ -838,8 +857,23 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* 4. Main Body: Full Cloud Calendar Grid or Agenda View */}
-      {viewMode === 'month' ? (
+      {/* 4. Main Body: Milestones & Tasks, Monthly Calendar Grid, or Agenda View */}
+      {viewMode === 'milestones' ? (
+        <MaintenanceMilestonesAndTasks
+          repairs={scopedRepairs}
+          ppmSchedules={scopedPpmSchedules}
+          machines={displayMachines}
+          userName={user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')}
+          role={role || 'MECHANIC'}
+          onOpenResolve={handleOpenResolveModal}
+          onCompletePPM={(ppmId, machineId) => handleCompletePPM(ppmId, 'PPM Maintenance', machineId)}
+          onOpenCalendarDate={(dStr) => {
+            setSelectedDate(dStr);
+            setIsDayDrawerOpen(true);
+          }}
+          onOpenFullCalendar={() => setViewMode('month')}
+        />
+      ) : viewMode === 'month' ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Weekday column headers */}
           <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/75 text-center text-xs font-bold text-slate-600 py-2.5 select-none">

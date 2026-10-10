@@ -37,6 +37,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
+import { MaintenanceMilestonesAndTasks } from './MaintenanceMilestonesAndTasks';
 
 interface MechanicDeskDashboardProps {
   machines: Machine[];
@@ -382,136 +383,17 @@ export function MechanicDeskDashboard({
         </div>
       )}
 
-      {/* ─── 4. MY WORK QUEUE & PPM GRID ───────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: My Work Orders */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-indigo-600" />
-                <span>My Assigned Work Orders</span>
-              </h3>
-              <p className="text-xs text-slate-500">Tickets awaiting your repair intervention ({myOpenTickets.length} tasks)</p>
-            </div>
-            <button
-              onClick={() =>
-                openDrillDown('open_tickets', `My Assigned Work Orders (${myOpenTickets.length})`, {
-                  assignedTo: userName,
-                  filterDefault: 'my_tickets',
-                })
-              }
-              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold cursor-pointer transition flex items-center gap-1.5"
-              title="Click to view all assigned work orders in slide-over drawer"
-            >
-              <span>{myOpenTickets.length} Pending</span>
-              <ExternalLink className="w-3 h-3" />
-            </button>
-          </div>
-
-          <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
-            {myOpenTickets.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                <CheckCircle2 className="w-7 h-7 mx-auto mb-1 text-emerald-500" />
-                All work orders resolved!
-              </div>
-            ) : (
-              myOpenTickets.map((t) => (
-                <div
-                  key={t.id}
-                  className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-xs text-slate-900">{t.id}</span>
-                      <span className="text-xs font-semibold text-slate-700">
-                        {t.machineId} ({t.line})
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5 truncate max-w-xs">
-                      {t.faultCategory} — {t.faultDetails}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleOpenResolve(t)}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    Complete
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Right: My PPM Tasks */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <CalendarCheck className="w-4 h-4 text-amber-500" />
-                <span>My PPM Preventive Tasks</span>
-              </h3>
-              <p className="text-xs text-slate-500">Scheduled checks on your assigned lines ({myPPMTasks.length} tasks)</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() =>
-                  openDrillDown('on_schedule', `My Assigned PPM Tasks (${myPPMTasks.length})`, {
-                    assignedTo: userName,
-                  })
-                }
-                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-full text-xs font-bold cursor-pointer transition flex items-center gap-1.5"
-                title="Click to view PPM tasks in slide-over drawer"
-              >
-                <span>{myPPMTasks.length} Due</span>
-                <ExternalLink className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/calendar')}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-              >
-                <span>Calendar</span>
-                <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
-            {myPPMTasks.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                <CheckCircle2 className="w-7 h-7 mx-auto mb-1 text-emerald-500" />
-                No preventive tasks due today.
-              </div>
-            ) : (
-              myPPMTasks.map((ppm) => (
-                <div
-                  key={ppm.id}
-                  className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/60 flex items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-xs text-slate-900">{ppm.machineId}</span>
-                      <span className="text-xs text-slate-500 font-medium">({ppm.frequency})</span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">
-                      Next Due: {ppm.nextDue ? new Date(ppm.nextDue).toLocaleDateString() : 'Today'}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleCompletePPM(ppm.id, ppm.machineId)}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    Done
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
+      {/* ─── 4. DELIVERY SCHEDULE & MILESTONES + MY TASKS ──────────────── */}
+      <MaintenanceMilestonesAndTasks
+        repairs={repairs}
+        ppmSchedules={ppmSchedules}
+        machines={machines}
+        userName={userName}
+        role={user?.role || 'MECHANIC'}
+        onOpenResolve={handleOpenResolve}
+        onCompletePPM={(ppmId, machineId) => handleCompletePPM(ppmId, machineId)}
+        onOpenCalendarDate={(dStr) => router.push(`/dashboard/calendar?date=${dStr}`)}
+      />
 
       {/* ─── MODAL: RESOLVE WORK ORDER ─────────────────────────────────── */}
       {isResolveModalOpen && selectedTicketToResolve && (
