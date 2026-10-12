@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
 import {
   Search,
@@ -1282,7 +1283,9 @@ const CATEGORIES_META: {
 
 export default function HistoryPage() {
   const { showToast } = useToast();
-  const [historySection, setHistorySection] = useState<'PERSONNEL' | 'ASSETS'>('PERSONNEL');
+  const { user, role, isLoading } = useAuth();
+  const isAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER';
+  const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('ASSETS');
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
   const [statusFilter] = useState<'active' | 'completed' | 'all'>('all');
   const [q, setQ] = useState('');
@@ -1505,13 +1508,52 @@ export default function HistoryPage() {
     showToast(`Exported ${rows.length} history records successfully!`, 'success');
   };
 
+  // Prevent flash while authentication is resolving
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   // =========================================================================
-  // VIEW 1: PERSONNEL WORK HISTORY (TABLE FORM) - FOR ALL PERSONS
+  // VIEW 1: PERSONNEL WORK HISTORY (TABLE FORM) - FOR ALL NON-ADMIN PERSONS
   // =========================================================================
-  if (historySection === 'PERSONNEL') {
+  if (!isAdmin) {
     return (
       <div className="space-y-4 pt-0 animate-in fade-in duration-200">
-        {/* The Table Form View */}
+        {/* The Table Form View for all staff members, mechanics, electricians, etc. */}
+        <PersonnelWorkHistoryTable />
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // ADMIN VIEW: PERSONNEL WORK LOG SUB-VIEW (IF ADMIN INSPECTS PERSONNEL LOGS)
+  // =========================================================================
+  if (adminTab === 'PERSONNEL') {
+    return (
+      <div className="space-y-4 pt-0 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+              <User className="w-4 h-4" />
+            </span>
+            <div>
+              <div className="text-xs font-bold text-slate-900">Personnel Work History Log</div>
+              <div className="text-[11px] text-slate-500">Audit technician repairs, hours logged, and parts consumption</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdminTab('ASSETS')}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Asset Maintenance Matrix</span>
+          </button>
+        </div>
         <PersonnelWorkHistoryTable />
       </div>
     );
@@ -2235,6 +2277,19 @@ export default function HistoryPage() {
           >
             <Download className="w-3.5 h-3.5" />
             <span>Download Data</span>
+          </button>
+
+          <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
+
+          {/* Personnel Work Logs button for Admin */}
+          <button
+            type="button"
+            onClick={() => setAdminTab('PERSONNEL')}
+            className="h-8 px-2.5 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            title="Inspect Personnel Work History Logs"
+          >
+            <User className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Personnel Logs</span>
           </button>
         </div>
       </div>
