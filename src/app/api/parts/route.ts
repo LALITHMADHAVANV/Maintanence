@@ -168,13 +168,7 @@ const DEFAULT_FACTORY_PARTS: SparePart[] = [
 export async function GET() {
   try {
     const db = await getDatabase();
-    let parts = await db.collection<SparePart>('spare_parts').find({}).toArray();
-
-    if (parts.length === 0) {
-      await db.collection('spare_parts').insertMany(DEFAULT_FACTORY_PARTS as any);
-      parts = await db.collection<SparePart>('spare_parts').find({}).toArray();
-    }
-
+    const parts = await db.collection<SparePart>('spare_parts').find({}).toArray();
     const cleanParts = parts.map(({ _id, ...p }: any) => p);
     return NextResponse.json({ success: true, data: cleanParts });
   } catch (err: unknown) {

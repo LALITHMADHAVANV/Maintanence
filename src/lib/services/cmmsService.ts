@@ -64,13 +64,15 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
  */
 export function initLocalSeedData(): void {
   if (typeof window === 'undefined') return;
-  if (localStorage.getItem(STORAGE_KEYS.SEEDED)) {
+  const cacheVersion = 'cmms_v5_clean';
+  if (localStorage.getItem('cmms_cache_ver') !== cacheVersion) {
     localStorage.removeItem(STORAGE_KEYS.MACHINES);
     localStorage.removeItem(STORAGE_KEYS.PARTS);
     localStorage.removeItem(STORAGE_KEYS.REPAIRS);
     localStorage.removeItem(STORAGE_KEYS.PPM);
     localStorage.removeItem(STORAGE_KEYS.REQUISITIONS);
     localStorage.removeItem(STORAGE_KEYS.SEEDED);
+    localStorage.setItem('cmms_cache_ver', cacheVersion);
   }
 }
 

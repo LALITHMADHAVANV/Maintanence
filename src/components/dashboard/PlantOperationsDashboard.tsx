@@ -334,16 +334,7 @@ export function PlantOperationsDashboard({
       else if (m.category === 'UTILITY' || m.category === 'LIGHT' || m.category === 'FAN') cat = 'UTILITY';
       else if (m.category === 'FURNITURE' || m.category === 'TABLE' || m.category === 'CHAIR') cat = 'FURNITURE';
 
-      const baseCost =
-        m.cost && m.cost > 0
-          ? m.cost
-          : cat === 'MACHINE'
-          ? 45000
-          : cat === 'VEHICLE'
-          ? 65000
-          : cat === 'UTILITY'
-          ? 14000
-          : 9000;
+      const baseCost = m.cost && m.cost > 0 ? m.cost : 0;
 
       categories[cat].cost += baseCost;
       categories[cat].count += 1;
