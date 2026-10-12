@@ -343,12 +343,21 @@ export function SeniorMechanicDashboard({
           </button>
 
           <button
-            onClick={() => router.push('/dashboard/calendar?action=dispatch')}
+            onClick={() => {
+              const unassigned = repairs.find((r) => !r.attendedBy && r.status !== 'COMPLETED');
+              if (unassigned) {
+                setSelectedTicketForAssign(unassigned);
+                setIsAssignModalOpen(true);
+              } else {
+                const queueEl = document.getElementById('floor-tickets-queue');
+                if (queueEl) queueEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition shadow-xs cursor-pointer"
             title="Open Assign / Move Task Desk"
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>⚡ Assign / Move Task</span>
+            <span>⚡ Assign Task</span>
           </button>
 
           <button
@@ -382,9 +391,19 @@ export function SeniorMechanicDashboard({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {/* Open Work Orders */}
         <div
-          onClick={() => router.push('/dashboard/calendar?filter=REPAIRS')}
+          onClick={() => {
+            setTicketFilter('ALL');
+            const queueEl = document.getElementById('floor-tickets-queue');
+            if (queueEl) {
+              queueEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              queueEl.classList.add('ring-2', 'ring-indigo-500');
+              setTimeout(() => queueEl.classList.remove('ring-2', 'ring-indigo-500'), 1500);
+            } else {
+              openDrillDown('open_tickets', `Floor Active Tickets & Work Orders (${metrics.openTicketsCount})`);
+            }
+          }}
           className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-400 transition cursor-pointer group"
-          title="Click to view all tickets in Calendar"
+          title="Click to view Active Tickets in Ticket Queue"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">Active Tickets</span>
@@ -630,7 +649,7 @@ export function SeniorMechanicDashboard({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Team Work Orders (8 cols = ~66%) */}
         <div className="lg:col-span-8 space-y-4">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col">
+          <div id="floor-tickets-queue" className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm max-h-[500px] flex flex-col transition-all">
             {/* Header & Filter Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 shrink-0">
               <div>
@@ -740,8 +759,11 @@ export function SeniorMechanicDashboard({
                           {/* Ticket ID & Urgency */}
                           <td
                             className="py-3 px-3 cursor-pointer group-hover:bg-indigo-50/50"
-                            onClick={() => router.push(`/dashboard/calendar?ticketId=${t.id}`)}
-                            title="Click to open ticket in Calendar"
+                            onClick={() => {
+                              setSelectedTicketForAssign(t);
+                              setIsAssignModalOpen(true);
+                            }}
+                            title="Click to view & manage ticket"
                           >
                             <div className="flex items-center gap-2">
                               <span
@@ -816,12 +838,15 @@ export function SeniorMechanicDashboard({
                                 </button>
                               )}
                               <button
-                                onClick={() => router.push(`/dashboard/calendar?ticketId=${t.id}`)}
-                                title="Open & Resolve in Calendar"
+                                onClick={() => {
+                                  setSelectedTicketForAssign(t);
+                                  setIsAssignModalOpen(true);
+                                }}
+                                title="Open & Manage Ticket Details"
                                 className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer flex items-center gap-1"
                               >
-                                <CalendarCheck className="w-3 h-3 text-indigo-600" />
-                                <span>Calendar</span>
+                                <Wrench className="w-3 h-3 text-indigo-600" />
+                                <span>Details</span>
                               </button>
                               <button
                                 onClick={() => router.push(`/scan/${t.machineId}`)}

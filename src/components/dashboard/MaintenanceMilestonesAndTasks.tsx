@@ -597,7 +597,7 @@ export function MaintenanceMilestonesAndTasks({
             </span>
             <div>
               <h2 className={`${compact ? 'text-sm' : 'text-base sm:text-lg'} font-bold text-slate-900 tracking-tight flex items-center gap-1.5`}>
-                Delivery Schedule &amp; Milestones
+                Work Schedule
               </h2>
               <p className={`${compact ? 'text-[11px]' : 'text-xs'} text-slate-500 mt-0.5`}>
                 Real production shipment deadlines &amp; active stage progress

@@ -211,10 +211,10 @@ export function WidgetDrilldownDrawer({
                 ? 'bg-blue-100 text-blue-800'
                 : 'bg-slate-100 text-slate-800',
           },
-          actionText: 'Open Ticket',
-          actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
+          actionText: 'View Machine & Ticket',
+          actionUrl: `/scan/${r.machineId}`,
         })),
-        bottomAction: { label: 'View filtered in Repairs Master Page →', url: '/dashboard/calendar' },
+        bottomAction: { label: 'Go to Floor Dashboard →', url: '/dashboard' },
       };
     }
 
