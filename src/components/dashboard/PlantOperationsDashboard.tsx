@@ -244,10 +244,10 @@ export function PlantOperationsDashboard({
     ).length;
     const otherFaults = Math.max(0, repairs.length - mechanicalFaults - electricalFaults);
 
-    const totalFaults = repairs.length || 1;
-    const mechanicalPct = Math.round((mechanicalFaults / totalFaults) * 100);
-    const electricalPct = Math.round((electricalFaults / totalFaults) * 100);
-    const otherPct = 100 - mechanicalPct - electricalPct;
+    const totalFaults = repairs.length;
+    const mechanicalPct = totalFaults > 0 ? Math.round((mechanicalFaults / totalFaults) * 100) : 0;
+    const electricalPct = totalFaults > 0 ? Math.round((electricalFaults / totalFaults) * 100) : 0;
+    const otherPct = totalFaults > 0 ? Math.max(0, 100 - mechanicalPct - electricalPct) : 0;
 
     return {
       totalAssets, activeMachines, breakdownMachines, underMaintenance, bufferMachines,
@@ -271,7 +271,7 @@ export function PlantOperationsDashboard({
     { key: 'ppm_due', label: 'PPM Due', icon: <Calendar className="w-3.5 h-3.5" />, count: metrics.ppmDueSoon + metrics.ppmPending, color: 'text-indigo-700', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200' },
     { key: 'ppm_overdue', label: 'PPM Overdue', icon: <AlertTriangle className="w-3.5 h-3.5" />, count: metrics.ppmOverdue, color: 'text-rose-700', bgColor: 'bg-rose-50', borderColor: 'border-rose-200' },
     { key: 'awaiting_parts', label: 'Awaiting Spares', icon: <Package className="w-3.5 h-3.5" />, count: metrics.pendingReqs, color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-200' },
-    { key: 'qa_signoff', label: 'QC Verification', icon: <CheckCircle2 className="w-3.5 h-3.5" />, count: Math.min(2, metrics.completedTickets), color: 'text-teal-700', bgColor: 'bg-teal-50', borderColor: 'border-teal-200' },
+    { key: 'qa_signoff', label: 'QC Verification', icon: <CheckCircle2 className="w-3.5 h-3.5" />, count: repairs.filter((r) => r.status === 'COMPLETED' && r.actionTaken?.toLowerCase().includes('qc')).length, color: 'text-teal-700', bgColor: 'bg-teal-50', borderColor: 'border-teal-200' },
     { key: 'resolved', label: 'Resolved & Closed', icon: <Check className="w-3.5 h-3.5" />, count: metrics.completedTickets, color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
   ], [metrics]);
 
@@ -385,7 +385,7 @@ export function PlantOperationsDashboard({
     };
   }, [machines, requisitions]);
 
-  // ─── Risk Analysis Data (Matching the simple reference UI) ─────────────
+  // ─── Risk Analysis Data (Dynamic from live repairs & PPM) ─────────────
   const riskAnalysisData = useMemo(() => {
     const high = repairs.filter((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED').length +
       ppmSchedules.filter((p) => p.status === 'OVERDUE').length;
@@ -397,16 +397,12 @@ export function PlantOperationsDashboard({
       ppmSchedules.filter((p) => p.status === 'COMPLETED').length;
 
     const total = high + medium + low;
-    const displayTotal = total > 0 ? total : 123;
-    const displayMed = total > 0 ? medium : 123;
-    const displayHigh = total > 0 ? high : 0;
-    const displayLow = total > 0 ? low : 0;
 
     return {
-      total: displayTotal,
-      high: displayHigh,
-      medium: displayMed,
-      low: displayLow,
+      total,
+      high,
+      medium,
+      low,
     };
   }, [repairs, ppmSchedules]);
 
@@ -414,7 +410,7 @@ export function PlantOperationsDashboard({
   const liveCategoryData = useMemo(() => {
     // 1. Sewing & Industrial Machinery
     const sewingMachines = machines.filter((m) => !m.category || m.category === 'MACHINE');
-    const sewingCost = sewingMachines.reduce((sum, m) => sum + (m.cost || 45000), 0);
+    const sewingCost = sewingMachines.reduce((sum, m) => sum + (m.cost || 0), 0);
 
     // 2. Work & Cutting Tables
     const tableMachines = machines.filter(
@@ -426,7 +422,7 @@ export function PlantOperationsDashboard({
             m.model?.toLowerCase().includes('desk') ||
             m.model?.toLowerCase().includes('table')))
     );
-    const tableCost = tableMachines.reduce((sum, m) => sum + (m.cost || 15000), 0);
+    const tableCost = tableMachines.reduce((sum, m) => sum + (m.cost || 0), 0);
 
     // 3. Chairs & Seating
     const chairMachines = machines.filter(
@@ -440,7 +436,7 @@ export function PlantOperationsDashboard({
             m.model?.toLowerCase().includes('table')
           ))
     );
-    const chairCost = chairMachines.reduce((sum, m) => sum + (m.cost || 8000), 0);
+    const chairCost = chairMachines.reduce((sum, m) => sum + (m.cost || 0), 0);
 
     // 4. Plant Utilities
     const utilityMachines = machines.filter(
@@ -450,7 +446,7 @@ export function PlantOperationsDashboard({
         m.type?.includes('COMPRESSOR') ||
         m.type?.includes('BOILER')
     );
-    const utilityCost = utilityMachines.reduce((sum, m) => sum + (m.cost || 14000), 0);
+    const utilityCost = utilityMachines.reduce((sum, m) => sum + (m.cost || 0), 0);
 
     // 5. Lighting & Ventilation
     const lightMachines = machines.filter(
@@ -460,13 +456,13 @@ export function PlantOperationsDashboard({
         m.type?.includes('LIGHT') ||
         m.type?.includes('FAN')
     );
-    const lightCost = lightMachines.reduce((sum, m) => sum + (m.cost || 9000), 0);
+    const lightCost = lightMachines.reduce((sum, m) => sum + (m.cost || 0), 0);
 
     // 6. Vehicles & Transport
     const vehicleMachines = machines.filter(
       (m) => m.category === 'VEHICLE' || m.type?.includes('VEHICLE')
     );
-    const vehicleCost = vehicleMachines.reduce((sum, m) => sum + (m.cost || 65000), 0);
+    const vehicleCost = vehicleMachines.reduce((sum, m) => sum + (m.cost || 0), 0);
 
     return [
       {
@@ -534,7 +530,7 @@ export function PlantOperationsDashboard({
       const lineMachines = machines.filter(
         (m) => m.currentLine === l.key || (!m.currentLine && l.key === 'Line 01')
       );
-      const lineCost = lineMachines.reduce((sum, m) => sum + (m.cost || 45000), 0);
+      const lineCost = lineMachines.reduce((sum, m) => sum + (m.cost || 0), 0);
       return {
         key: l.key,
         label: l.label,
@@ -545,6 +541,94 @@ export function PlantOperationsDashboard({
       };
     });
   }, [machines]);
+
+  // ─── Dynamic Weekly SLA Chart Data ──────────────────────────────────────
+  const weeklySlaData = useMemo(() => {
+    const days = [
+      { day: 'Mon', dayNum: 1, x: 35 },
+      { day: 'Tue', dayNum: 2, x: 105 },
+      { day: 'Wed', dayNum: 3, x: 175 },
+      { day: 'Thu', dayNum: 4, x: 245 },
+      { day: 'Fri', dayNum: 5, x: 315 },
+      { day: 'Sat', dayNum: 6, x: 385 },
+      { day: 'Sun', dayNum: 0, x: 455 },
+    ];
+
+    return days.map((d) => {
+      const dayTickets = repairs.filter((r) => {
+        if (!r.reportedAt) return false;
+        const dt = new Date(r.reportedAt);
+        return dt.getDay() === d.dayNum;
+      });
+      const fixed = dayTickets.filter((r) => r.status === 'COMPLETED').length;
+      return {
+        day: d.day,
+        total: dayTickets.length,
+        fixed,
+        x: d.x,
+      };
+    });
+  }, [repairs]);
+
+  const resolvedSlaPct = useMemo(() => {
+    if (repairs.length === 0) return 100;
+    const resolvedOnTime = repairs.filter(
+      (r) => r.status === 'COMPLETED' && (r.downtimeMinutes <= 120 || !r.downtimeMinutes)
+    ).length;
+    return Math.round((resolvedOnTime / repairs.length) * 100);
+  }, [repairs]);
+
+  // ─── Dynamic Downtime Causes Breakdown ──────────────────────────────────
+  const downtimeCauses = useMemo(() => {
+    const totalRepairs = repairs.length;
+    if (totalRepairs === 0) {
+      return [
+        { label: 'Looper / Needle Timing', pct: 0, color: 'bg-rose-500', fault: 'Looper' },
+        { label: 'Motor / Electronic Drive', pct: 0, color: 'bg-amber-500', fault: 'Motor' },
+        { label: 'Pneumatic & Air Lines', pct: 0, color: 'bg-blue-500', fault: 'Pneumatic' },
+        { label: 'Operator Error / Jams', pct: 0, color: 'bg-slate-400', fault: 'Operator' },
+      ];
+    }
+
+    const looperCount = repairs.filter(
+      (r) =>
+        r.faultCategory?.toLowerCase().includes('needle') ||
+        r.faultCategory?.toLowerCase().includes('looper') ||
+        r.faultCategory?.toLowerCase().includes('timing') ||
+        r.faultCategory?.toLowerCase().includes('stitch')
+    ).length;
+
+    const motorCount = repairs.filter(
+      (r) =>
+        r.faultCategory?.toLowerCase().includes('motor') ||
+        r.faultCategory?.toLowerCase().includes('drive') ||
+        r.faultCategory?.toLowerCase().includes('electrical') ||
+        r.faultCategory?.toLowerCase().includes('electronic')
+    ).length;
+
+    const pneumaticCount = repairs.filter(
+      (r) =>
+        r.faultCategory?.toLowerCase().includes('pneumatic') ||
+        r.faultCategory?.toLowerCase().includes('air') ||
+        r.faultCategory?.toLowerCase().includes('pressure')
+    ).length;
+
+    const operatorCount = repairs.filter(
+      (r) =>
+        r.faultCategory?.toLowerCase().includes('operator') ||
+        r.faultCategory?.toLowerCase().includes('jam') ||
+        r.faultCategory?.toLowerCase().includes('fabric')
+    ).length;
+
+    const sumIdentified = looperCount + motorCount + pneumaticCount + operatorCount || 1;
+
+    return [
+      { label: 'Looper / Needle Timing', pct: Math.round((looperCount / sumIdentified) * 100), color: 'bg-rose-500', fault: 'Looper' },
+      { label: 'Motor / Electronic Drive', pct: Math.round((motorCount / sumIdentified) * 100), color: 'bg-amber-500', fault: 'Motor' },
+      { label: 'Pneumatic & Air Lines', pct: Math.round((pneumaticCount / sumIdentified) * 100), color: 'bg-blue-500', fault: 'Pneumatic' },
+      { label: 'Operator Error / Jams', pct: Math.round((operatorCount / sumIdentified) * 100), color: 'bg-slate-400', fault: 'Operator' },
+    ];
+  }, [repairs]);
 
   const activePieList = costTab === 'cost' ? liveCategoryData : liveLineData;
   const totalPieCount = activePieList.reduce((sum, item) => sum + item.count, 0);
@@ -832,21 +916,13 @@ export function PlantOperationsDashboard({
               <text x="495" y="26" textAnchor="end" fontSize="8" fill="#059669" fontWeight="600">95% Target SLA</text>
 
               {/* Bar background: Days of week */}
-              {[
-                { day: 'Mon', total: 14, fixed: 13, x: 35 },
-                { day: 'Tue', total: 18, fixed: 17, x: 105 },
-                { day: 'Wed', total: 22, fixed: 20, x: 175 },
-                { day: 'Thu', total: 16, fixed: 16, x: 245 },
-                { day: 'Fri', total: 25, fixed: 23, x: 315 },
-                { day: 'Sat', total: 19, fixed: 18, x: 385 },
-                { day: 'Sun', total: 8, fixed: 8, x: 455 },
-              ].map((bar) => {
-                const totalH = Math.min(80, bar.total * 3);
-                const fixedH = Math.min(80, bar.fixed * 3);
+              {weeklySlaData.map((bar) => {
+                const totalH = Math.min(80, bar.total * 6);
+                const fixedH = Math.min(80, bar.fixed * 6);
                 return (
                   <g key={bar.day}>
-                    <rect x={bar.x - 12} y={100 - totalH} width="24" height={totalH} rx="3" fill="#e2e8f0" />
-                    <rect x={bar.x - 12} y={100 - fixedH} width="24" height={fixedH} rx="3" fill="#6366f1" opacity="0.85" />
+                    <rect x={bar.x - 12} y={100 - (totalH > 0 ? totalH : 2)} width="24" height={totalH > 0 ? totalH : 2} rx="3" fill="#e2e8f0" />
+                    <rect x={bar.x - 12} y={100 - (fixedH > 0 ? fixedH : 2)} width="24" height={fixedH > 0 ? fixedH : 2} rx="3" fill="#6366f1" opacity="0.85" />
                     <text x={bar.x} y="114" textAnchor="middle" fontSize="9" fill="#64748b" fontWeight="500">{bar.day}</text>
                     <text x={bar.x} y={96 - totalH} textAnchor="middle" fontSize="8" fill="#1e293b" fontWeight="600">{bar.fixed}/{bar.total}</text>
                   </g>
@@ -858,7 +934,7 @@ export function PlantOperationsDashboard({
           <div className="shrink-0 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded bg-indigo-500" />
-              <span>Resolved on SLA: <strong>94.2%</strong></span>
+              <span>Resolved on SLA: <strong>{resolvedSlaPct}%</strong></span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded bg-slate-300" />
@@ -880,61 +956,22 @@ export function PlantOperationsDashboard({
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1 py-1">
-            <div
-              onClick={() => openDrillDown('fault_category', 'Looper & Needle Timing Breakdown', { fault: 'Looper' })}
-              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-              title="Click to view Looper & Needle Breakdown drill-down"
-            >
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-slate-600 group-hover:text-indigo-600 transition">Looper / Needle Timing</span>
-                <span className="font-bold text-slate-900 font-mono">42%</span>
+            {downtimeCauses.map((cause) => (
+              <div
+                key={cause.label}
+                onClick={() => openDrillDown('fault_category', `${cause.label} Breakdown`, { fault: cause.fault })}
+                className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
+                title={`Click to view ${cause.label} drill-down`}
+              >
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="text-slate-600 group-hover:text-indigo-600 transition">{cause.label}</span>
+                  <span className="font-bold text-slate-900 font-mono">{cause.pct}%</span>
+                </div>
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div className={`h-full ${cause.color} rounded-full transition-all duration-500`} style={{ width: `${cause.pct}%` }} />
+                </div>
               </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-rose-500 rounded-full" style={{ width: '42%' }} />
-              </div>
-            </div>
-
-            <div
-              onClick={() => openDrillDown('fault_category', 'Motor & Drive Electronics Breakdown', { fault: 'Motor' })}
-              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-              title="Click to view Motor & Drive Breakdown drill-down"
-            >
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-slate-600 group-hover:text-indigo-600 transition">Motor / Electronic Drive</span>
-                <span className="font-bold text-slate-900 font-mono">28%</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-500 rounded-full" style={{ width: '28%' }} />
-              </div>
-            </div>
-
-            <div
-              onClick={() => openDrillDown('fault_category', 'Pneumatic & Air Line Breakdown', { fault: 'Pneumatic' })}
-              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-              title="Click to view Pneumatic Breakdown drill-down"
-            >
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-slate-600 group-hover:text-indigo-600 transition">Pneumatic & Air Lines</span>
-                <span className="font-bold text-slate-900 font-mono">18%</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full" style={{ width: '18%' }} />
-              </div>
-            </div>
-
-            <div
-              onClick={() => openDrillDown('fault_category', 'Operator Error & Fabric Jam Breakdown', { fault: 'Operator' })}
-              className="p-1 -mx-1 rounded-lg hover:bg-slate-50 cursor-pointer transition group"
-              title="Click to view Operator Jam drill-down"
-            >
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-slate-600 group-hover:text-indigo-600 transition">Operator Error / Jams</span>
-                <span className="font-bold text-slate-900 font-mono">12%</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-slate-400 rounded-full" style={{ width: '12%' }} />
-              </div>
-            </div>
+            ))}
           </div>
 
           <div className="shrink-0 pt-3 mt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
@@ -1055,6 +1092,13 @@ export function PlantOperationsDashboard({
                     </td>
                   </tr>
                 ))}
+                {machines.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400 text-xs font-medium">
+                      No machinery registered yet. Click &apos;View All Assets&apos; or register new machines.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

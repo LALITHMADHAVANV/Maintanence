@@ -5,8 +5,8 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
 import { QRCodeSVG } from 'qrcode.react';
-import { subscribeMachines } from '@/lib/services/cmmsService';
-import type { Machine } from '@/types/cmms';
+import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
+import type { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
 import {
   Search,
   Columns,
@@ -119,7 +119,7 @@ export const getAssetPpmCost = (asset: AssetHistoryRecord): number => {
   const fromLogs = asset.serviceLogs
     .filter((l) => l.faultCategory.toLowerCase().includes('ppm') || l.faultCategory.toLowerCase().includes('lubrication') || l.faultCategory.toLowerCase().includes('routine'))
     .reduce((sum, l) => sum + (l.costIncurred || 0), 0);
-  return fromLogs > 0 ? fromLogs : Math.round(asset.totalMaintenanceCost * 0.35);
+  return fromLogs > 0 ? fromLogs : 0;
 };
 
 export const getAssetRepairCost = (asset: AssetHistoryRecord): number => {
@@ -128,8 +128,7 @@ export const getAssetRepairCost = (asset: AssetHistoryRecord): number => {
     .filter((l) => !l.faultCategory.toLowerCase().includes('ppm') && !l.faultCategory.toLowerCase().includes('routine'))
     .reduce((sum, l) => sum + (l.costIncurred || 0), 0);
   if (fromLogs > 0) return fromLogs;
-  const ppm = getAssetPpmCost(asset);
-  return Math.max(0, asset.totalMaintenanceCost - ppm);
+  return asset.totalRepairCost || 0;
 };
 
 export const getAssetLocationHistory = (asset: AssetHistoryRecord): LocationHistoryEntry[] => {
@@ -137,113 +136,16 @@ export const getAssetLocationHistory = (asset: AssetHistoryRecord): LocationHist
     return asset.locationHistory;
   }
 
-  // Realistic historical movement ledger tailored to category and plant operations
-  if (asset.category === 'MACHINE') {
-    return [
-      {
-        transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-03`,
-        date: '2026-08-18',
-        fromLocation: asset.unit.includes('Line 01') ? 'Unit 1 • Line 03 (Stn 06)' : 'Unit 1 • Line 01 (Stn 02)',
-        toLocation: asset.unit,
-        reason: 'Line balancing & production schedule change for style run',
-        movedBy: 'Murugan K. (Line Supervisor)',
-        status: 'CURRENT',
-        notes: 'Pneumatics, needle illumination & motor torque verified after line relocation',
-      },
-      {
-        transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-02`,
-        date: '2025-06-12',
-        fromLocation: 'Maintenance Overhaul Workshop',
-        toLocation: asset.unit.includes('Line 01') ? 'Unit 1 • Line 03 (Stn 06)' : 'Unit 1 • Line 01 (Stn 02)',
-        reason: 'Redeployment to sewing floor following major servicing',
-        movedBy: 'Ramesh P. (Senior Mechanic)',
-        status: 'TRANSFERRED',
-        notes: 'Passed 24-hr high-speed test run with zero vibrations',
-      },
-      {
-        transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-01`,
-        date: asset.purchaseDate,
-        fromLocation: 'Central Receiving Dock / Inward Store',
-        toLocation: 'Maintenance Overhaul Workshop',
-        reason: 'Initial commissioning, QR tagging, and factory QA sign-off',
-        movedBy: 'Store In-charge & IE Team',
-        status: 'TRANSFERRED',
-        notes: 'Commissioning inspection certificate filed and barcode assigned',
-      },
-    ];
-  }
-
-  if (asset.category === 'FURNITURE') {
-    return [
-      {
-        transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-02`,
-        date: '2026-04-10',
-        fromLocation: 'Storage Bay / Mezzanine Floor',
-        toLocation: asset.unit,
-        reason: 'Floor expansion & ergonomic layout redesign',
-        movedBy: 'Factory Admin Team',
-        status: 'CURRENT',
-        notes: 'Floor leveling and anchor brackets locked into place',
-      },
-      {
-        transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-01`,
-        date: asset.purchaseDate,
-        fromLocation: 'Vendor Inward Gate',
-        toLocation: 'Storage Bay / Mezzanine Floor',
-        reason: 'Procurement delivery and asset barcode registry',
-        movedBy: 'Procurement Dept',
-        status: 'TRANSFERRED',
-        notes: 'Delivered in good condition and quality verified',
-      },
-    ];
-  }
-
-  if (asset.category === 'VEHICLE') {
-    return [
-      {
-        transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-02`,
-        date: '2026-07-02',
-        fromLocation: 'Old Fleet Parking / Gate 1',
-        toLocation: asset.unit,
-        reason: 'Internal logistics depot reorganization and EV charging bay proximity',
-        movedBy: 'Logistics Supervisor',
-        status: 'CURRENT',
-        notes: 'Designated parking bay and battery charging harness allocated',
-      },
-      {
-        transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-01`,
-        date: asset.purchaseDate,
-        fromLocation: 'Dealership / RTO Registration',
-        toLocation: 'Old Fleet Parking / Gate 1',
-        reason: 'Factory delivery and plant operation authorization',
-        movedBy: 'Fleet Transport Lead',
-        status: 'TRANSFERRED',
-        notes: 'Fitness test and insurance documentation verified',
-      },
-    ];
-  }
-
-  // UTILITY and others
   return [
     {
-      transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-02`,
-      date: '2025-09-14',
-      fromLocation: 'Substation Yard / Bay A',
-      toLocation: asset.unit,
-      reason: 'Load redistribution and ventilation duct proximity',
-      movedBy: 'Chief Electrical Engineer',
-      status: 'CURRENT',
-      notes: 'Busbar connection and earthing tested (< 1.5 ohm)',
-    },
-    {
       transferId: `TRF-${asset.assetId.replace(/[^a-zA-Z0-9]/g, '')}-01`,
-      date: asset.purchaseDate,
-      fromLocation: 'OEM Dispatch / Receiving Yard',
-      toLocation: 'Substation Yard / Bay A',
-      reason: 'Foundation mounting and plant integration',
-      movedBy: 'Plant Engineering Team',
-      status: 'TRANSFERRED',
-      notes: 'Vibration dampening pads installed and certified',
+      date: asset.purchaseDate || new Date().toISOString().slice(0, 10),
+      fromLocation: 'Receiving Inward Store',
+      toLocation: asset.unit || 'Maintenance Workshop',
+      reason: 'Initial commissioning and station placement',
+      movedBy: 'Store / Maintenance Lead',
+      status: 'CURRENT',
+      notes: 'Initial inspection completed upon arrival',
     },
   ];
 };
@@ -256,981 +158,7 @@ const ALL_STAGES = [
   'Safety & QA Sign-off',
 ];
 
-const INITIAL_ASSETS: AssetHistoryRecord[] = [
-  // ==========================================
-  // 1. MACHINES (Industrial Sewing & Cutters)
-  // ==========================================
-  {
-    _id: 'ast-mc-101',
-    assetId: 'MC-OVK-101',
-    serialNo: 'SN-YM-98211',
-    name: '4-Thread High Speed Overlock',
-    model: 'AZ-8000G',
-    brand: 'Yamato',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    unit: 'Line 01 • Stn 04',
-    riskLevel: 'LOW',
-    status: 'active',
-    purchaseDate: '2022-03-15',
-    purchasePrice: 85000,
-    totalMaintenanceCost: 14200,
-    age: '4.1 yrs',
-    downtimeMins: 45,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-28',
-        actualDate: '2026-09-28',
-        assignee: 'Anand K.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-10-02',
-        actualDate: '2026-10-02',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-06',
-        actualDate: '2026-10-07',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-        lateDays: 1,
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-10',
-        assignee: 'Ramesh P.',
-        status: 'IN_PROGRESS',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-14',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1002',
-        date: '2026-10-02',
-        faultCategory: 'Lubrication',
-        faultDetails: 'Oil reservoir filter clogged causing oil flow restriction to upper needle bearings.',
-        actionTaken: 'Flushed sump with factory ISO VG 10 oil; replaced felt oil filter and cleaned return wick.',
-        technician: 'Rajesh M.',
-        downtimeMinutes: 30,
-        partsReplaced: 'Looper Felt Gasket & Filter Set',
-        costIncurred: 1850,
-        status: 'RESOLVED',
-      },
-      {
-        ticketId: 'TCK-2026-0814',
-        date: '2026-08-14',
-        faultCategory: 'Mechanical',
-        faultDetails: 'Thread tension irregularity and occasional needle breakage on thick fabric seam.',
-        actionTaken: 'Re-timed lower looper clearance to 0.05mm; replaced stripped needle clamp screw.',
-        technician: 'Anand K.',
-        downtimeMinutes: 15,
-        partsReplaced: 'Needle Clamp #14 & Screws',
-        costIncurred: 950,
-        status: 'RESOLVED',
-      },
-      {
-        ticketId: 'TCK-2026-0520',
-        date: '2026-05-20',
-        faultCategory: 'PPM Overhaul',
-        faultDetails: 'Routine quarterly preventive servicing and knife blade sharpness check.',
-        actionTaken: 'Dismantled trimming blade assembly; re-sharpened carbide knife; greased differential feed.',
-        technician: 'Ramesh P.',
-        downtimeMinutes: 0,
-        partsReplaced: 'Upper Carbide Knife',
-        costIncurred: 2400,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Oil reservoir level and clarity check', frequency: 'Daily', lastChecked: '2026-10-08', status: 'PASSED', notes: 'Oil clean, transparent golden' },
-      { checkpoint: 'Looper timing & needle clearance (0.05mm)', frequency: 'Bi-Weekly', lastChecked: '2026-10-02', status: 'PASSED', notes: 'Synchronized on gauge' },
-      { checkpoint: 'Thread trimmer & suction tube vacuum', frequency: 'Weekly', lastChecked: '2026-10-04', status: 'PASSED', notes: 'Clear of fabric fluff' },
-      { checkpoint: 'Direct-drive servo motor belt tension & earth wire', frequency: 'Monthly', lastChecked: '2026-09-28', status: 'PASSED', notes: 'Ground resistance < 2 ohms' },
-      { checkpoint: 'Safety finger guard & eye shield alignment', frequency: 'Daily', lastChecked: '2026-10-09', status: 'PASSED', notes: 'Securely mounted' },
-    ],
-  },
-  {
-    _id: 'ast-mc-102',
-    assetId: 'MC-SNLS-102',
-    serialNo: 'SN-JK-77401',
-    name: 'Direct-Drive Single Needle Lockstitch',
-    model: 'DDL-8700',
-    brand: 'Juki',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    unit: 'Line 02 • Stn 01',
-    riskLevel: 'HIGH',
-    status: 'active',
-    purchaseDate: '2021-08-15',
-    purchasePrice: 68000,
-    totalMaintenanceCost: 22600,
-    age: '4.7 yrs',
-    downtimeMins: 110,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-25',
-        actualDate: '2026-09-25',
-        assignee: 'Anand K.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-30',
-        actualDate: '2026-10-03',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-        lateDays: 3,
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-05',
-        assignee: 'Karthik E.',
-        status: 'DELAYED',
-        lateDays: 4,
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-11',
-        assignee: 'Ramesh P.',
-        status: 'PARTIAL',
-        partialQty: 'Bobbin hook arrived',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-16',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1003',
-        date: '2026-10-03',
-        faultCategory: 'Electrical',
-        faultDetails: 'Error code E-07 on operation panel; servo motor stopping intermittently.',
-        actionTaken: 'Inspected optical rotary encoder; cleaned sensor glass disc; recalibrated motor needle stop position.',
-        technician: 'Karthik E.',
-        downtimeMinutes: 50,
-        partsReplaced: 'Optical Rotary Encoder',
-        costIncurred: 4500,
-        status: 'RESOLVED',
-      },
-      {
-        ticketId: 'TCK-2026-0722',
-        date: '2026-07-22',
-        faultCategory: 'Mechanical',
-        faultDetails: 'Severe thread bird-nesting on underside of fabric during backtacking.',
-        actionTaken: 'Removed worn rotary hook; installed genuine Juki hook assembly; adjusted hook-to-needle distance to 0.04mm.',
-        technician: 'Rajesh M.',
-        downtimeMinutes: 40,
-        partsReplaced: 'Rotary Hook Assembly & Bobbin Case',
-        costIncurred: 3800,
-        status: 'RESOLVED',
-      },
-      {
-        ticketId: 'TCK-2026-0310',
-        date: '2026-03-10',
-        faultCategory: 'Pneumatics',
-        faultDetails: 'Auto thread trimmer foot lifter pneumatic solenoid valve leaking air.',
-        actionTaken: 'Replaced pneumatic solenoid valve o-ring seals and regulated air line pressure to 0.5 MPa.',
-        technician: 'Anand K.',
-        downtimeMinutes: 20,
-        partsReplaced: 'Solenoid Valve O-Rings',
-        costIncurred: 650,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Rotary hook lubrication pump & oil wick', frequency: 'Daily', lastChecked: '2026-10-03', status: 'NEEDS_ATTENTION', notes: 'Oil delivery low, check flow screw' },
-      { checkpoint: 'Needle bar height & stroke gauge', frequency: 'Monthly', lastChecked: '2026-09-25', status: 'PASSED', notes: 'Set for DBx1 #11-14' },
-      { checkpoint: 'Feed dog pitch & tooth sharpness', frequency: 'Monthly', lastChecked: '2026-09-25', status: 'PASSED', notes: 'Teeth sharp, no burrs' },
-      { checkpoint: 'Auto thread trimmer blade tension', frequency: 'Bi-Weekly', lastChecked: '2026-10-01', status: 'NEEDS_ATTENTION', notes: 'Blade wear detected' },
-      { checkpoint: 'Motor controller PCB cooling fan', frequency: 'Quarterly', lastChecked: '2026-08-15', status: 'PASSED', notes: 'Cleaned dust filters' },
-    ],
-  },
-  {
-    _id: 'ast-mc-103',
-    assetId: 'MC-BTN-103',
-    serialNo: 'SN-BR-55320',
-    name: 'Electronic Buttonhole Indexer',
-    model: 'HE-800B',
-    brand: 'Brother',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    unit: 'Line 01 • Stn 09',
-    riskLevel: 'LOW',
-    status: 'completed',
-    purchaseDate: '2020-11-20',
-    purchasePrice: 165000,
-    totalMaintenanceCost: 18900,
-    age: '5.4 yrs',
-    downtimeMins: 20,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-20',
-        actualDate: '2026-09-20',
-        assignee: 'Anand K.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-24',
-        actualDate: '2026-09-24',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-09-28',
-        actualDate: '2026-09-28',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-02',
-        actualDate: '2026-10-02',
-        assignee: 'Ramesh P.',
-        status: 'COMPLETED',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-06',
-        actualDate: '2026-10-06',
-        assignee: 'Suresh S.',
-        status: 'COMPLETED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1002',
-        date: '2026-10-02',
-        faultCategory: 'Mechanical',
-        faultDetails: 'Buttonhole cutter knife blade dull, fraying woven shirt plackets.',
-        actionTaken: 'Replaced upper cloth knife; calibrated knife drop depth sensor; tested 20 sample cuts.',
-        technician: 'Ramesh P.',
-        downtimeMinutes: 20,
-        partsReplaced: 'Upper Cloth Knife & Anvil',
-        costIncurred: 3200,
-        status: 'RESOLVED',
-      },
-      {
-        ticketId: 'TCK-2026-0615',
-        date: '2026-06-15',
-        faultCategory: 'Calibration',
-        faultDetails: 'Indexing sensor pulse drifting by 2mm over consecutive 5 buttonholes.',
-        actionTaken: 'Recalibrated index stepper motor step count in technician service menu; greased lead screw.',
-        technician: 'Karthik E.',
-        downtimeMinutes: 0,
-        costIncurred: 0,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Buttonhole length pulse encoder calibration', frequency: 'Monthly', lastChecked: '2026-09-28', status: 'PASSED', notes: 'Accuracy within ±0.2mm' },
-      { checkpoint: 'Knife impact anvil condition', frequency: 'Weekly', lastChecked: '2026-10-02', status: 'PASSED', notes: 'New anvil installed' },
-      { checkpoint: 'Upper thread wiper solenoid movement', frequency: 'Monthly', lastChecked: '2026-09-28', status: 'PASSED', notes: 'Smooth snap-back' },
-    ],
-  },
-  {
-    _id: 'ast-mc-104',
-    assetId: 'MC-FLK-104',
-    serialNo: 'SN-PG-88219',
-    name: 'Cylinder Bed Interlock Flatlock',
-    model: 'W500PV',
-    brand: 'Pegasus',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    unit: 'Line 03 • Stn 03',
-    riskLevel: 'MEDIUM',
-    status: 'active',
-    purchaseDate: '2023-01-10',
-    purchasePrice: 115000,
-    totalMaintenanceCost: 11400,
-    age: '3.3 yrs',
-    downtimeMins: 60,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-29',
-        actualDate: '2026-09-29',
-        assignee: 'Anand K.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-10-04',
-        actualDate: '2026-10-04',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-08',
-        assignee: 'Karthik E.',
-        status: 'IN_PROGRESS',
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-12',
-        assignee: 'Ramesh P.',
-        status: 'NOT_ASSIGNED',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-17',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1004',
-        date: '2026-10-04',
-        faultCategory: 'Mechanical',
-        faultDetails: 'Thread take-up lever cam timed slightly off, causing skipped stitches on elastic hems.',
-        actionTaken: 'Synchronized cylinder bed take-up cam to 1.8mm rise; verified looper thread clearance.',
-        technician: 'Rajesh M.',
-        downtimeMinutes: 45,
-        costIncurred: 500,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Needle guard front & rear timing', frequency: 'Bi-Weekly', lastChecked: '2026-10-04', status: 'PASSED', notes: 'No needle deflection' },
-      { checkpoint: 'Oil circulating glass indicator', frequency: 'Daily', lastChecked: '2026-10-08', status: 'PASSED', notes: 'Oil pulsing normally' },
-    ],
-  },
-  {
-    _id: 'ast-mc-105',
-    assetId: 'MC-CUT-105',
-    serialNo: 'SN-EM-33100',
-    name: 'Straight Knife 8-Inch Cutter',
-    model: 'Blue Streak II',
-    brand: 'Eastman',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    unit: 'Cutting Bay 01',
-    riskLevel: 'CRITICAL',
-    status: 'active',
-    purchaseDate: '2021-05-18',
-    purchasePrice: 92000,
-    totalMaintenanceCost: 28400,
-    age: '4.9 yrs',
-    downtimeMins: 140,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-24',
-        actualDate: '2026-09-27',
-        assignee: 'Anand K.',
-        status: 'COMPLETED',
-        lateDays: 3,
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-30',
-        actualDate: '2026-10-05',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-        lateDays: 5,
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-06',
-        assignee: 'Karthik E.',
-        status: 'DELAYED',
-        lateDays: 3,
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-11',
-        assignee: 'Ramesh P.',
-        status: 'NOT_ASSIGNED',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-15',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1005',
-        date: '2026-10-05',
-        faultCategory: 'Abrasive Wear',
-        faultDetails: 'Knife sharpener automatic belt slipping; blade edge rough causing fabric snagging.',
-        actionTaken: 'Overhauled sharpener assembly; replaced twin abrasive belts and guide roller gears.',
-        technician: 'Anand K.',
-        downtimeMinutes: 80,
-        partsReplaced: 'Abrasive Belts (Medium Grit) & Gears',
-        costIncurred: 4800,
-        status: 'RESOLVED',
-      },
-      {
-        ticketId: 'TCK-2026-0710',
-        date: '2026-07-10',
-        faultCategory: 'Motor Overheat',
-        faultDetails: 'Thermal overload cut-off tripping during dense 40-ply denim fabric cutting.',
-        actionTaken: 'Cleaned motor ventilation duct; replaced carbon brushes; verified armature resistance.',
-        technician: 'Karthik E.',
-        downtimeMinutes: 60,
-        partsReplaced: 'Motor Carbon Brushes Pair',
-        costIncurred: 1600,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Knife blade slide & cross-head greasing', frequency: 'Daily', lastChecked: '2026-10-05', status: 'NEEDS_ATTENTION', notes: 'Greased with high-viscosity oil' },
-      { checkpoint: 'Adjustable pressure foot lock & finger guard', frequency: 'Daily', lastChecked: '2026-10-09', status: 'PASSED', notes: 'Firm locking mechanism' },
-      { checkpoint: 'Base rollers & rubber shoe condition', frequency: 'Monthly', lastChecked: '2026-09-27', status: 'PASSED', notes: 'Glides smoothly on table' },
-    ],
-  },
-
-  // ==========================================
-  // 2. FURNITURE (Tables, Chairs, Sofas, Doors)
-  // ==========================================
-  {
-    _id: 'ast-fur-201',
-    assetId: 'FUR-TBL-201',
-    serialNo: 'FN-GD-11029',
-    name: 'Fabric Spreading & Cutting Master Table',
-    model: 'Master Spreader 12ft x 6ft',
-    brand: 'Godrej Interio',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    unit: 'Cutting Department',
-    riskLevel: 'LOW',
-    status: 'active',
-    purchaseDate: '2022-04-10',
-    purchasePrice: 42000,
-    totalMaintenanceCost: 3800,
-    age: '4.0 yrs',
-    downtimeMins: 0,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-20',
-        actualDate: '2026-09-20',
-        assignee: 'Suresh S.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-26',
-        actualDate: '2026-09-26',
-        assignee: 'Ramesh P.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-01',
-        status: 'NA',
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-07',
-        actualDate: '2026-10-08',
-        assignee: 'Suresh S.',
-        status: 'COMPLETED',
-        lateDays: 1,
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-12',
-        assignee: 'Anand K.',
-        status: 'IN_PROGRESS',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1008',
-        date: '2026-10-08',
-        faultCategory: 'Surface Defect',
-        faultDetails: 'Slight gap between laminated table panels causing cutting knife snag.',
-        actionTaken: 'Buffed panel seam joint with industrial resin; leveled steel leveling jack bolts.',
-        technician: 'Suresh S.',
-        downtimeMinutes: 0,
-        costIncurred: 1200,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Tabletop laminate flatness & edge trim', frequency: 'Monthly', lastChecked: '2026-10-08', status: 'PASSED', notes: 'Zero burrs, smooth glide' },
-      { checkpoint: 'Steel frame under-truss bolts torque', frequency: 'Quarterly', lastChecked: '2026-09-20', status: 'PASSED', notes: 'All 24 bolts tightened' },
-    ],
-  },
-  {
-    _id: 'ast-fur-202',
-    assetId: 'FUR-CHR-202',
-    serialNo: 'FN-FT-44910',
-    name: 'Ergonomic Operator Swivel Chair',
-    model: 'Optima Mesh Pro',
-    brand: 'Featherlite',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    unit: 'Line 01 • Stn 02',
-    riskLevel: 'LOW',
-    status: 'completed',
-    purchaseDate: '2023-08-11',
-    purchasePrice: 6500,
-    totalMaintenanceCost: 1400,
-    age: '2.7 yrs',
-    downtimeMins: 0,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-18',
-        actualDate: '2026-09-18',
-        assignee: 'Suresh S.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-22',
-        actualDate: '2026-09-22',
-        assignee: 'Ramesh P.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-09-27',
-        status: 'NA',
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-01',
-        actualDate: '2026-10-01',
-        assignee: 'Suresh S.',
-        status: 'COMPLETED',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-05',
-        actualDate: '2026-10-05',
-        assignee: 'Anand K.',
-        status: 'COMPLETED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1001',
-        date: '2026-10-01',
-        faultCategory: 'Hydraulic/Gas Lift',
-        faultDetails: 'Gas lift cylinder sinking when operator sits; loss of pressure.',
-        actionTaken: 'Replaced pneumatic class-4 gas lift column; lubricated swivel casters.',
-        technician: 'Suresh S.',
-        downtimeMinutes: 0,
-        partsReplaced: 'Class-4 Hydraulic Gas Lift Column',
-        costIncurred: 1400,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Hydraulic height lever & lock', frequency: 'Monthly', lastChecked: '2026-10-01', status: 'PASSED', notes: 'Firm holding under load' },
-      { checkpoint: '5-star nylon base & swivel casters', frequency: 'Monthly', lastChecked: '2026-10-01', status: 'PASSED', notes: 'No thread entanglements' },
-    ],
-  },
-  {
-    _id: 'ast-fur-204',
-    assetId: 'FUR-DOR-204',
-    serialNo: 'FN-SC-99014',
-    name: 'Fire Exit Double Door Unit',
-    model: 'FireShield 120min',
-    brand: 'Steelcraft',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    unit: 'East Stairwell Bay',
-    riskLevel: 'HIGH',
-    status: 'active',
-    purchaseDate: '2020-09-10',
-    purchasePrice: 38000,
-    totalMaintenanceCost: 8200,
-    age: '5.6 yrs',
-    downtimeMins: 15,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-22',
-        actualDate: '2026-09-22',
-        assignee: 'Suresh S.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-28',
-        actualDate: '2026-10-01',
-        assignee: 'Ramesh P.',
-        status: 'COMPLETED',
-        lateDays: 3,
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-04',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-        actualDate: '2026-10-04',
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-08',
-        assignee: 'Suresh S.',
-        status: 'DELAYED',
-        lateDays: 2,
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-14',
-        assignee: 'Anand K.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1001',
-        date: '2026-10-01',
-        faultCategory: 'Emergency Hardware',
-        faultDetails: 'Panic push-bar latch failing to re-engage smoothly; hydraulic closer leaking fluid.',
-        actionTaken: 'Replaced hydraulic door closer unit; lubricated stainless steel ball-bearing hinges.',
-        technician: 'Ramesh P.',
-        downtimeMinutes: 15,
-        partsReplaced: 'Grade-1 Hydraulic Overhead Door Closer',
-        costIncurred: 4500,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Automatic door closure & latch engagement speed', frequency: 'Monthly', lastChecked: '2026-10-01', status: 'NEEDS_ATTENTION', notes: 'Closing speed adjusting valve tuned' },
-      { checkpoint: 'Panic exit crash bar clearance', frequency: 'Weekly', lastChecked: '2026-10-04', status: 'PASSED', notes: 'Zero resistance on push' },
-    ],
-  },
-
-  // ==========================================
-  // 3. ELECTRICAL UTILITIES / ELECTRONICS
-  // ==========================================
-  {
-    _id: 'ast-utl-301',
-    assetId: 'UTL-AC-301',
-    serialNo: 'EL-DK-22108',
-    name: '2.0 Ton Inverter Cassette AC',
-    model: 'SkyAir FCF71C',
-    brand: 'Daikin',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    unit: 'Finishing Section Bay',
-    riskLevel: 'MEDIUM',
-    status: 'active',
-    purchaseDate: '2022-06-20',
-    purchasePrice: 72000,
-    totalMaintenanceCost: 15600,
-    age: '3.8 yrs',
-    downtimeMins: 35,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-24',
-        actualDate: '2026-09-24',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-29',
-        actualDate: '2026-09-29',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-03',
-        actualDate: '2026-10-03',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-09',
-        assignee: 'Ramesh P.',
-        status: 'IN_PROGRESS',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-15',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-0929',
-        date: '2026-09-29',
-        faultCategory: 'Cooling Performance',
-        faultDetails: 'Cooling efficiency dropped; indoor blower air discharge temperature high (22°C).',
-        actionTaken: 'High-pressure chemical wash of condenser and cooling coil; leak tested flare joints; topped up R32 refrigerant.',
-        technician: 'Karthik E.',
-        downtimeMinutes: 35,
-        partsReplaced: 'R32 Refrigerant Gas (1.2 kg)',
-        costIncurred: 3200,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Indoor air filter dust extraction', frequency: 'Bi-Weekly', lastChecked: '2026-09-29', status: 'PASSED', notes: 'Washable filter cleaned' },
-      { checkpoint: 'Condensate drain tray pump clearance', frequency: 'Monthly', lastChecked: '2026-09-29', status: 'PASSED', notes: 'No algae or stagnation' },
-      { checkpoint: 'Inverter PCB voltage & current draw (11A)', frequency: 'Quarterly', lastChecked: '2026-10-03', status: 'PASSED', notes: 'Running within nominal limit' },
-    ],
-  },
-  {
-    _id: 'ast-utl-303',
-    assetId: 'UTL-CAM-304',
-    serialNo: 'EL-HK-99418',
-    name: '4K IP Night-Vision CCTV Camera',
-    model: 'ColorVu Pro 8MP',
-    brand: 'Hikvision',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    unit: 'Packing & Shipping Gate',
-    riskLevel: 'HIGH',
-    status: 'active',
-    purchaseDate: '2023-04-12',
-    purchasePrice: 18500,
-    totalMaintenanceCost: 4900,
-    age: '3.0 yrs',
-    downtimeMins: 85,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-27',
-        actualDate: '2026-09-27',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-10-01',
-        status: 'NA',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-04',
-        assignee: 'Karthik E.',
-        status: 'DELAYED',
-        lateDays: 5,
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-10',
-        assignee: 'Ramesh P.',
-        status: 'NOT_ASSIGNED',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-16',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-0927',
-        date: '2026-09-27',
-        faultCategory: 'Network/Power',
-        faultDetails: 'Night-vision video feed dropping every few minutes; PoE injector overheated.',
-        actionTaken: 'Replaced faulty 48V PoE gigabit injector; re-crimped RJ45 CAT6 connector; focused motorized varifocal lens.',
-        technician: 'Karthik E.',
-        downtimeMinutes: 85,
-        partsReplaced: '48V Gigabit PoE Injector Module',
-        costIncurred: 2400,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Optical lens clarity & weather hood seal', frequency: 'Monthly', lastChecked: '2026-09-27', status: 'PASSED', notes: 'IP67 seal intact' },
-      { checkpoint: 'IR illuminator & night-vision lux switch', frequency: 'Monthly', lastChecked: '2026-09-27', status: 'NEEDS_ATTENTION', notes: 'LED ring tested' },
-    ],
-  },
-
-  // ==========================================
-  // 4. VEHICLES (Transport & Logistics Fleet)
-  // ==========================================
-  {
-    _id: 'ast-veh-401',
-    assetId: 'VEH-CAR-401',
-    serialNo: 'VH-HY-55102',
-    name: 'Executive Staff Sedan',
-    model: 'Verna 1.5 Turbo',
-    brand: 'Hyundai',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    unit: 'Admin Fleet Bay',
-    riskLevel: 'LOW',
-    status: 'active',
-    purchaseDate: '2023-02-18',
-    purchasePrice: 1250000,
-    totalMaintenanceCost: 48000,
-    age: '3.2 yrs',
-    downtimeMins: 30,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-21',
-        actualDate: '2026-09-21',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-26',
-        actualDate: '2026-09-26',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-01',
-        actualDate: '2026-10-02',
-        assignee: 'Karthik E.',
-        status: 'COMPLETED',
-        lateDays: 1,
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-07',
-        assignee: 'Ramesh P.',
-        status: 'IN_PROGRESS',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-13',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-0926',
-        date: '2026-09-26',
-        faultCategory: 'Scheduled Service',
-        faultDetails: 'Periodic 30,000 km routine preventive service and engine inspection.',
-        actionTaken: 'Drained engine oil; filled 4.0L Shell Helix Ultra 5W-30; replaced OEM oil & cabin air filters; brake caliper service.',
-        technician: 'Rajesh M.',
-        downtimeMinutes: 30,
-        partsReplaced: '5W-30 Synthetic Oil (4L), Oil Filter, Air Filter',
-        costIncurred: 7800,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Brake pads & disc rotor thickness', frequency: 'Monthly', lastChecked: '2026-09-26', status: 'PASSED', notes: 'Pads at 7mm remaining' },
-      { checkpoint: 'Coolant reservoir & transmission fluid', frequency: 'Monthly', lastChecked: '2026-09-26', status: 'PASSED', notes: 'Level optimal' },
-      { checkpoint: 'Battery health & alternator charging (14.2V)', frequency: 'Quarterly', lastChecked: '2026-10-02', status: 'PASSED', notes: 'Battery cold crank good' },
-    ],
-  },
-  {
-    _id: 'ast-veh-402',
-    assetId: 'VEH-TMP-403',
-    serialNo: 'VH-TA-99318',
-    name: 'Inter-Facility Raw Material Tempo',
-    model: 'Ace Gold Diesel',
-    brand: 'Tata',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    unit: 'Warehouse Loading Bay',
-    riskLevel: 'CRITICAL',
-    status: 'active',
-    purchaseDate: '2021-11-04',
-    purchasePrice: 480000,
-    totalMaintenanceCost: 76500,
-    age: '4.5 yrs',
-    downtimeMins: 180,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-23',
-        actualDate: '2026-09-25',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-        lateDays: 2,
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-09-29',
-        actualDate: '2026-10-04',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-        lateDays: 5,
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-05',
-        assignee: 'Karthik E.',
-        status: 'DELAYED',
-        lateDays: 4,
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-10',
-        assignee: 'Ramesh P.',
-        status: 'PARTIAL',
-        partialQty: 'Clutch plate arrived',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-15',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1004',
-        date: '2026-10-04',
-        faultCategory: 'Drivetrain',
-        faultDetails: 'Clutch pedal slipping severely under full 1.2 ton fabric roll cargo load.',
-        actionTaken: 'Removed gearbox; checked pressure plate; new clutch plate requisitioned and partial assembly fitted.',
-        technician: 'Rajesh M.',
-        downtimeMinutes: 120,
-        partsReplaced: 'Clutch Pressure Plate & Release Bearing',
-        costIncurred: 9200,
-        status: 'UNDER_OBSERVATION',
-      },
-      {
-        ticketId: 'TCK-2026-0819',
-        date: '2026-08-19',
-        faultCategory: 'Brakes',
-        faultDetails: 'Left rear brake drum grabbing suddenly during emergency braking.',
-        actionTaken: 'Skimmed brake drum surface; replaced rear brake shoes and bleed hydraulic brake lines.',
-        technician: 'Ramesh P.',
-        downtimeMinutes: 60,
-        partsReplaced: 'Rear Brake Shoe Kit & DOT4 Fluid',
-        costIncurred: 3400,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Leaf spring suspension bushing & U-bolts', frequency: 'Monthly', lastChecked: '2026-09-25', status: 'NEEDS_ATTENTION', notes: 'Rear right leaf bushing worn' },
-      { checkpoint: 'Diesel fuel filter water separator drain', frequency: 'Bi-Weekly', lastChecked: '2026-10-04', status: 'PASSED', notes: 'Drained, clean diesel' },
-    ],
-  },
-  {
-    _id: 'ast-veh-404',
-    assetId: 'VEH-LRY-404',
-    serialNo: 'VH-AL-44018',
-    name: 'Garment Export Container Lorry',
-    model: 'Ecomet 1215 HE (14ft)',
-    brand: 'Ashok Leyland',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    unit: 'Central Dispatch Yard',
-    riskLevel: 'MEDIUM',
-    status: 'active',
-    purchaseDate: '2020-07-22',
-    purchasePrice: 1680000,
-    totalMaintenanceCost: 142000,
-    age: '5.7 yrs',
-    downtimeMins: 60,
-    stages: {
-      'PPM Inspection': {
-        plannedDate: '2026-09-26',
-        actualDate: '2026-09-26',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-      },
-      'Lubrication & Service': {
-        plannedDate: '2026-10-02',
-        actualDate: '2026-10-02',
-        assignee: 'Rajesh M.',
-        status: 'COMPLETED',
-      },
-      'Electrical & Sensors': {
-        plannedDate: '2026-10-07',
-        assignee: 'Karthik E.',
-        status: 'IN_PROGRESS',
-      },
-      'Parts Overhaul': {
-        plannedDate: '2026-10-12',
-        assignee: 'Ramesh P.',
-        status: 'NOT_ASSIGNED',
-      },
-      'Safety & QA Sign-off': {
-        plannedDate: '2026-10-18',
-        assignee: 'Suresh S.',
-        status: 'NOT_ASSIGNED',
-      },
-    },
-    serviceLogs: [
-      {
-        ticketId: 'TCK-2026-1002',
-        date: '2026-10-02',
-        faultCategory: 'Pneumatics/Chassis',
-        faultDetails: 'Dual-line air brake system build-up slow; slight pressure drop on gauge.',
-        actionTaken: 'Tested unloader valve; greased universal joints on propeller shaft; replaced air dryer desiccant cartridge.',
-        technician: 'Rajesh M.',
-        downtimeMinutes: 60,
-        partsReplaced: 'Air Brake System Desiccant Cartridge',
-        costIncurred: 4200,
-        status: 'RESOLVED',
-      },
-    ],
-    ppmChecklist: [
-      { checkpoint: 'Air brake pressure governor cut-in/cut-out (8.5 bar)', frequency: 'Bi-Weekly', lastChecked: '2026-10-02', status: 'PASSED', notes: 'Holds full pressure' },
-      { checkpoint: 'Radial tyre tread depth & PSI (115 PSI)', frequency: 'Weekly', lastChecked: '2026-10-02', status: 'PASSED', notes: 'Tyres healthy, min 6mm tread' },
-    ],
-  },
-];
+const INITIAL_ASSETS: AssetHistoryRecord[] = [];
 
 // Category metadata
 const CATEGORIES_META: {
@@ -1312,6 +240,8 @@ export default function HistoryPage() {
   const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('ASSETS');
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
   const [liveMachines, setLiveMachines] = useState<Machine[]>([]);
+  const [liveRepairs, setLiveRepairs] = useState<RepairTicket[]>([]);
+  const [livePpm, setLivePpm] = useState<PPMSchedule[]>([]);
   const [statusFilter] = useState<'active' | 'completed' | 'all'>('all');
   const [q, setQ] = useState('');
   const [showPoc, setShowPoc] = useState<boolean>(true);
@@ -1320,12 +250,22 @@ export default function HistoryPage() {
   // QR Modal Selection State
   const [selectedQrAsset, setSelectedQrAsset] = useState<AssetHistoryRecord | null>(null);
 
-  // Subscribe to live machines from DB/storage
+  // Subscribe to live machines, repairs, and PPM from DB/storage
   useEffect(() => {
-    const unsub = subscribeMachines((machines) => {
+    const unsubMachines = subscribeMachines((machines) => {
       setLiveMachines(machines);
     });
-    return () => unsub();
+    const unsubRepairs = subscribeRepairs((repairs) => {
+      setLiveRepairs(repairs);
+    });
+    const unsubPpm = subscribePPMSchedules((schedules) => {
+      setLivePpm(schedules);
+    });
+    return () => {
+      unsubMachines();
+      unsubRepairs();
+      unsubPpm();
+    };
   }, []);
 
   // Category & Date Range Filter for Export & Matrix
@@ -1350,51 +290,113 @@ export default function HistoryPage() {
     }
   };
 
-  // Combined items including any newly registered live machines
+  // Combined items populated strictly from live registered machines, repairs, and PPM
   const allItems = useMemo(() => {
     const initialIds = new Set(items.map((i) => i.assetId.toLowerCase()));
     const extraLive: AssetHistoryRecord[] = liveMachines
       .filter((m) => !initialIds.has(m.id.toLowerCase()))
       .map((m) => {
-        const cost = m.cost || 75000;
+        const cost = typeof m.cost === 'number' ? m.cost : 0;
+        const machineRepairs = liveRepairs.filter(
+          (r) => r.machineId?.toLowerCase() === m.id.toLowerCase()
+        );
+        const machinePpm = livePpm.filter(
+          (p) => p.machineId?.toLowerCase() === m.id.toLowerCase()
+        );
+
+        // Derive real service logs from repair tickets
+        const serviceLogs: ServiceLogEntry[] = machineRepairs.map((r) => {
+          const partsCost = r.partsUsed?.reduce((sum, p) => sum + (p.quantity || 1) * 350, 0) || 0;
+          return {
+            ticketId: r.id,
+            date: r.reportedAt ? r.reportedAt.slice(0, 10) : (m.purchaseDate || '2026-10-10'),
+            faultCategory: r.faultCategory || 'Corrective Repair',
+            faultDetails: r.faultDetails || r.actionTaken || 'Maintenance repair logged',
+            actionTaken: r.actionTaken || 'Inspected & repaired',
+            technician: r.attendedBy || 'Assigned Technician',
+            downtimeMinutes: r.downtimeMinutes || 0,
+            partsReplaced: r.partsUsed && r.partsUsed.length > 0 ? r.partsUsed.map((p) => `${p.name} (x${p.quantity})`).join(', ') : 'None',
+            costIncurred: partsCost,
+            status: r.status === 'COMPLETED' ? 'RESOLVED' : 'UNDER_OBSERVATION',
+          };
+        });
+
+        // Derive real PPM checklist from PPM schedules
+        const ppmChecklist: PPMCheckItem[] = machinePpm.map((p) => ({
+          checkpoint: p.task || 'Preventive Maintenance Inspection',
+          frequency: p.frequency || 'Monthly',
+          lastChecked: p.lastServiced || p.nextDue || (m.purchaseDate || '2026-10-10'),
+          status: p.status === 'COMPLETED' ? 'PASSED' : p.status === 'OVERDUE' ? 'NEEDS_ATTENTION' : 'DUE',
+          notes: `Interval: ${p.intervalDays} days • Next Due: ${p.nextDue}`,
+        }));
+
+        // Derive relocation history from machine relocation record or commissioning
+        const locHistory: LocationHistoryEntry[] = (m.relocationHistory && m.relocationHistory.length > 0)
+          ? m.relocationHistory.map((rh, idx) => ({
+              transferId: `TRF-${m.id.replace(/[^a-zA-Z0-9]/g, '')}-${String(m.relocationHistory!.length - idx).padStart(2, '0')}`,
+              date: rh.movedAt ? rh.movedAt.slice(0, 10) : (m.purchaseDate || '2026-10-10'),
+              fromLocation: `${rh.fromLine}${rh.fromStation ? ` • ${rh.fromStation}` : ''}`,
+              toLocation: `${rh.toLine}${rh.toStation ? ` • ${rh.toStation}` : ''}`,
+              reason: rh.reason || 'Relocation & line balancing',
+              movedBy: rh.movedBy || 'Line Supervisor',
+              status: idx === 0 ? 'CURRENT' : 'TRANSFERRED',
+              notes: 'Relocation completed and verified',
+            }))
+          : [
+              {
+                transferId: `TRF-${m.id.replace(/[^a-zA-Z0-9]/g, '')}-01`,
+                date: m.lastMovedAt ? m.lastMovedAt.slice(0, 10) : (m.purchaseDate || new Date().toISOString().slice(0, 10)),
+                fromLocation: m.previousLine ? `${m.previousLine}${m.previousStation ? ` • ${m.previousStation}` : ''}` : 'Receiving Inward Store',
+                toLocation: `${m.currentLine}${m.stationNo ? ` • ${m.stationNo}` : ''}`,
+                reason: m.lastMovedReason || 'Initial installation and commissioning',
+                movedBy: m.lastMovedBy || 'Plant Maintenance Team',
+                status: 'CURRENT',
+                notes: 'Commissioning inspection completed',
+              },
+            ];
+
+        const totalDowntime = machineRepairs.reduce((sum, r) => sum + (r.downtimeMinutes || 0), m.totalDowntimeMinutes || 0);
+        const totalRepairCost = serviceLogs.reduce((sum, l) => sum + (l.costIncurred || 0), 0);
+        const totalPpmCost = machinePpm.filter((p) => p.status === 'COMPLETED').length * 450;
+        const totalMaintenanceCost = totalRepairCost + totalPpmCost;
+
+        const hasCritical = machineRepairs.some((r) => r.urgency === 'CRITICAL' && r.status !== 'COMPLETED');
+        const riskLevel = m.status === 'BREAKDOWN' || hasCritical
+          ? 'CRITICAL'
+          : totalDowntime > 120
+          ? 'HIGH'
+          : totalDowntime > 40
+          ? 'MEDIUM'
+          : 'LOW';
+
         return {
           _id: `live-${m.id}`,
           assetId: m.id,
-          serialNo: `SN-${m.brand ? m.brand.slice(0, 2).toUpperCase() : 'MC'}-${m.id.replace(/[^0-9]/g, '') || '88102'}`,
+          serialNo: `SN-${m.brand ? m.brand.slice(0, 2).toUpperCase() : 'MC'}-${m.id.replace(/[^0-9]/g, '') || '001'}`,
           name: m.name || `${m.brand || ''} ${m.typeName || m.type || 'Machine'}`.trim(),
           model: m.model || 'Standard',
           brand: m.brand || 'OEM',
           category: (m.category as any) || 'MACHINE',
           categoryLabel: m.category === 'FURNITURE' ? 'Furniture' : m.category === 'UTILITY' ? 'Utility' : m.category === 'VEHICLE' ? 'Vehicle' : 'Machine',
           unit: `${m.currentLine}${m.stationNo ? ` • ${m.stationNo}` : ''}`,
-          riskLevel: (m.status === 'BREAKDOWN' ? 'CRITICAL' : m.totalDowntimeMinutes > 120 ? 'HIGH' : m.totalDowntimeMinutes > 40 ? 'MEDIUM' : 'LOW') as any,
+          riskLevel: riskLevel as any,
           status: m.status === 'BREAKDOWN' ? 'active' : 'completed',
-          purchaseDate: m.purchaseDate || '2024-01-15',
+          purchaseDate: m.purchaseDate || new Date().toISOString().slice(0, 10),
           purchasePrice: cost,
-          totalMaintenanceCost: Math.round(cost * 0.16),
-          totalPpmCost: Math.round(cost * 0.05),
-          totalRepairCost: Math.round(cost * 0.11),
-          age: `${m.ageYears || 2.1} yrs`,
-          downtimeMins: m.totalDowntimeMinutes || 0,
+          totalMaintenanceCost,
+          totalPpmCost,
+          totalRepairCost,
+          age: `${m.ageYears || 1.0} yrs`,
+          downtimeMins: totalDowntime,
           stages: {},
-          serviceLogs: [],
-          ppmChecklist: [],
-          locationHistory: [
-            {
-              transferId: `TRF-${m.id}-01`,
-              date: m.lastMovedAt ? m.lastMovedAt.slice(0, 10) : '2026-08-15',
-              fromLocation: `${m.previousLine || 'Maintenance Workshop'}${m.previousStation ? ` (${m.previousStation})` : ''}`,
-              toLocation: `${m.currentLine}${m.stationNo ? ` (${m.stationNo})` : ''}`,
-              reason: m.lastMovedReason || 'Relocation & line balancing',
-              movedBy: m.lastMovedBy || 'Line Supervisor',
-              status: 'CURRENT',
-            },
-          ],
+          serviceLogs,
+          ppmChecklist,
+          locationHistory: locHistory,
         };
       });
 
     return [...items, ...extraLive];
-  }, [items, liveMachines]);
+  }, [items, liveMachines, liveRepairs, livePpm]);
 
   // Filtered items based on active/completed status, category, and search query
   const filtered = useMemo(() => {
@@ -2437,8 +1439,26 @@ export default function HistoryPage() {
       </div>
 
       {/* 3. Dedicated Scroll Template for Every Category */}
-      <div className="space-y-4">
-        {activeCategoriesMeta.map((cat) => {
+      {allItems.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs flex flex-col items-center justify-center max-w-lg mx-auto my-6">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 mb-4 shadow-2xs">
+            <Wrench className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 mb-1">No Plant Assets Registered</h3>
+          <p className="text-xs text-slate-500 max-w-sm mb-5 leading-relaxed">
+            There are currently no machines or equipment registered in the plant database. Register your machinery, furniture, utilities, or vehicles to start logging service history and tracking relocation movements.
+          </p>
+          <a
+            href="/dashboard/machines"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+          >
+            <Package className="w-4 h-4" />
+            <span>Register New Equipment</span>
+          </a>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {activeCategoriesMeta.map((cat) => {
           const catItems = filtered.filter((i) => i.category === cat.id);
           const Icon = cat.icon;
           const isCollapsed = collapsedCategories.includes(cat.id);
@@ -2937,7 +1957,8 @@ export default function HistoryPage() {
             </section>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {/* 4. MODAL: MACHINE QR ASSET STICKER VIEWER */}
       {selectedQrAsset && (
