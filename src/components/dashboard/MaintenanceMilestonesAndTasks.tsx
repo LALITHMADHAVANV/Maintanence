@@ -23,6 +23,7 @@ interface MaintenanceMilestonesAndTasksProps {
   machines: Machine[];
   userName?: string;
   role?: string;
+  compact?: boolean;
   defaultTab?: 'schedules' | 'month_grid';
   onOpenResolve?: (ticket: RepairTicket) => void;
   onCompletePPM?: (ppmId: string, machineId: string) => void;
@@ -274,6 +275,7 @@ export function MaintenanceMilestonesAndTasks({
   machines = [],
   userName = 'Technician',
   role = 'MECHANIC',
+  compact = false,
   defaultTab,
   onOpenResolve,
   onCompletePPM,
@@ -696,41 +698,41 @@ export function MaintenanceMilestonesAndTasks({
   };
 
   return (
-    <div className={isSenior ? "grid grid-cols-1 lg:grid-cols-3 gap-5 w-full items-stretch" : "grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch"}>
+    <div className={isSenior ? (compact ? "grid grid-cols-1 lg:grid-cols-3 gap-3.5 w-full items-stretch" : "grid grid-cols-1 lg:grid-cols-3 gap-5 w-full items-stretch") : "grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch"}>
       {/* =================================================================== */}
       {/* LEFT CARD: DELIVERY SCHEDULE & MILESTONES (1 COL IF SENIOR, 7 COLS IF JUNIOR) */}
       {/* =================================================================== */}
-      <div className={`${isSenior ? 'lg:col-span-1' : 'lg:col-span-7'} bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between`}>
+      <div className={`${isSenior ? 'lg:col-span-1' : 'lg:col-span-7'} bg-white ${compact ? 'rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs h-[385px] min-h-[375px] max-h-[395px]' : 'rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px]'} flex flex-col justify-between`}>
         {/* Header Strip */}
         <div className="shrink-0">
-          <div className="flex items-start gap-3">
-            <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600 mt-0.5 shrink-0">
-              <CalendarDays className="w-5 h-5 text-indigo-600" />
+          <div className="flex items-start gap-2.5">
+            <span className={`${compact ? 'p-1.5 rounded-lg' : 'p-2 rounded-xl'} bg-indigo-50 text-indigo-600 mt-0.5 shrink-0`}>
+              <CalendarDays className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-indigo-600`} />
             </span>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <h2 className={`${compact ? 'text-sm' : 'text-base sm:text-lg'} font-bold text-slate-900 tracking-tight flex items-center gap-1.5`}>
                 Delivery Schedule &amp; Milestones
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className={`${compact ? 'text-[11px]' : 'text-xs'} text-slate-500 mt-0.5`}>
                 Real production shipment deadlines &amp; active stage progress
               </p>
             </div>
           </div>
 
           {/* Toggle Pills & Full Calendar Link */}
-          <div className="flex items-center justify-between gap-3 mt-4 pb-3 border-b border-slate-100 flex-wrap">
+          <div className={`flex items-center justify-between gap-2.5 ${compact ? 'mt-2.5 pb-2' : 'mt-4 pb-3'} border-b border-slate-100 flex-wrap`}>
             <div className="flex items-center gap-2">
               {/* Tab 1: Maintenance Deliveries */}
               <button
                 type="button"
                 onClick={() => setActiveTab('schedules')}
-                className={`px-3 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 ${
+                className={`${compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'} rounded-full transition cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'schedules'
                     ? 'border border-blue-400/90 bg-blue-50/40 text-blue-700 font-bold shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800 font-semibold'
                 }`}
               >
-                <Truck className="w-3.5 h-3.5 text-blue-600" />
+                <Truck className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-blue-600`} />
                 <span>Deliveries ({isSenior ? 124 : deliveriesList.length})</span>
               </button>
 
@@ -738,13 +740,13 @@ export function MaintenanceMilestonesAndTasks({
               <button
                 type="button"
                 onClick={() => setActiveTab('month_grid')}
-                className={`px-3 py-1.5 rounded-full text-xs transition cursor-pointer flex items-center gap-1.5 ${
+                className={`${compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'} rounded-full transition cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'month_grid'
                     ? 'border border-indigo-400/90 bg-indigo-50/40 text-indigo-700 font-bold shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800 font-semibold'
                 }`}
               >
-                <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
+                <CalendarDays className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-slate-400`} />
                 <span>Month Grid</span>
               </button>
             </div>
@@ -759,7 +761,7 @@ export function MaintenanceMilestonesAndTasks({
                   router.push('/dashboard/calendar');
                 }
               }}
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition flex items-center gap-1 cursor-pointer shrink-0"
+              className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold text-indigo-600 hover:text-indigo-800 transition flex items-center gap-1 cursor-pointer shrink-0`}
             >
               <span>Full calendar →</span>
             </button>
@@ -768,7 +770,7 @@ export function MaintenanceMilestonesAndTasks({
 
         {/* Card Body: Tab 1 (Deliveries Column / Today's Work) */}
         {activeTab === 'schedules' ? (
-          <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 mt-3">
+          <div className={`${compact ? 'space-y-2 max-h-[225px]' : 'space-y-3'} flex-1 min-h-0 overflow-y-auto pr-1 mt-2.5`}>
             {deliveriesList.length === 0 ? (
               <div className="py-12 text-center text-xs text-slate-400 space-y-2">
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
@@ -781,29 +783,29 @@ export function MaintenanceMilestonesAndTasks({
               deliveriesList.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 p-4 space-y-2.5 hover:border-indigo-300 hover:shadow-xs transition"
+                  className={`bg-white ${compact ? 'rounded-xl p-2.5 space-y-1.5' : 'rounded-2xl p-4 space-y-2.5'} border border-slate-200/90 hover:border-indigo-300 hover:shadow-xs transition`}
                 >
                   {/* Top Row: ID, Serial, Purple Badge & Blue Due Badge */}
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-2.5">
                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                      <span className="font-extrabold text-sm text-slate-900 font-mono tracking-tight">
+                      <span className={`font-extrabold ${compact ? 'text-xs' : 'text-sm'} text-slate-900 font-mono tracking-tight`}>
                         {item.machineId}
                       </span>
-                      <span className="text-xs text-slate-400 font-mono truncate">
+                      <span className="text-[11px] text-slate-400 font-mono truncate">
                         · {item.machineName}
                       </span>
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-700 font-mono">
+                      <span className={`px-1.5 py-0.5 rounded ${compact ? 'text-[9px]' : 'text-[10px]'} font-bold bg-indigo-100 text-indigo-700 font-mono`}>
                         {item.stationCode}
                       </span>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border border-blue-200 bg-blue-50/70 text-blue-700">
-                        <Truck className="w-3 h-3 text-blue-600" />
+                      <div className={`inline-flex items-center gap-1 ${compact ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'} font-bold border border-blue-200 bg-blue-50/70 text-blue-700 rounded-md`}>
+                        <Truck className={`${compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} text-blue-600`} />
                         <span>Ship: {item.dueDateFormatted}</span>
                       </div>
                       <div
-                        className={`text-[10px] mt-0.5 font-semibold ${
+                        className={`${compact ? 'text-[9px]' : 'text-[10px]'} mt-0.5 font-semibold ${
                           item.isOverdue ? 'text-rose-600' : 'text-amber-700'
                         }`}
                       >
@@ -813,7 +815,7 @@ export function MaintenanceMilestonesAndTasks({
                   </div>
 
                   {/* Middle Row: Current Stage & Line */}
-                  <div className="text-xs text-slate-600 flex items-center justify-between gap-2 flex-wrap">
+                  <div className={`${compact ? 'text-[11px]' : 'text-xs'} text-slate-600 flex items-center justify-between gap-2 flex-wrap`}>
                     <div>
                       <span className="text-slate-500">Current stage: </span>
                       <strong className="text-slate-900 font-bold">{item.currentStage}</strong>
@@ -827,18 +829,18 @@ export function MaintenanceMilestonesAndTasks({
                   </div>
 
                   {/* Bottom Row: Progress Bar + Action Button */}
-                  <div className="flex items-center gap-3 pt-0.5">
-                    <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="flex items-center gap-2.5 pt-0.5">
+                    <div className={`${compact ? 'h-1.5' : 'h-2'} flex-1 bg-slate-100 rounded-full overflow-hidden`}>
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${item.progressBarColor}`}
                         style={{ width: `${item.progressPct}%` }}
                       />
                     </div>
-                    <span className="text-xs font-semibold text-slate-500 font-mono shrink-0">
+                    <span className={`${compact ? 'text-[10px]' : 'text-xs'} font-semibold text-slate-500 font-mono shrink-0`}>
                       {item.progressText}
                     </span>
                     <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${item.riskBadgeStyle}`}
+                      className={`${compact ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px]'} rounded-md font-bold shrink-0 ${item.riskBadgeStyle}`}
                     >
                       {item.riskBadgeText}
                     </span>
@@ -1120,11 +1122,11 @@ export function MaintenanceMilestonesAndTasks({
       {/* =================================================================== */}
       {/* CARD 2: MY TASKS (1 COL IF SENIOR, 5 COLS IF JUNIOR)               */}
       {/* =================================================================== */}
-      <div className={`${isSenior ? 'lg:col-span-1' : 'lg:col-span-5'} bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between`}>
+      <div className={`${isSenior ? 'lg:col-span-1' : 'lg:col-span-5'} bg-white ${compact ? 'rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs h-[385px] min-h-[375px] max-h-[395px]' : 'rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px]'} flex flex-col justify-between`}>
         {/* Header: Title, Worker Badge, and Open Button */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
+        <div className={`flex items-center justify-between ${compact ? 'pb-2' : 'pb-3'} border-b border-slate-100 shrink-0 gap-2`}>
           <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+            <h2 className={`${compact ? 'text-sm' : 'text-base sm:text-lg'} font-bold text-slate-900 tracking-tight`}>
               My tasks
             </h2>
             {!isSenior && (
@@ -1137,10 +1139,10 @@ export function MaintenanceMilestonesAndTasks({
           <button
             type="button"
             onClick={() => setIsTaskDrawerOpen(true)}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1"
+            className={`${compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-3.5 py-1 text-xs'} rounded-full font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1`}
           >
             <span>Open</span>
-            <ChevronRight className="w-3.5 h-3.5" />
+            <ChevronRight className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
           </button>
         </div>
 
@@ -1158,15 +1160,15 @@ export function MaintenanceMilestonesAndTasks({
               <div
                 key={task.id}
                 onClick={() => handleTaskClick(task)}
-                className="py-3 px-1 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition cursor-pointer group"
+                className={`${compact ? 'py-1.5' : 'py-3'} px-1 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition cursor-pointer group`}
                 title="Click to view and complete this task"
               >
                 {/* Left: Task Title & Subtitle */}
                 <div className="min-w-0 space-y-0.5">
-                  <div className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition truncate">
+                  <div className={`${compact ? 'text-xs' : 'text-xs sm:text-sm'} font-bold text-slate-900 group-hover:text-indigo-600 transition truncate`}>
                     {task.title}
                   </div>
-                  <div className="text-[11px] text-slate-400 font-mono truncate">
+                  <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-slate-400 font-mono truncate`}>
                     .{task.code} · {task.machineType} · {task.stationNo}
                   </div>
                 </div>
@@ -1174,7 +1176,7 @@ export function MaintenanceMilestonesAndTasks({
                 {/* Right: Soft Rounded Badge */}
                 <div className="shrink-0">
                   <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${task.dueBadgeStyle}`}
+                    className={`inline-block ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1 text-xs'} rounded-full font-bold border ${task.dueBadgeStyle}`}
                   >
                     {task.dueBadgeText}
                   </span>
@@ -1189,29 +1191,29 @@ export function MaintenanceMilestonesAndTasks({
       {/* CARD 3: ATTENDANCE TODAY (FOR SENIORS)                             */}
       {/* =================================================================== */}
       {isSenior && (
-        <div className="lg:col-span-1 bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px] flex flex-col justify-between">
+        <div className={`lg:col-span-1 bg-white ${compact ? 'rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs h-[385px] min-h-[375px] max-h-[395px]' : 'rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px]'} flex flex-col justify-between`}>
           {/* Header Strip */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+          <div className={`flex items-center justify-between ${compact ? 'pb-2' : 'pb-3'} border-b border-slate-100 shrink-0 gap-2`}>
+            <h2 className={`${compact ? 'text-sm' : 'text-base sm:text-lg'} font-bold text-slate-900 tracking-tight`}>
               Attendance today
             </h2>
 
             <button
               type="button"
               onClick={() => router.push('/dashboard/mechanic-roster')}
-              className="px-3.5 py-1 rounded-full text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1"
+              className={`${compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-3.5 py-1 text-xs'} rounded-full font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1`}
             >
               <span>Open</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <ChevronRight className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
             </button>
           </div>
 
           {/* Top Section: Overall Turnout & Total Team */}
-          <div className="mt-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 p-3.5 flex items-center justify-between gap-3 shrink-0">
+          <div className={`${compact ? 'mt-2 p-2.5 rounded-xl gap-2.5' : 'mt-3.5 p-3.5 rounded-2xl gap-3'} bg-slate-50/70 border border-slate-200/80 flex items-center justify-between shrink-0`}>
             {/* Donut Gauge + Turnout Label */}
-            <div className="flex items-center gap-3">
-              <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
-                <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
+            <div className={`flex items-center ${compact ? 'gap-2.5' : 'gap-3'}`}>
+              <div className={`relative ${compact ? 'w-9 h-9' : 'w-12 h-12'} flex items-center justify-center shrink-0`}>
+                <svg className={`${compact ? 'w-9 h-9' : 'w-12 h-12'} -rotate-90`} viewBox="0 0 36 36">
                   <path
                     className="text-slate-200"
                     strokeWidth="3.5"
@@ -1229,76 +1231,76 @@ export function MaintenanceMilestonesAndTasks({
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                   />
                 </svg>
-                <span className="absolute text-xs font-black text-slate-900 font-mono">17%</span>
+                <span className={`absolute ${compact ? 'text-[10px]' : 'text-xs'} font-black text-slate-900 font-mono`}>17%</span>
               </div>
               <div>
-                <div className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+                <div className={`${compact ? 'text-xs' : 'text-xs sm:text-sm'} font-bold text-slate-900 leading-tight`}>
                   Overall Turnout
                 </div>
-                <div className="text-[11px] text-slate-500 font-medium">
+                <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-slate-500 font-medium`}>
                   Live workforce attendance
                 </div>
               </div>
             </div>
 
             {/* Total Team Badge */}
-            <div className="bg-white rounded-xl border border-slate-200/90 px-3 py-1.5 text-center shrink-0 shadow-2xs">
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Team</div>
-              <div className="text-sm font-black text-slate-900 font-mono">36 staff</div>
+            <div className={`bg-white rounded-xl border border-slate-200/90 ${compact ? 'px-2 py-1' : 'px-3 py-1.5'} text-center shrink-0 shadow-2xs`}>
+              <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} text-slate-400 font-bold uppercase tracking-wider`}>Total Team</div>
+              <div className={`${compact ? 'text-xs' : 'text-sm'} font-black text-slate-900 font-mono`}>36 staff</div>
             </div>
           </div>
 
           {/* Turnout Ratio Progress Bar */}
-          <div className="space-y-1.5 mt-3 shrink-0">
+          <div className={`${compact ? 'space-y-1 mt-2' : 'space-y-1.5 mt-3'} shrink-0`}>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-[11px] font-bold text-slate-600">Turnout Ratio</span>
-              <span className="text-xs font-bold text-slate-800 font-mono">6 of 36 present</span>
+              <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-slate-600`}>Turnout Ratio</span>
+              <span className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold text-slate-800 font-mono`}>6 of 36 present</span>
             </div>
-            <div className="h-2.5 w-full rounded-full overflow-hidden flex bg-rose-500">
+            <div className={`${compact ? 'h-2' : 'h-2.5'} w-full rounded-full overflow-hidden flex bg-rose-500`}>
               <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: '16.7%' }} />
             </div>
           </div>
 
           {/* 3 Metric Cards: Present, Absent, On Leave */}
-          <div className="grid grid-cols-3 gap-2 mt-3 shrink-0">
+          <div className={`grid grid-cols-3 ${compact ? 'gap-1.5 mt-2' : 'gap-2 mt-3'} shrink-0`}>
             {/* Present */}
-            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-2.5 text-center">
-              <div className="text-[11px] font-bold text-emerald-700">Present</div>
-              <div className="text-xl font-black text-emerald-700 font-mono mt-0.5">6</div>
+            <div className={`bg-emerald-50/70 border border-emerald-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
+              <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-emerald-700`}>Present</div>
+              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-emerald-700 font-mono`}>6</div>
             </div>
 
             {/* Absent */}
-            <div className="bg-rose-50/70 border border-rose-200/80 rounded-2xl p-2.5 text-center">
-              <div className="text-[11px] font-bold text-rose-700">Absent</div>
-              <div className="text-xl font-black text-rose-700 font-mono mt-0.5">30</div>
+            <div className={`bg-rose-50/70 border border-rose-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
+              <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-rose-700`}>Absent</div>
+              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-rose-700 font-mono`}>30</div>
             </div>
 
             {/* On Leave */}
-            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-2.5 text-center">
-              <div className="text-[11px] font-bold text-amber-700">On Leave</div>
-              <div className="text-xl font-black text-amber-700 font-mono mt-0.5">0</div>
+            <div className={`bg-amber-50/70 border border-amber-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
+              <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-amber-700`}>On Leave</div>
+              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-amber-700 font-mono`}>0</div>
             </div>
           </div>
 
           {/* LIVE ROSTER STATUS List */}
-          <div className="space-y-2 mt-3 pt-2.5 border-t border-slate-100 flex-1 min-h-0 flex flex-col">
-            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0">
+          <div className={`${compact ? 'space-y-1 mt-2 pt-1.5' : 'space-y-2 mt-3 pt-2.5'} border-t border-slate-100 flex-1 min-h-0 flex flex-col`}>
+            <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} font-black uppercase tracking-wider text-slate-400 shrink-0`}>
               LIVE ROSTER STATUS
             </div>
-            <div className="space-y-2 overflow-y-auto max-h-[175px] pr-1 divide-y divide-slate-100/80 scrollbar-thin">
+            <div className={`space-y-1.5 overflow-y-auto ${compact ? 'max-h-[105px]' : 'max-h-[175px]'} pr-1 divide-y divide-slate-100/80 scrollbar-thin`}>
               {FACTORY_ATTENDANCE_ROSTER.map((m) => (
-                <div key={m.id} className="pt-2 first:pt-0 flex items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-extrabold text-xs flex items-center justify-center shrink-0 font-mono">
+                <div key={m.id} className={`${compact ? 'pt-1.5' : 'pt-2'} first:pt-0 flex items-center justify-between gap-2.5`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`${compact ? 'w-6 h-6 text-[10px]' : 'w-7 h-7 text-xs'} rounded-full bg-slate-100 text-slate-700 font-extrabold flex items-center justify-center shrink-0 font-mono`}>
                       {m.initial}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 truncate">{m.name}</div>
-                      <div className="text-[10px] text-slate-400 font-medium truncate">{m.role}</div>
+                      <div className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold text-slate-900 truncate`}>{m.name}</div>
+                      <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} text-slate-400 font-medium truncate`}>{m.role}</div>
                     </div>
                   </div>
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                    className={`${compact ? 'px-2 py-0.2 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'} rounded-full font-bold border shrink-0 ${
                       m.status === 'Present'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : m.status === 'Absent'

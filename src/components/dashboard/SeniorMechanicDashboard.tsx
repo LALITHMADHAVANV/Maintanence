@@ -616,6 +616,7 @@ export function SeniorMechanicDashboard({
         machines={machines}
         userName={user?.name || (isElectrician ? 'Senior Electrician' : 'Senior Mechanic')}
         role={role || (isElectrician ? 'SENIOR_ELECTRICIAN' : 'SENIOR_MECHANIC')}
+        compact={true}
         onOpenResolve={(t) => {
           setSelectedTicketForAssign(t);
           setIsAssignModalOpen(true);
