@@ -23,6 +23,7 @@ import {
   QrCode,
   IndianRupee,
   PanelLeftClose,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
@@ -173,6 +174,11 @@ export function Sidebar() {
         label: 'History',
         href: '/dashboard/history',
         icon: History,
+      },
+      {
+        label: 'Settings',
+        href: '/dashboard/settings',
+        icon: Settings,
       },
     ];
   } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {

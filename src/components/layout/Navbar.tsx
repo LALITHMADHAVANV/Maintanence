@@ -19,6 +19,7 @@ import {
   Zap,
   LayoutDashboard,
   IndianRupee,
+  Settings,
 } from 'lucide-react';
 import { LiveClock } from './LiveClock';
 import { useAuth } from '@/context/AuthContext';
@@ -209,6 +210,11 @@ export function Navbar() {
         label: 'History',
         href: '/dashboard/history',
         icon: History,
+      },
+      {
+        label: 'Settings',
+        href: '/dashboard/settings',
+        icon: Settings,
       },
     ];
   }
