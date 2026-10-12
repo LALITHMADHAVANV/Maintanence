@@ -19,11 +19,15 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 1. CEO User: Restricted to CEO Approval Section and History
+    // 1. CEO User: Access to Executive Dashboard, Approvals, and Work History
     if (role === 'CEO') {
-      if (pathname !== '/dashboard/messages' && pathname !== '/dashboard/history') {
-        showToast('CEO account has access to Executive Approvals and Work History.', 'info');
-        router.replace('/dashboard/messages');
+      if (
+        pathname !== '/dashboard' &&
+        pathname !== '/dashboard/messages' &&
+        pathname !== '/dashboard/history'
+      ) {
+        showToast('CEO account has access to Executive Dashboard, Approvals, and Work History.', 'info');
+        router.replace('/dashboard');
       }
       return;
     }
@@ -78,12 +82,17 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   }
 
   // Prevent flash of forbidden pages for CEO
-  if (role === 'CEO' && pathname !== '/dashboard/messages' && pathname !== '/dashboard/history') {
+  if (
+    role === 'CEO' &&
+    pathname !== '/dashboard' &&
+    pathname !== '/dashboard/messages' &&
+    pathname !== '/dashboard/history'
+  ) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-2">
           <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Redirecting to Executive Approvals...</p>
+          <p className="text-sm font-semibold text-slate-600">Redirecting to Executive Dashboard...</p>
         </div>
       </div>
     );

@@ -654,35 +654,54 @@ export default function CalendarPage() {
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <div className="space-y-6">
-      {/* Senior Supervisor Action Controls */}
-      {canSchedulePPM && (
-        <div className="flex items-center justify-end flex-wrap gap-2.5">
-          <button
-            onClick={() => setIsInlineDispatchOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/25 cursor-pointer"
-            title="Open Assign / Move Task Desk for floor work orders"
-          >
-            <Zap className="w-3.5 h-3.5" />
-            <span>⚡ Assign / Move Task</span>
-          </button>
-          <button
-            onClick={() => setIsTeamModalOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-indigo-600/25 cursor-pointer"
-            title="View all mechanics scheduled work for any date"
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>👥 Everyone&apos;s Work Board</span>
-          </button>
-          <button
-            onClick={() => setIsSchedulePPMOpen(true)}
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Schedule PPM</span>
-          </button>
+    <div className="space-y-4 pb-12">
+      {/* Top Header Card */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+            <CalendarDays className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+                Mechanic Schedule &amp; PPM Work Orders
+              </h1>
+            </div>
+            <p className="text-xs text-slate-500">
+              Shift tasks, preventive maintenance milestones, breakdown repairs, and team dispatch calendar.
+            </p>
+          </div>
         </div>
-      )}
+
+        {/* Senior Supervisor Action Controls */}
+        {canSchedulePPM && (
+          <div className="flex items-center justify-end flex-wrap gap-2 shrink-0">
+            <button
+              onClick={() => setIsInlineDispatchOpen(true)}
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/25 cursor-pointer"
+              title="Open Assign / Move Task Desk for floor work orders"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>⚡ Assign / Move Task</span>
+            </button>
+            <button
+              onClick={() => setIsTeamModalOpen(true)}
+              className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-indigo-600/25 cursor-pointer"
+              title="View all mechanics scheduled work for any date"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>👥 Everyone&apos;s Work Board</span>
+            </button>
+            <button
+              onClick={() => setIsSchedulePPMOpen(true)}
+              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Schedule PPM</span>
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* 3. Monthly Metrics Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

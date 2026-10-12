@@ -194,11 +194,11 @@ function MobileScanContent() {
             Machine tag <code className="bg-slate-100 px-2 py-1 rounded text-amber-700 font-mono border border-slate-200">{machineId}</code> was not found in the factory registry.
           </p>
           <Link
-            href={role === 'CEO' ? '/dashboard/messages' : '/dashboard/machines'}
+            href={role === 'CEO' ? '/dashboard' : '/dashboard/machines'}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>{role === 'CEO' ? 'Return to CEO Approvals' : 'Return to Machine Registry'}</span>
+            <span>{role === 'CEO' ? 'Return to Executive Dashboard' : 'Return to Machine Registry'}</span>
           </Link>
         </div>
       </div>
@@ -212,11 +212,11 @@ function MobileScanContent() {
       {/* Mobile Top Header with Prominent History Button */}
       <div className="max-w-lg w-full mx-auto flex items-center justify-between py-3 border-b border-slate-200 mb-4 gap-2">
         <Link
-          href={role === 'CEO' ? '/dashboard/messages' : '/dashboard/machines'}
+          href={role === 'CEO' ? '/dashboard' : '/dashboard/machines'}
           className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition font-semibold"
         >
           <ArrowLeft className="w-4 h-4 text-slate-500" />
-          <span>{role === 'CEO' ? 'CEO Approvals' : 'Maintenance Dashboard'}</span>
+          <span>{role === 'CEO' ? 'Executive Dashboard' : 'Maintenance Dashboard'}</span>
         </Link>
 
         {/* Top Actions: History Button + Live Status */}

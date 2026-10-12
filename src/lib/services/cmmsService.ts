@@ -274,6 +274,23 @@ export async function updateMachineStatus(
   }
 }
 
+export async function deleteMachine(machineId: string): Promise<void> {
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  const updatedMachines = currentMachines.filter((m) => m.id !== machineId);
+  setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
+  notifyLocal('machines', updatedMachines);
+
+  try {
+    await fetch('/api/machines', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: machineId }),
+    });
+  } catch (e) {
+    console.error('MongoDB deleteMachine error:', e);
+  }
+}
+
 /* ======================================================================
    SPARE PARTS SERVICE (MongoDB via /api/parts)
    ====================================================================== */

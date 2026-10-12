@@ -55,3 +55,21 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Failed to update machine' }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const { id } = await req.json();
+    if (!id) {
+      return NextResponse.json({ error: 'Machine ID is required' }, { status: 400 });
+    }
+
+    const db = await getDatabase();
+    await db.collection('machines').deleteOne({ id });
+
+    return NextResponse.json({ success: true, message: `Machine ${id} deleted` });
+  } catch (err: unknown) {
+    console.error('Error deleting machine in MongoDB:', err);
+    return NextResponse.json({ error: 'Failed to delete machine' }, { status: 500 });
+  }
+}
+

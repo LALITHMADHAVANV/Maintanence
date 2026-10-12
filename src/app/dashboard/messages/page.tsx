@@ -105,7 +105,7 @@ export default function CeoMessagesPage() {
       {/* Sleek Page Header with Integrated Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">CEO Approvals &amp; Messages</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">Executive Approvals &amp; Messages</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Critical equipment spare requisitions and emergency maintenance authorizations
           </p>

@@ -34,7 +34,19 @@ import {
   ChevronDown,
   Wrench,
   Gauge,
+  Printer,
+  Download,
+  QrCode,
+  RefreshCw,
+  MapPin,
+  RotateCcw,
+  FileText,
+  ScanBarcode,
+  Check,
+  ArrowUpRight,
+  Package,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   SparePart,
   PartRequisition,
@@ -74,7 +86,47 @@ export default function InventoryPage() {
   const [selectedMechanic, setSelectedMechanic] = useState<MechanicDuty | null>(null);
   const [isMechCustodyOpen, setIsMechCustodyOpen] = useState(false);
   const [activeMechanicId, setActiveMechanicId] = useState<string>('ELEC-02');
-  const [showFullPartsTable, setShowFullPartsTable] = useState(false);
+  const [showFullPartsTable, setShowFullPartsTable] = useState(true);
+
+  // Fast Floor Issue Modal state
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [activeIssuePart, setActiveIssuePart] = useState<SparePart | null>(null);
+  const [issueQty, setIssueQty] = useState<number>(1);
+  const [selectedIssueMechanicId, setSelectedIssueMechanicId] = useState<string>(
+    FACTORY_MECHANICS_ROSTER[0]?.id || 'MECH-01'
+  );
+  const [issueTargetLine, setIssueTargetLine] = useState<string>('Line 02');
+  const [issueTargetMachine, setIssueTargetMachine] = useState<string>('');
+  const [oldPartReturned, setOldPartReturned] = useState<boolean>(true);
+  const [issueRemarks, setIssueRemarks] = useState<string>('');
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState<boolean>(false);
+
+  // Printable Gate Pass Slip state
+  interface GatePassPayload {
+    slipNo: string;
+    date: string;
+    part: SparePart;
+    qty: number;
+    mechanicName: string;
+    mechanicId: string;
+    mechanicTrade: string;
+    targetLine: string;
+    targetMachine?: string;
+    oldPartReturned: boolean;
+    storekeeper: string;
+    remarks?: string;
+  }
+  const [isGatePassOpen, setIsGatePassOpen] = useState(false);
+  const [gatePassData, setGatePassData] = useState<GatePassPayload | null>(null);
+
+  // Inward Goods (GRN) Intake Modal state
+  const [grnVendor, setGrnVendor] = useState<string>('');
+  const [grnChallanNo, setGrnChallanNo] = useState<string>('');
+  const [grnQcPassed, setGrnQcPassed] = useState<boolean>(true);
+  const [grnNotes, setGrnNotes] = useState<string>('');
+
+  // Barcode / Scanner Modal state
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // For Senior Electrician, ONLY show junior electricians
   const visibleMechanics = useMemo(() => {
@@ -320,16 +372,151 @@ export default function InventoryPage() {
     showToast(`${part.sku} updated (${part.stock + delta} ${part.unit})`, 'info');
   };
 
+  const handleOpenIssueModal = (part?: SparePart) => {
+    const targetPart = part || parts[0];
+    if (!targetPart) {
+      showToast('No spare parts available to issue.', 'warning');
+      return;
+    }
+    setActiveIssuePart(targetPart);
+    setIssueQty(1);
+    setOldPartReturned(true);
+    setIssueRemarks('');
+    setIsIssueModalOpen(true);
+  };
+
+  const handleConfirmIssue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeIssuePart) return;
+    if (issueQty <= 0) {
+      showToast('Quantity must be greater than 0', 'warning');
+      return;
+    }
+    if (issueQty > activeIssuePart.stock) {
+      showToast(`Insufficient stock! Available: ${activeIssuePart.stock} ${activeIssuePart.unit}`, 'error');
+      return;
+    }
+
+    setIsSubmittingIssue(true);
+    try {
+      await adjustPartStock(activeIssuePart.partId, -issueQty);
+
+      const mech =
+        FACTORY_MECHANICS_ROSTER.find((m) => m.id === selectedIssueMechanicId) ||
+        FACTORY_MECHANICS_ROSTER[0];
+      const slipNumber = `GPS-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const passPayload: GatePassPayload = {
+        slipNo: slipNumber,
+        date: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+        part: activeIssuePart,
+        qty: issueQty,
+        mechanicName: mech.name,
+        mechanicId: mech.id,
+        mechanicTrade: mech.role,
+        targetLine: issueTargetLine,
+        targetMachine: issueTargetMachine.trim() || undefined,
+        oldPartReturned: oldPartReturned,
+        storekeeper: user?.name
+          ? `${user.name} (${user.title || 'Storekeeper'})`
+          : 'M. Arumugam (Stores In-Charge)',
+        remarks: issueRemarks.trim() || undefined,
+      };
+
+      setGatePassData(passPayload);
+      setIsIssueModalOpen(false);
+      setIsGatePassOpen(true);
+      showToast(
+        `Issued ${issueQty} ${activeIssuePart.unit} to ${mech.name}. Gate pass generated!`,
+        'success'
+      );
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to issue part', 'error');
+    } finally {
+      setIsSubmittingIssue(false);
+    }
+  };
+
+  const handleOpenGrnModal = (part?: SparePart) => {
+    const targetPart = part || parts[0];
+    if (targetPart) {
+      setRestockPartId(targetPart.partId);
+      setGrnVendor(
+        targetPart.vendor ||
+          (targetPart.category === 'Needles' ? 'Organ Needle Co.' : 'Genuine Machine Spares')
+      );
+    }
+    setRestockQty(50);
+    setGrnChallanNo(`DC-GRN-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+    setGrnQcPassed(true);
+    setGrnNotes('');
+    setIsRestockOpen(true);
+  };
+
   const handleRestockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!restockPartId || restockQty <= 0) return;
     const target = parts.find((p) => p.partId === restockPartId);
     if (!target) return;
 
-    await restockPart(restockPartId, restockQty, restockPO);
-    showToast(`Received ${restockQty} ${target.unit} for ${target.sku}!`, 'success');
+    const poRef = grnChallanNo || restockPO || `GRN-${Date.now().toString().slice(-6)}`;
+    await restockPart(restockPartId, restockQty, poRef);
+    showToast(
+      `Received ${restockQty} ${target.unit} for ${target.sku} under Challan ${poRef}!`,
+      'success'
+    );
     setIsRestockOpen(false);
     setRestockPO('');
+    setGrnChallanNo('');
+  };
+
+  const handleExportReorderList = () => {
+    const lowStock = parts.filter((p) => p.stock <= p.minStock);
+    if (lowStock.length === 0) {
+      showToast('All spare parts have healthy inventory above minimum safety buffers.', 'info');
+      return;
+    }
+    const headers = [
+      'Part SKU',
+      'Description',
+      'Category',
+      'Shelf Location',
+      'Current Stock',
+      'Min Safe Stock',
+      'Shortage Units',
+      'Unit Cost (INR)',
+      'Est Reorder Value (INR)',
+      'Vendor / Supplier',
+      'Scrap Return Policy',
+    ];
+    const rows = lowStock.map((p) => [
+      p.sku,
+      `"${p.name.replace(/"/g, '""')}"`,
+      p.category,
+      `"${p.shelfLocation || 'Rack A-01 • Bin 01'}"`,
+      p.stock,
+      p.minStock,
+      p.minStock - p.stock > 0 ? p.minStock - p.stock : 0,
+      p.unitCost,
+      ((p.minStock * 2 - p.stock > 0 ? p.minStock * 2 - p.stock : p.minStock) * p.unitCost),
+      `"${p.vendor || 'Direct Purchase'}"`,
+      p.oldPartReturnRequired ? '1:1 Scrap Return Required' : 'Standard Consumable',
+    ]);
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute(
+      'download',
+      `Store_Reorder_List_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Exported ${lowStock.length} low-stock items for purchase reorder!`, 'success');
   };
 
   const handleOpenReqModal = (mode: RequisitionType | 'VIEW_ALL' = 'MONTHLY_INDENT', initialPartId?: string) => {
@@ -599,15 +786,19 @@ export default function InventoryPage() {
   return (
     <div className="space-y-6">
       {/* Header Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Boxes className="w-5 h-5 text-indigo-600" />
-            <span>Sewing Spare Parts, Monthly Indents & Approvals</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Crib stock levels, mechanic monthly planned indents (part list), and distinct critical (CEO) vs urgent (Manager) needs.
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+            <Boxes className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <span>Sewing Spare Parts, Monthly Indents & Approvals</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Crib stock levels, mechanic monthly planned indents (part list), and distinct critical (CEO) vs urgent (Manager) needs.
+            </p>
+          </div>
         </div>
 
         {/* Action Buttons: Critical vs Urgent vs Monthly Indent */}
@@ -1101,22 +1292,34 @@ export default function InventoryPage() {
                   </button>
                 )}
               </div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="relative w-full sm:w-72">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search spare parts..."
-                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none"
-                  />
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-grow max-w-xl">
+                  <div className="relative flex-grow">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search SKU, name, or rack (e.g. Rack B-03)..."
+                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsScannerOpen(true)}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-slate-700 transition flex items-center gap-1.5 shrink-0 text-xs font-semibold cursor-pointer"
+                    title="Scan Barcode or Quick-Select SKU"
+                  >
+                    <ScanBarcode className="w-4 h-4 text-indigo-600" />
+                    <span className="hidden sm:inline">Scanner</span>
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-2 flex-wrap">
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 outline-none font-medium"
+                    className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 outline-none font-medium cursor-pointer"
                   >
                     <option value="ALL">All Categories</option>
                     <option value="Needles">Needles &amp; Pins</option>
@@ -1125,47 +1328,245 @@ export default function InventoryPage() {
                     <option value="Motors & Electrical">Electronics &amp; Motors</option>
                     <option value="Fluids & Consumables">Fluids &amp; Consumables</option>
                   </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setLowStockOnly(!lowStockOnly)}
+                    className={`text-xs px-3 py-1.5 rounded-xl border font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      lowStockOnly
+                        ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-2xs'
+                        : 'bg-slate-50 border-slate-300 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <AlertTriangle className={`w-3.5 h-3.5 ${lowStockOnly ? 'text-rose-600' : 'text-slate-400'}`} />
+                    <span>Low Stock Only</span>
+                    {lowStockItems.length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-black">
+                        {lowStockItems.length}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportReorderList}
+                    className="text-xs px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    title="Export low-stock items as CSV for purchase order"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Export Reorder List</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenIssueModal()}
+                    className="text-xs px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <ArrowUpRight className="w-3.5 h-3.5 text-white" />
+                    <span>Fast Floor Issue</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenGrnModal()}
+                    className="text-xs px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Truck className="w-3.5 h-3.5 text-white" />
+                    <span>Inward GRN</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
                 <table className="w-full text-left text-xs text-slate-600">
-                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                  <thead className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
                     <tr>
-                      <th className="py-2.5 px-3">Part SKU</th>
-                      <th className="py-2.5 px-3">Description</th>
-                      <th className="py-2.5 px-3">Stock on Hand</th>
-                      <th className="py-2.5 px-3">Min Safe Stock</th>
+                      <th className="py-2.5 px-3">Part SKU &amp; Specs</th>
+                      <th className="py-2.5 px-3">Shelf Location</th>
+                      <th className="py-2.5 px-3 min-w-[170px]">Live Stock Health</th>
+                      <th className="py-2.5 px-3">Scrap Return Policy</th>
                       <th className="py-2.5 px-3">Unit Cost</th>
-                      <th className="py-2.5 px-3 text-right">Quick Adjust</th>
+                      <th className="py-2.5 px-3 text-right">Floor Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {filteredParts.map((part) => (
-                      <tr key={part.partId} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{part.sku}</td>
-                        <td className="py-2.5 px-3 font-medium text-slate-800">{part.name}</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                          {part.stock} {part.unit}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-slate-500">{part.minStock} {part.unit}</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-800">₹{part.unitCost}</td>
-                        <td className="py-2.5 px-3 text-right space-x-1">
-                          <button
-                            onClick={() => handleAdjust(part, -1)}
-                            className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 font-bold inline-flex items-center justify-center cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => handleAdjust(part, 1)}
-                            className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 font-bold inline-flex items-center justify-center cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredParts.map((part) => {
+                      const isLow = part.stock <= part.minStock;
+                      const isCritical = part.stock <= Math.floor(part.minStock * 0.5);
+                      const isModerate = !isLow && part.stock <= part.minStock * 1.5;
+                      const maxRef = Math.max(part.minStock * 2, 20);
+                      const healthPct = Math.min(100, Math.round((part.stock / maxRef) * 100));
+
+                      const shelf =
+                        part.shelfLocation ||
+                        `Rack ${part.category.charAt(0)}-0${(parseInt(part.partId.replace(/\D/g, '')) % 5) + 1} • Bin ${((parseInt(part.partId.replace(/\D/g, '')) * 3) % 20) + 1}`;
+                      const returnRequired =
+                        part.oldPartReturnRequired ??
+                        (part.category === 'Hooks & Loopers' ||
+                          part.category === 'Motors & Electrical' ||
+                          part.unitCost > 400);
+
+                      return (
+                        <tr key={part.partId} className="hover:bg-slate-50/80 transition">
+                          {/* Part SKU & Specs */}
+                          <td className="py-3 px-3">
+                            <div className="font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                              <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/70 text-[11px]">
+                                {part.sku}
+                              </span>
+                              {part.vendor && (
+                                <span
+                                  className="text-[10px] text-slate-400 font-normal truncate max-w-[130px]"
+                                  title={part.vendor}
+                                >
+                                  {part.vendor}
+                                </span>
+                              )}
+                            </div>
+                            <div className="font-semibold text-slate-800 text-xs mt-0.5">
+                              {part.name}
+                            </div>
+                            <div
+                              className="text-[10px] text-slate-400 line-clamp-1 mt-0.5"
+                              title={part.compat}
+                            >
+                              {part.compat}
+                            </div>
+                          </td>
+
+                          {/* Shelf Location */}
+                          <td className="py-3 px-3">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-800 border border-slate-200 font-mono text-[11px] font-semibold whitespace-nowrap">
+                              <MapPin className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span>{shelf}</span>
+                            </div>
+                          </td>
+
+                          {/* Live Stock Health Progress Bar */}
+                          <td className="py-3 px-3">
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="font-bold font-mono text-slate-900">
+                                  {part.stock}{' '}
+                                  <span className="font-normal text-slate-500">{part.unit}</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  Min: {part.minStock} {part.unit}
+                                </span>
+                              </div>
+
+                              {/* Progress bar */}
+                              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${
+                                    isCritical
+                                      ? 'bg-rose-600'
+                                      : isLow
+                                      ? 'bg-rose-500'
+                                      : isModerate
+                                      ? 'bg-amber-500'
+                                      : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.max(6, healthPct)}%` }}
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider ${
+                                    isLow
+                                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                      : isModerate
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  }`}
+                                >
+                                  {isCritical
+                                    ? '🚨 Critical Shortage'
+                                    : isLow
+                                    ? '⚠️ Below Min Buffer'
+                                    : isModerate
+                                    ? '⚡ Moderate Buffer'
+                                    : '✓ Stock Healthy'}
+                                </span>
+                                <span className="text-[9px] font-mono text-slate-400">
+                                  {healthPct}%
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Scrap Return Policy */}
+                          <td className="py-3 px-3">
+                            {returnRequired ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold whitespace-nowrap">
+                                <RefreshCw className="w-3 h-3 text-rose-600 shrink-0" />
+                                <span>1:1 Scrap Return</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-medium whitespace-nowrap">
+                                <Check className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>Standard Issue</span>
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Unit Cost */}
+                          <td className="py-3 px-3">
+                            <span className="font-mono font-bold text-slate-900 text-xs">
+                              ₹{part.unitCost.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-normal">
+                              per {part.unit}
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenIssueModal(part)}
+                                disabled={part.stock <= 0}
+                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                                title="Floor Handover & Gate Pass"
+                              >
+                                <ArrowUpRight className="w-3 h-3" />
+                                <span>Issue</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenGrnModal(part)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                                title="Inward Goods GRN Intake"
+                              >
+                                <Truck className="w-3 h-3" />
+                                <span>Receive</span>
+                              </button>
+                              <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden bg-white shadow-2xs ml-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdjust(part, -1)}
+                                  disabled={part.stock <= 0}
+                                  className="w-6 h-6 hover:bg-slate-100 disabled:opacity-40 text-slate-600 flex items-center justify-center cursor-pointer"
+                                  title="Reduce stock by 1"
+                                >
+                                  <Minus className="w-2.5 h-2.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdjust(part, 1)}
+                                  className="w-6 h-6 hover:bg-slate-100 text-slate-600 flex items-center justify-center border-l border-slate-200 cursor-pointer"
+                                  title="Increase stock by 1"
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2214,18 +2615,411 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* MODAL 2: RESTOCK INTAKE MODAL */}
-      {isRestockOpen && (
+      {/* MODAL 2: FAST FLOOR ISSUE & HANDOVER MODAL */}
+      {isIssueModalOpen && activeIssuePart && (
         <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 px-5 py-4 text-white flex items-center justify-between">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
-                  <Truck className="w-4 h-4" />
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
+                  <ArrowUpRight className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold">Receive / Restock Spare Parts</h4>
-                  <p className="text-[10px] text-slate-400">Inventory Tool Crib Intake</p>
+                  <h4 className="text-sm font-bold">Floor Issue &amp; Handover Desk</h4>
+                  <p className="text-[10px] text-slate-400">Issue spare parts to line technicians with gate pass</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsIssueModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmIssue} className="p-6 space-y-4">
+              {/* Selected Part Card */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {activeIssuePart.sku}
+                  </span>
+                  <div className="flex items-center gap-1 text-[11px] font-mono text-slate-600">
+                    <MapPin className="w-3 h-3 text-indigo-600" />
+                    <span>{activeIssuePart.shelfLocation || 'Rack A-01 • Bin 01'}</span>
+                  </div>
+                </div>
+                <div className="font-bold text-slate-900 text-sm">{activeIssuePart.name}</div>
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/70 text-slate-500">
+                  <span>Available Crib Stock:</span>
+                  <strong className="text-emerald-700 font-mono">
+                    {activeIssuePart.stock} {activeIssuePart.unit}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Mechanic Roster Select */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Issuing To (Mechanic / Electrician) *
+                </label>
+                <select
+                  value={selectedIssueMechanicId}
+                  onChange={(e) => setSelectedIssueMechanicId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
+                >
+                  {FACTORY_MECHANICS_ROSTER.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.id}) &mdash; {m.role} &bull; {m.assignedLines}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Quantity to Issue *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={activeIssuePart.stock}
+                    value={issueQty}
+                    onChange={(e) => setIssueQty(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-900 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Target Line *
+                  </label>
+                  <select
+                    value={issueTargetLine}
+                    onChange={(e) => setIssueTargetLine(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 font-medium"
+                  >
+                    <option value="Line 01">Line 01 (Jack A4 Lockstitch)</option>
+                    <option value="Line 02">Line 02 (Pegasus Overlock)</option>
+                    <option value="Line 03">Line 03 (Yamato Flatlock)</option>
+                    <option value="Line 04">Line 04 (Brother Lockstitch)</option>
+                    <option value="Line 05">Line 05 (Button Stitch / Kaja)</option>
+                    <option value="Line 06">Line 06 (Feed Off The Arm)</option>
+                    <option value="Line 07">Line 07 (Sampling / Ironing)</option>
+                    <option value="Line 08">Line 08 (Packing / Finish)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Machine ID / Workstation Reference (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={issueTargetMachine}
+                  onChange={(e) => setIssueTargetMachine(e.target.value)}
+                  placeholder="e.g. SNLS-04 or OVK-02"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-slate-800"
+                />
+              </div>
+
+              {/* Old Broken Part Scrap Return Toggle */}
+              <div
+                className={`p-4 rounded-2xl border space-y-2.5 ${
+                  (activeIssuePart.oldPartReturnRequired ?? false)
+                    ? 'bg-rose-50/70 border-rose-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw
+                      className={`w-4 h-4 ${
+                        (activeIssuePart.oldPartReturnRequired ?? false)
+                          ? 'text-rose-600'
+                          : 'text-slate-500'
+                      }`}
+                    />
+                    <span className="text-xs font-bold text-slate-900">
+                      Old Defective Part Collected?
+                    </span>
+                  </div>
+                  {(activeIssuePart.oldPartReturnRequired ?? false) && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-200 text-rose-800">
+                      1:1 Return Enforced
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-slate-600">
+                  {(activeIssuePart.oldPartReturnRequired ?? false)
+                    ? 'Factory policy strictly requires receiving the worn/broken component into the scrap bin upon issuing a new rotary hook, looper, blade, or motor board.'
+                    : 'Standard consumable item. Defective part return optional.'}
+                </p>
+
+                <div className="flex items-center gap-4 pt-1">
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="oldPartReturned"
+                      checked={oldPartReturned === true}
+                      onChange={() => setOldPartReturned(true)}
+                      className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-emerald-700">Yes, Old Part Received</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="oldPartReturned"
+                      checked={oldPartReturned === false}
+                      onChange={() => setOldPartReturned(false)}
+                      className="w-4 h-4 text-rose-600 focus:ring-rose-500"
+                    />
+                    <span className="text-rose-700">No, Pending Return</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsIssueModalOpen(false)}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingIssue}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Confirm Issue &amp; Generate Gate Pass</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: PRINTABLE STORE ISSUE SLIP / GATE PASS MODAL */}
+      {isGatePassOpen && gatePassData && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 print:p-0 print:bg-white print:fixed print:inset-0">
+          <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 print:border-none print:shadow-none print:max-w-none print:rounded-none">
+            {/* Non-print Modal Top Bar */}
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
+                  <Printer className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold">Store Issue Chit &amp; Gate Pass Ready</h4>
+                  <p className="text-[10px] text-slate-400">Print or hand over slip to mechanic</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Pass</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsGatePassOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Body */}
+            <div className="p-6 sm:p-8 space-y-5 print:p-6 print:space-y-4 text-slate-900 bg-white">
+              {/* Header */}
+              <div className="border-b-2 border-slate-900 pb-3 flex items-start justify-between">
+                <div>
+                  <div className="text-[10px] font-extrabold tracking-widest uppercase text-slate-500">
+                    TEX-APPARELS GLOBAL MANUFACTURING &bull; CENTRAL TOOL CRIB
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-black tracking-tight text-slate-950 mt-0.5">
+                    STORE ISSUE CHIT &amp; GATE PASS
+                  </h2>
+                  <div className="text-[11px] text-slate-600 mt-0.5">
+                    Floor Maintenance Issue &amp; Defective Scrap Clearance
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono font-bold text-xs text-indigo-700">{gatePassData.slipNo}</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">{gatePassData.date}</div>
+                </div>
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                    Issued To (Technician)
+                  </span>
+                  <span className="font-bold text-slate-900 text-sm block">
+                    {gatePassData.mechanicName}
+                  </span>
+                  <span className="text-[11px] text-slate-600 font-mono">
+                    ID: {gatePassData.mechanicId} &bull; {gatePassData.mechanicTrade}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                    Destination &amp; Machine
+                  </span>
+                  <span className="font-bold text-emerald-800 text-sm block">
+                    {gatePassData.targetLine}
+                  </span>
+                  <span className="text-[11px] text-slate-600 font-mono">
+                    Machine: {gatePassData.targetMachine || 'Floor Line Standby'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Issued Item Details */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="py-2 px-3">Part Description</th>
+                      <th className="py-2 px-3">SKU</th>
+                      <th className="py-2 px-3">Location</th>
+                      <th className="py-2 px-3 text-right">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    <tr>
+                      <td className="py-2.5 px-3">
+                        <div className="font-bold text-slate-900">{gatePassData.part.name}</div>
+                        <div className="text-[10px] text-slate-500">{gatePassData.part.compat}</div>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-indigo-700 text-[11px]">
+                        {gatePassData.part.sku}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
+                        {gatePassData.part.shelfLocation || 'Rack A-01'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900 text-sm">
+                        {gatePassData.qty} {gatePassData.part.unit}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Scrap Policy Status & QR Section */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center p-3.5 bg-slate-50/70 rounded-2xl border border-slate-200">
+                <div className="sm:col-span-8 space-y-2">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                      Defective Scrap Piece Handover
+                    </span>
+                    {gatePassData.oldPartReturned ? (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs mt-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>VERIFIED &bull; Defective Part Received in Scrap Bin</span>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                        <span>PENDING SCRAP &bull; Return Due within 24 Hours</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {gatePassData.remarks && (
+                    <div className="text-[11px] text-slate-600 italic">
+                      Remark: &ldquo;{gatePassData.remarks}&rdquo;
+                    </div>
+                  )}
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    Storekeeper: {gatePassData.storekeeper}
+                  </div>
+                </div>
+
+                <div className="sm:col-span-4 flex flex-col items-center justify-center p-2 bg-white rounded-xl border border-slate-200">
+                  <QRCodeSVG
+                    value={`GPS:${gatePassData.slipNo}|SKU:${gatePassData.part.sku}|QTY:${gatePassData.qty}|MECH:${gatePassData.mechanicId}|DATE:${gatePassData.date}|SCRAP:${gatePassData.oldPartReturned ? 'YES' : 'NO'}`}
+                    size={76}
+                    level="M"
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                  />
+                  <span className="text-[8px] font-mono text-slate-500 font-bold mt-1">
+                    Crib Verification QR
+                  </span>
+                </div>
+              </div>
+
+              {/* Dual Signatures */}
+              <div className="pt-6 grid grid-cols-2 gap-8 border-t border-slate-200">
+                <div className="text-center">
+                  <div className="h-9 border-b border-slate-400 border-dashed" />
+                  <span className="text-[10px] font-bold text-slate-600 uppercase block mt-1.5">
+                    Storekeeper Authorization
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    M. Arumugam / Store In-Charge
+                  </span>
+                </div>
+                <div className="text-center">
+                  <div className="h-9 border-b border-slate-400 border-dashed" />
+                  <span className="text-[10px] font-bold text-slate-600 uppercase block mt-1.5">
+                    Technician Acknowledgement
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    {gatePassData.mechanicName} ({gatePassData.mechanicId})
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Non-print Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 print:hidden">
+              <button
+                type="button"
+                onClick={() => setIsGatePassOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Slip</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: INWARD GOODS RECEIPT NOTE (GRN) INTAKE MODAL */}
+      {isRestockOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                  <Truck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold">Inward Goods (GRN) Intake Desk</h4>
+                  <p className="text-[10px] text-slate-400">Receive supplier stock directly into tool crib bins</p>
                 </div>
               </div>
               <button
@@ -2236,16 +3030,20 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            <form onSubmit={handleRestockSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleRestockSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Select Item to Restock *
+                  Select Spare Part *
                 </label>
                 <select
                   value={restockPartId}
-                  onChange={(e) => setRestockPartId(e.target.value)}
+                  onChange={(e) => {
+                    setRestockPartId(e.target.value);
+                    const found = parts.find((p) => p.partId === e.target.value);
+                    if (found?.vendor) setGrnVendor(found.vendor);
+                  }}
                   required
-                  className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                  className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800"
                 >
                   {parts.map((p) => (
                     <option key={p.partId} value={p.partId}>
@@ -2255,32 +3053,79 @@ export default function InventoryPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Quantity Received *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={restockQty}
-                  onChange={(e) => setRestockQty(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-900"
-                />
+              {/* Bin Location Preview */}
+              {(() => {
+                const selected = parts.find((p) => p.partId === restockPartId);
+                const bin = selected?.shelfLocation || 'Rack A-01 • Bin 01';
+                return (
+                  <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-emerald-600" />
+                      <span className="font-semibold text-emerald-950">Designated Bin Location:</span>
+                    </div>
+                    <span className="font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                      {bin}
+                    </span>
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Quantity Received *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={restockQty}
+                    onChange={(e) => setRestockQty(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-slate-900 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Supplier / Vendor Name
+                  </label>
+                  <input
+                    type="text"
+                    value={grnVendor}
+                    onChange={(e) => setGrnVendor(e.target.value)}
+                    placeholder="e.g. Organ Needle Co."
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800"
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Supplier PO / Invoice Reference
+                  Supplier Delivery Challan / Invoice Reference *
                 </label>
                 <input
                   type="text"
-                  value={restockPO}
-                  onChange={(e) => setRestockPO(e.target.value)}
-                  placeholder="e.g. PO-TEX-2026-89"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                  required
+                  value={grnChallanNo}
+                  onChange={(e) => setGrnChallanNo(e.target.value)}
+                  placeholder="e.g. DC-INV-2026-9482"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 font-mono"
                 />
               </div>
+
+              {/* Quality Check Inspection Checkbox */}
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={grnQcPassed}
+                  onChange={(e) => setGrnQcPassed(e.target.checked)}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 mt-0.5"
+                />
+                <div className="text-xs text-slate-700">
+                  <span className="font-bold text-slate-900 block">Quality &amp; Package Inspection Passed</span>
+                  <span className="text-[11px] text-slate-500">Box seal verified intact, zero transit damage, piece count matched to invoice.</span>
+                </div>
+              </label>
 
               <div className="pt-2 flex justify-end space-x-2">
                 <button
@@ -2292,12 +3137,106 @@ export default function InventoryPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition cursor-pointer"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition cursor-pointer flex items-center gap-1.5"
                 >
-                  Confirm Stock Intake
+                  <Truck className="w-4 h-4" />
+                  <span>Confirm GRN Stock Intake</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: QUICK BARCODE / SKU LOOKUP MODAL */}
+      {isScannerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 px-5 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
+                  <ScanBarcode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold">Tool Crib Barcode &amp; SKU Scanner</h4>
+                  <p className="text-[10px] text-slate-400">Scan shelf barcode or click quick SKU chip</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsScannerOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Viewfinder Graphic */}
+              <div className="relative bg-slate-900 rounded-2xl h-36 flex flex-col items-center justify-center border-2 border-dashed border-indigo-500/60 overflow-hidden">
+                <div className="absolute inset-x-8 top-1/2 h-0.5 bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)] animate-pulse" />
+                <ScanBarcode className="w-12 h-12 text-slate-500/40" />
+                <span className="text-[11px] font-mono text-indigo-300 mt-2 font-semibold">
+                  Scanner Lens Active &bull; Ready for 1D/2D Barcode
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Instant SKU / Barcode Filter:
+                </label>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Type or paste SKU code (e.g. NDL-DBX1-14)..."
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-slate-900 font-bold"
+                  autoFocus
+                />
+              </div>
+
+              {/* Quick SKU Chips */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">
+                  Quick-Select Common SKUs:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {parts.slice(0, 8).map((p) => (
+                    <button
+                      key={p.partId}
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery(p.sku);
+                        setIsScannerOpen(false);
+                        showToast(`Filtered to ${p.sku}`, 'info');
+                      }}
+                      className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 border border-slate-200 text-slate-700 font-bold transition cursor-pointer"
+                    >
+                      {p.sku}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsScannerOpen(false);
+                  }}
+                  className="text-xs text-rose-600 hover:underline font-semibold"
+                >
+                  Clear Filter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsScannerOpen(false)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Apply &amp; View Catalog
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

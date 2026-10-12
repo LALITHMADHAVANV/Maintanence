@@ -474,16 +474,34 @@ export default function MachinesPage() {
   return (
     <div className="space-y-6">
       {/* Header Info */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between no-print">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shadow-xs">
-            <PlusCircle className="w-5 h-5" />
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+            <QrCode className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              Asset Registration
-            </h2>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+                Asset Registration &amp; QR Tagging
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                CR80 Standard
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Register new plant machinery, furniture, electrical assets and generate printable QR code tags.
+            </p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/dashboard/asset-types"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+          >
+            <Boxes className="w-3.5 h-3.5 text-indigo-600" />
+            <span>View All Registered Assets</span>
+          </Link>
         </div>
       </div>
 

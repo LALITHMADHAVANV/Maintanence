@@ -236,8 +236,8 @@ const CATEGORIES_META: {
 export default function HistoryPage() {
   const { showToast } = useToast();
   const { user, role, isLoading } = useAuth();
-  const isAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER';
-  const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('ASSETS');
+  const isExecutiveOrAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER' || role === 'CEO';
+  const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>(role === 'CEO' ? 'PERSONNEL' : 'ASSETS');
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
   const [liveMachines, setLiveMachines] = useState<Machine[]>([]);
   const [liveRepairs, setLiveRepairs] = useState<RepairTicket[]>([]);
@@ -606,9 +606,9 @@ export default function HistoryPage() {
   }
 
   // =========================================================================
-  // VIEW 1: PERSONNEL WORK HISTORY (TABLE FORM) - FOR ALL NON-ADMIN PERSONS
+  // VIEW 1: PERSONNEL WORK HISTORY (TABLE FORM) - FOR ALL NON-ADMIN/NON-CEO PERSONS
   // =========================================================================
-  if (!isAdmin) {
+  if (!isExecutiveOrAdmin) {
     return (
       <div className="space-y-4 pt-0 animate-in fade-in duration-200">
         {/* The Table Form View for all staff members, mechanics, electricians, etc. */}

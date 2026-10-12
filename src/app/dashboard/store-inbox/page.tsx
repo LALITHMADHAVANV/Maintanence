@@ -17,6 +17,8 @@ import {
   Plus,
   ArrowUpRight,
   Sparkles,
+  MapPin,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -107,41 +109,44 @@ export default function StoreInboxPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Store Terminal Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl border border-emerald-800/40 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                <Boxes className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Tool Crib & Store Receiving Custody</span>
-              </span>
-              <span className="text-xs text-emerald-300 font-mono">
-                Assigned to: {user?.name || 'M. Arumugam'} (Tool Crib Storekeeper)
-              </span>
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Boxes className="w-6 h-6" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Monthly Indent Products & Intake Receiving
-            </h1>
-            <p className="text-sm text-emerald-200/80 mt-1 max-w-2xl">
-              Exclusively manage spare parts requested by mechanics for monthly factory operations. Receive bulk supplier deliveries into bins and dispatch quotas to sewing lines.
-            </p>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <Boxes className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Tool Crib & Store Receiving Custody</span>
+                </span>
+                <span className="text-xs text-slate-500 font-mono">
+                  Assigned to: {user?.name || 'M. Arumugam'} (Tool Crib Storekeeper)
+                </span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                Monthly Indent Products & Intake Receiving
+              </h1>
+              <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+                Exclusively manage spare parts requested by mechanics for monthly factory operations. Receive bulk supplier deliveries into bins and dispatch quotas to sewing lines.
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="bg-emerald-900/40 backdrop-blur-xs border border-emerald-700/50 rounded-xl px-4 py-2.5 text-right">
-              <span className="block text-[11px] uppercase tracking-wider text-emerald-300 font-semibold">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2.5 text-right">
+              <span className="block text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
                 Pending Receiving
               </span>
-              <span className="text-2xl font-black text-amber-400">{pendingIndents.length} Indents</span>
+              <span className="text-2xl font-black text-amber-600">{pendingIndents.length} Indents</span>
             </div>
 
-            <div className="bg-emerald-900/40 backdrop-blur-xs border border-emerald-700/50 rounded-xl px-4 py-2.5 text-right">
-              <span className="block text-[11px] uppercase tracking-wider text-emerald-300 font-semibold">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2.5 text-right">
+              <span className="block text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
                 Completed Deliveries
               </span>
-              <span className="text-2xl font-black text-emerald-400">{fulfilledIndents.length}</span>
+              <span className="text-2xl font-black text-emerald-600">{fulfilledIndents.length}</span>
             </div>
           </div>
         </div>
@@ -407,29 +412,79 @@ export default function StoreInboxPage() {
               Live inventory balances in Tool Crib A & B for active sewing lines:
             </p>
 
-            <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
               {parts.map((p) => {
                 const isLow = p.stock <= p.minStock;
+                const isCritical = p.stock <= Math.floor(p.minStock * 0.5);
+                const maxRef = Math.max(p.minStock * 2, 20);
+                const healthPct = Math.min(100, Math.round((p.stock / maxRef) * 100));
+                const shelf =
+                  p.shelfLocation ||
+                  `Rack ${p.category.charAt(0)}-0${(parseInt(p.partId.replace(/\D/g, '')) % 5) + 1} • Bin ${((parseInt(p.partId.replace(/\D/g, '')) * 3) % 20) + 1}`;
+                const returnRequired =
+                  p.oldPartReturnRequired ??
+                  (p.category === 'Hooks & Loopers' ||
+                    p.category === 'Motors & Electrical' ||
+                    p.unitCost > 400);
+
                 return (
                   <div
                     key={p.partId}
-                    className="p-2.5 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/60 flex items-center justify-between gap-2 text-xs transition"
+                    className="p-3 rounded-2xl border border-slate-100 hover:border-slate-200 bg-slate-50/70 space-y-2 text-xs transition"
                   >
-                    <div className="min-w-0">
-                      <div className="font-bold text-slate-800 truncate">{p.name}</div>
-                      <div className="text-[11px] font-mono text-slate-400">
-                        {p.sku} • Min: {p.minStock} {p.unit}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5 font-mono text-[11px] text-slate-500">
+                          <span className="font-bold text-indigo-700">{p.sku}</span>
+                          <span>&bull;</span>
+                          <span className="inline-flex items-center gap-1 text-slate-600">
+                            <MapPin className="w-2.5 h-2.5 text-indigo-600" />
+                            {shelf}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span
+                          className={`text-xs font-black px-2 py-0.5 rounded-md ${
+                            isLow
+                              ? 'bg-rose-100 text-rose-700 font-extrabold'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {p.stock} {p.unit}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <span
-                        className={`text-xs font-black px-2 py-0.5 rounded-md ${
-                          isLow ? 'bg-rose-100 text-rose-700 font-extrabold' : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        {p.stock} {p.unit}
-                      </span>
+                    {/* Live Stock Health Progress Bar */}
+                    <div className="space-y-1">
+                      <div className="w-full bg-slate-200/80 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            isCritical
+                              ? 'bg-rose-600'
+                              : isLow
+                              ? 'bg-rose-500'
+                              : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.max(8, healthPct)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">
+                          Min Safe: {p.minStock} {p.unit}
+                        </span>
+                        {returnRequired ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700">
+                            <RefreshCw className="w-2.5 h-2.5 text-rose-600" />
+                            1:1 Scrap Return
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700 font-medium">Standard</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

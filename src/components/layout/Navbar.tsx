@@ -250,7 +250,7 @@ export function Navbar() {
           <div className="flex items-center justify-between h-16">
             {/* Brand Logo & Name */}
             <Link
-              href={role === 'CEO' ? '/dashboard/messages' : (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN') ? '/dashboard/calendar' : '/dashboard/machines'}
+              href={role === 'CEO' ? '/dashboard' : (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN') ? '/dashboard/calendar' : '/dashboard/machines'}
               className="flex items-center space-x-3 group"
             >
               <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-xs text-white font-bold text-lg group-hover:scale-105 transition">

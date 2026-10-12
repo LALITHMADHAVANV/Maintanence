@@ -162,6 +162,9 @@ export interface SparePart {
   unitCost: number; // INR (₹)
   unit: string; // e.g., "pcs", "units", "jugs"
   compatibleTypes: MachineType[];
+  shelfLocation?: string; // e.g., "Rack B-03 • Bin 12"
+  oldPartReturnRequired?: boolean;
+  vendor?: string;
 }
 
 export type RepairUrgency = 'CRITICAL' | 'WARNING';

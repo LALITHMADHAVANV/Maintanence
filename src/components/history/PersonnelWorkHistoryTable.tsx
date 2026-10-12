@@ -68,9 +68,11 @@ export function PersonnelWorkHistoryTable() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [parts, setParts] = useState<SparePart[]>([]);
 
-  // Filter & Search states - defaults to 'MY' so each technician sees their own history first
+  // Filter & Search states - defaults to 'ALL' for CEO/Admin, and 'MY' for technicians
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPerson, setSelectedPerson] = useState<string>('MY');
+  const [selectedPerson, setSelectedPerson] = useState<string>(
+    role === 'CEO' || role === 'ADMIN' || role === 'ASSET_MANAGER' ? 'ALL' : 'MY'
+  );
   const [selectedWorkType, setSelectedWorkType] = useState<'ALL' | 'BREAKDOWN' | 'PPM'>('ALL');
   const [selectedDateRange, setSelectedDateRange] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
 

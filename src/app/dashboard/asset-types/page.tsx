@@ -32,9 +32,13 @@ import {
   Car,
   CarTaxiFront,
   Bus,
+  Trash2,
+  AlertTriangle,
+  Boxes,
 } from 'lucide-react';
 import { Machine, AssetCategory } from '@/types/cmms';
-import { subscribeMachines } from '@/lib/services/cmmsService';
+import { subscribeMachines, deleteMachine } from '@/lib/services/cmmsService';
+import { useToast } from '@/context/ToastContext';
 
 // Standard 4 categories requested
 type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
@@ -657,8 +661,27 @@ function mapToMainCategory(cat?: AssetCategory): MainCategory {
 }
 
 export default function AssetsPage() {
+  const { showToast } = useToast();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<MainCategory | 'ALL'>('ALL');
+  const [assetToDelete, setAssetToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!assetToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteMachine(assetToDelete.id);
+      setMachines((prev) => prev.filter((m) => m.id !== assetToDelete.id));
+      showToast(`Asset "${assetToDelete.name}" (${assetToDelete.id}) removed successfully`, 'success');
+      setAssetToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete asset:', err);
+      showToast('Failed to delete asset. Please try again.', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Drawer states
   const [activeDrawer, setActiveDrawer] = useState<'NONE' | 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE'>('NONE');
@@ -1151,9 +1174,31 @@ export default function AssetsPage() {
   ];
 
   return (
-    <div className="space-y-3.5 pt-0">
+    <div className="space-y-4 pb-12">
+      {/* Top Header Card */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+            <Boxes className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+                Plant Asset Registry
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {allItems.length} Total Units
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Categorized machinery, furniture, electrical utilities, and company vehicles inventory.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 1. Primary 4-Grid Display Categories */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {categoriesConfig.map((cat) => {
           const isSelected = selectedCategory === cat.id;
           const Icon = cat.icon;
@@ -1162,10 +1207,10 @@ export default function AssetsPage() {
             <div
               key={cat.id}
               onClick={() => handleCategoryClick(cat.id)}
-              className={`p-3 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between min-h-[96px] relative group ${
+              className={`p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between min-h-[105px] relative group ${
                 isSelected
                   ? cat.activeRing
-                  : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-2xs'
+                  : 'bg-white border-slate-200/90 hover:border-slate-300 hover:shadow-xs shadow-2xs'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -1894,6 +1939,7 @@ export default function AssetsPage() {
                   <th className="py-3 px-4 bg-slate-100">Purchase Date</th>
                   <th className="py-3 px-4 bg-slate-100">Age</th>
                   <th className="py-3 px-4 bg-slate-100">Relocation (Occupied Location)</th>
+                  <th className="py-3 px-4 bg-slate-100 text-center w-24">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -1957,6 +2003,18 @@ export default function AssetsPage() {
                         <span>{item.relocation}</span>
                       </div>
                     </td>
+
+                    {/* 8. Action (Delete) */}
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setAssetToDelete({ id: item.id, name: item.name })}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition border border-transparent hover:border-rose-200 cursor-pointer inline-flex items-center justify-center group"
+                        title={`Delete ${item.name}`}
+                      >
+                        <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1978,6 +2036,61 @@ export default function AssetsPage() {
           </span>
         </div>
       </div>
+
+      {/* Confirmation Modal for Asset Deletion */}
+      {assetToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Confirm Asset Removal</h3>
+                <p className="text-xs text-slate-500">This asset will be permanently removed from the plant registry.</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Asset Name:</span>
+                <span className="font-bold text-slate-800 text-right truncate max-w-[240px]">{assetToDelete.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Asset ID:</span>
+                <span className="font-mono font-bold text-indigo-600">{assetToDelete.id}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setAssetToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDelete}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl transition shadow-sm shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <span>Removing...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Asset</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

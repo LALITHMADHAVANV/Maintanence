@@ -106,7 +106,7 @@ export function Sidebar() {
         icon: LayoutDashboard,
       },
       {
-        label: 'CEO Approvals',
+        label: 'Executive Approvals',
         href: '/dashboard/messages',
         icon: Crown,
         badge: pendingCeoCount > 0 ? pendingCeoCount : null,
@@ -114,7 +114,7 @@ export function Sidebar() {
         highlight: true,
       },
       {
-        label: 'History',
+        label: 'Work History',
         href: '/dashboard/history',
         icon: History,
       },
@@ -273,7 +273,7 @@ export function Sidebar() {
         <Link
           href={
             role === 'CEO'
-              ? '/dashboard/messages'
+              ? '/dashboard'
               : role === 'STORE_PERSON'
               ? '/dashboard/store-inbox'
               : role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN'
