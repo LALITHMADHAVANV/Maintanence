@@ -343,6 +343,15 @@ export function SeniorMechanicDashboard({
           </button>
 
           <button
+            onClick={() => router.push('/dashboard/calendar?action=dispatch')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition shadow-xs cursor-pointer"
+            title="Open Assign / Move Task Desk"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>⚡ Assign / Move Task</span>
+          </button>
+
+          <button
             onClick={() => router.push('/dashboard/calendar')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
           >

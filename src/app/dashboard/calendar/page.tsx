@@ -29,6 +29,7 @@ import {
   Users,
   Search,
   Truck,
+  Zap,
 } from 'lucide-react';
 import { RepairTicket, RepairUrgency, Machine, SparePart, PPMSchedule } from '@/types/cmms';
 import {
@@ -89,6 +90,20 @@ export default function CalendarPage() {
           setSelectedDate(tDate);
         }
       }
+      const actionParam = params.get('action') || params.get('tab');
+      if (
+        actionParam === 'dispatch' ||
+        actionParam === 'assign' ||
+        actionParam === 'move' ||
+        params.get('assign') === 'true'
+      ) {
+        setIsInlineDispatchOpen(true);
+        if (actionParam === 'move') {
+          setDispatchTab('move');
+        } else {
+          setDispatchTab('assign');
+        }
+      }
     }
   }, [repairs, role]);
 
@@ -116,8 +131,11 @@ export default function CalendarPage() {
   // Senior Mechanic Team Work Schedule Pop-up state
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
 
-  // Senior Mechanic / Electrician Direct Inline Dispatch State (No popups)
+  // Senior Mechanic / Electrician Direct Assign / Move Task Desk State
   const [isInlineDispatchOpen, setIsInlineDispatchOpen] = useState(false);
+  const [dispatchTab, setDispatchTab] = useState<'assign' | 'move'>('assign');
+  const [moveSearchQuery, setMoveSearchQuery] = useState('');
+  const [moveAssigneeMap, setMoveAssigneeMap] = useState<Record<string, string>>({});
   const [inlineMachineId, setInlineMachineId] = useState('');
   const [inlineTaskTitle, setInlineTaskTitle] = useState('');
   const [inlineAssignee, setInlineAssignee] = useState(() =>
@@ -190,6 +208,27 @@ export default function CalendarPage() {
   // Include ALL floor repairs and PPM schedules across sewing, furniture/tables, and utilities
   const scopedRepairs = repairs;
   const scopedPpmSchedules = ppmSchedules;
+
+  // Open tickets eligible for Move / Reassignment
+  const openTicketsForMove = useMemo(
+    () => scopedRepairs.filter((r) => r.status !== 'COMPLETED'),
+    [scopedRepairs]
+  );
+
+  const filteredTicketsForMove = useMemo(() => {
+    if (!moveSearchQuery.trim()) return openTicketsForMove;
+    const q = moveSearchQuery.toLowerCase();
+    return openTicketsForMove.filter(
+      (t) =>
+        t.id.toLowerCase().includes(q) ||
+        t.machineId.toLowerCase().includes(q) ||
+        (t.machineType && t.machineType.toLowerCase().includes(q)) ||
+        (t.line && t.line.toLowerCase().includes(q)) ||
+        (t.faultCategory && t.faultCategory.toLowerCase().includes(q)) ||
+        (t.faultDetails && t.faultDetails.toLowerCase().includes(q)) ||
+        (t.attendedBy && t.attendedBy.toLowerCase().includes(q))
+    );
+  }, [openTicketsForMove, moveSearchQuery]);
 
   // Events grouped by date string ('YYYY-MM-DD')
   const eventsByDate = useMemo(() => {
@@ -575,11 +614,11 @@ export default function CalendarPage() {
       {canSchedulePPM && (
         <div className="flex items-center justify-end flex-wrap gap-2.5">
           <button
-            onClick={() => setIsInlineDispatchOpen((prev) => !prev)}
+            onClick={() => setIsInlineDispatchOpen(true)}
             className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/25 cursor-pointer"
-            title="Direct inline task dispatch: assign a task directly on this page without popups"
+            title="Open Assign / Move Task Desk for floor work orders"
           >
-            <Wrench className="w-3.5 h-3.5" />
+            <Zap className="w-3.5 h-3.5" />
             <span>⚡ Assign / Move Task</span>
           </button>
           <button
@@ -1358,6 +1397,343 @@ export default function CalendarPage() {
         machines={machines}
         onOpenResolveModal={handleOpenResolveModal}
       />
+
+      {/* 9. Senior Supervisor: Assign / Move Task Desk Modal */}
+      {isInlineDispatchOpen && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-bold shadow-md shadow-emerald-500/20">
+                  <Zap className="w-5 h-5 fill-slate-950" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                    Assign / Move Task Desk
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Floor Dispatch
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Direct floor dispatch &amp; work order reassignment for floor supervisors
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsInlineDispatchOpen(false)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Navigation Tab Bar */}
+            <div className="flex items-center border-b border-slate-200 bg-slate-50 px-4 sm:px-6 pt-2 shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setDispatchTab('assign')}
+                className={`flex items-center gap-2 pb-2.5 px-3 border-b-2 font-bold text-xs transition cursor-pointer ${
+                  dispatchTab === 'assign'
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>⚡ Assign New Task</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDispatchTab('move')}
+                className={`flex items-center gap-2 pb-2.5 px-3 border-b-2 font-bold text-xs transition cursor-pointer ${
+                  dispatchTab === 'move'
+                    ? 'border-indigo-600 text-indigo-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>🔄 Move / Reassign Active Tasks</span>
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                  {openTicketsForMove.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+              {dispatchTab === 'assign' ? (
+                <form onSubmit={handleInlineAssignTask} className="space-y-4">
+                  {/* Target Machine */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Target Machine / Station *
+                    </label>
+                    <select
+                      value={inlineMachineId}
+                      onChange={(e) => setInlineMachineId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 font-medium"
+                    >
+                      {displayMachines.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.id} - {m.brand} {m.model} ({m.currentLine})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Quick Preset Chips */}
+                  <div>
+                    <div className="text-[11px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-emerald-600" />
+                      <span>Quick Common Issue Presets:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        'Looper & Needle Timing Out of Sync',
+                        'Tension Disk Jam / Thread Snapping',
+                        'Feed Dog Height & Pitch Alignment',
+                        'Motor Bearing Noise / Overheating',
+                        'Electrical Sensor / Pedal Interlock Fault',
+                        'Oil Filter Screen Cleaning & Wick Flush',
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setInlineTaskTitle(preset)}
+                          className="px-2.5 py-1 text-[11px] font-medium bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 rounded-lg border border-slate-200 transition cursor-pointer"
+                        >
+                          + {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Task Title / Fault Details */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Task Description / Fault Details *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={inlineTaskTitle}
+                      onChange={(e) => setInlineTaskTitle(e.target.value)}
+                      placeholder="e.g. Needle bar loose, replace hook or adjust timing"
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800"
+                    />
+                  </div>
+
+                  {/* Technician Assignee */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Assign To Technician *
+                      </label>
+                      <select
+                        value={inlineAssignee}
+                        onChange={(e) => setInlineAssignee(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 font-semibold"
+                      >
+                        {relevantTechnicians.map((t) => (
+                          <option key={t.id} value={t.name}>
+                            {t.name} ({t.role} - {t.assignedLines})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Urgency */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Urgency Priority *
+                      </label>
+                      <select
+                        value={inlineUrgency}
+                        onChange={(e) => setInlineUrgency(e.target.value as RepairUrgency)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 font-semibold"
+                      >
+                        <option value="NORMAL">NORMAL - Routine Maintenance</option>
+                        <option value="WARNING">WARNING - Moderate Defect / Minor Delay</option>
+                        <option value="CRITICAL">CRITICAL - Line Stopped / Emergency</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Date & Shift */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Scheduled Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Target Shift
+                      </label>
+                      <div className="px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-medium">
+                        Shift A (07:00 - 15:30)
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Form Footer */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineDispatchOpen(false)}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingInline}
+                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span>{isSubmittingInline ? 'Dispatching...' : 'Dispatch & Assign Work Order'}</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Move / Reassign Active Tasks Tab */
+                <div className="space-y-3.5">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={moveSearchQuery}
+                        onChange={(e) => setMoveSearchQuery(e.target.value)}
+                        placeholder="Search active tickets by ID, machine, issue, or mechanic..."
+                        className="w-full pl-8 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                      />
+                    </div>
+                    <span className="text-xs text-slate-500 font-semibold whitespace-nowrap">
+                      {filteredTicketsForMove.length} tickets
+                    </span>
+                  </div>
+
+                  {filteredTicketsForMove.length === 0 ? (
+                    <div className="py-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
+                      <p className="text-xs font-semibold text-slate-700">No active tickets found</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        All work orders are completed or match no search query.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
+                      {filteredTicketsForMove.map((ticket) => {
+                        const targetAssignee =
+                          moveAssigneeMap[ticket.id] ||
+                          relevantTechnicians[0]?.name ||
+                          'Ramesh Kumar';
+
+                        const isSelf = (ticket.attendedBy || '')
+                          .toLowerCase()
+                          .includes((user?.name || 'ramesh').toLowerCase());
+
+                        return (
+                          <div
+                            key={ticket.id}
+                            className="p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 transition space-y-2.5"
+                          >
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-slate-900">
+                                  #{ticket.id}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
+                                    ticket.urgency === 'CRITICAL'
+                                      ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                      : ticket.urgency === 'WARNING'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : 'bg-sky-100 text-sky-800 border border-sky-200'
+                                  }`}
+                                >
+                                  {ticket.urgency}
+                                </span>
+                                <span className="text-[11px] font-bold text-slate-700">
+                                  {ticket.machineId} ({ticket.line})
+                                </span>
+                              </div>
+
+                              <div className="text-[11px] text-slate-500">
+                                Assigned to:{' '}
+                                <span className="font-bold text-slate-800">
+                                  {ticket.attendedBy || 'Unassigned'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="text-xs text-slate-700">
+                              <span className="font-semibold">{ticket.faultCategory}: </span>
+                              <span>{ticket.faultDetails}</span>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDirectMoveTask(
+                                    ticket.id,
+                                    user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')
+                                  )
+                                }
+                                disabled={isSelf}
+                                className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                title="Assign this task directly to yourself"
+                              >
+                                {isSelf ? '✓ Assigned to You' : '⚡ Assign to Myself'}
+                              </button>
+
+                              <div className="flex items-center gap-1.5 ml-auto">
+                                <select
+                                  value={targetAssignee}
+                                  onChange={(e) =>
+                                    setMoveAssigneeMap((prev) => ({
+                                      ...prev,
+                                      [ticket.id]: e.target.value,
+                                    }))
+                                  }
+                                  className="px-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg outline-none text-slate-800 font-medium"
+                                >
+                                  {relevantTechnicians.map((t) => (
+                                    <option key={t.id} value={t.name}>
+                                      {t.name} ({t.assignedLines})
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDirectMoveTask(ticket.id, targetAssignee)}
+                                  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition shadow-xs cursor-pointer"
+                                >
+                                  Move Task
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

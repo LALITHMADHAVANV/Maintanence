@@ -53,198 +53,24 @@ export interface PersonnelHistoryRow {
   rawTicket?: RepairTicket;
 }
 
-// Comprehensive realistic seed records for factory technicians
-const SEED_PERSONNEL_WORK_LOGS: PersonnelHistoryRow[] = [
-  {
-    id: 'HIST-MEC-101',
-    ticketId: 'WO-1704',
-    date: '2026-10-10T11:32:55.497Z',
-    dateFormatted: '10 Oct 2026, 11:32 AM',
-    personName: 'Suresh Babu',
-    personRole: 'Line Sewing Mechanic',
-    personTrade: 'MECHANIC',
-    machineId: 'MC-SNLS-101',
-    machineName: 'Single Needle Lockstitch (Juki DDL-8700)',
-    line: 'Line 01',
-    stationNo: 'Station 02',
-    workType: 'BREAKDOWN',
-    urgency: 'CRITICAL',
-    faultCategory: 'Skipping Stitches / Looper Timing',
-    faultDetails: 'Severe thread skipping on 220 GSM cotton jersey seam run.',
-    actionTaken: 'Synchronized needle bar rise to 1.8mm above BDC. Set looper tip to needle scarf clearance at 0.05mm. Adjusted bobbin case latch spring and ran 50-stitch test seam.',
-    partsUsedText: 'Needle DPx5 (Size 14) x2, Bobbin Case Spring x1',
-    partsUsedCount: 3,
-    downtimeMinutes: 35,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'HIST-MEC-102',
-    ticketId: 'WO-3763',
-    date: '2026-10-10T11:04:02.390Z',
-    dateFormatted: '10 Oct 2026, 11:04 AM',
-    personName: 'Praveen Raj',
-    personRole: 'Line Overlock Specialist',
-    personTrade: 'MECHANIC',
-    machineId: 'MC-OVK-LFC-151',
-    machineName: '4-Thread Safety Overlock (Yamato LFC)',
-    line: 'Line 01',
-    stationNo: 'Station 06',
-    workType: 'BREAKDOWN',
-    urgency: 'WARNING',
-    faultCategory: 'Upper Knife Dull & Fabric Jamming',
-    faultDetails: 'Knife edge frayed fabric hem on side seam.',
-    actionTaken: 'Replaced blunt upper carbide knife blade. Re-lapped lower stationary shear counter-blade. Regulated differential feed ratio back to 1:1.2. Edge trimming verified clean.',
-    partsUsedText: 'Carbide Upper Knife x1',
-    partsUsedCount: 1,
-    downtimeMinutes: 20,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'HIST-MEC-103',
-    ticketId: 'WO-9364',
-    date: '2026-10-10T09:45:18.000Z',
-    dateFormatted: '10 Oct 2026, 09:45 AM',
-    personName: 'Anand Kumar',
-    personRole: 'Senior Plant Electrician & Servo Lead',
-    personTrade: 'ELECTRICIAN',
-    machineId: 'TBL-SEW-523',
-    machineName: 'Sewing Work Table / Motor Station',
-    line: 'Line 02',
-    stationNo: 'Station 04',
-    workType: 'BREAKDOWN',
-    urgency: 'CRITICAL',
-    faultCategory: 'Direct Drive Servo Error E-07',
-    faultDetails: 'Overcurrent trip on high-speed pedal acceleration.',
-    actionTaken: 'Inspected foot pedal optical encoder sensor. Cleaned lint buildup around PCB heatsink. Re-torqued motor shaft coupler and recalibrated motor parameter P-12. Tested 4,500 RPM full duty.',
-    partsUsedText: 'Pedal Optical Sensor Disc x1',
-    partsUsedCount: 1,
-    downtimeMinutes: 30,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'HIST-MEC-104',
-    ticketId: 'PPM-8821',
-    date: '2026-10-09T15:20:00.000Z',
-    dateFormatted: '09 Oct 2026, 03:20 PM',
-    personName: 'Ramesh Kumar',
-    personRole: 'Senior Master Mechanic (Lead)',
-    personTrade: 'SUPERVISOR',
-    machineId: 'MC-BTT-201',
-    machineName: 'Electronic Bartack 28-Stitch (Brother)',
-    line: 'Line 02',
-    stationNo: 'Station 08',
-    workType: 'PPM',
-    urgency: 'NORMAL',
-    faultCategory: 'Monthly Preventive PPM Overhaul',
-    faultDetails: '500-hour scheduled preventive maintenance check.',
-    actionTaken: 'Drained and replaced white mineral oil sump. Flushed lint from hook raceway. Checked solenoid needle cooler air nozzle pressure. Calibrated X-Y stepping motor home position sensors.',
-    partsUsedText: 'White Mineral ISO-VG10 Oil (250ml), Oil Sump Wick x1',
-    partsUsedCount: 2,
-    downtimeMinutes: 25,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'HIST-MEC-105',
-    ticketId: 'WO-2810',
-    date: '2026-10-09T12:15:30.000Z',
-    dateFormatted: '09 Oct 2026, 12:15 PM',
-    personName: 'Mani Kandan',
-    personRole: 'Line Mechanic',
-    personTrade: 'MECHANIC',
-    machineId: 'MC-FLK-104',
-    machineName: 'Cylinder Bed Interlock Flatlock (Pegasus W500PV)',
-    line: 'Line 03',
-    stationNo: 'Station 03',
-    workType: 'BREAKDOWN',
-    urgency: 'WARNING',
-    faultCategory: 'Thread Breakage on Top Cover Thread',
-    faultDetails: 'Top cover decorative looper thread fraying at high tension.',
-    actionTaken: 'Polished micro-burr on top spreader thread eyelet. Replaced grooved thread tension disc. Lubricated thread silicon reservoir. 100% uninterrupted stitch seam achieved.',
-    partsUsedText: 'Thread Tension Disc Pair x1',
-    partsUsedCount: 1,
-    downtimeMinutes: 22,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'HIST-MEC-106',
-    ticketId: 'WO-5512',
-    date: '2026-10-08T16:10:00.000Z',
-    dateFormatted: '08 Oct 2026, 04:10 PM',
-    personName: 'Rajesh M',
-    personRole: 'Assistant Electrician',
-    personTrade: 'ELECTRICIAN',
-    machineId: 'FAN-CEIL-301',
-    machineName: 'Heavy Industrial Overhead Ventilation Fan',
-    line: 'Finishing & Pressing',
-    stationNo: 'Bay 02',
-    workType: 'BREAKDOWN',
-    urgency: 'WARNING',
-    faultCategory: 'Motor Capacitor Hum & Low Speed',
-    faultDetails: 'Fan speed dropping in zone 2 finishing section.',
-    actionTaken: 'Tested run capacitor using digital capacitance meter. Replaced swollen 3.5µF capacitor with heavy-duty metallized poly-film type. Greased double-shielded ball bearings.',
-    partsUsedText: 'Motor Run Capacitor 3.5uF x1',
-    partsUsedCount: 1,
-    downtimeMinutes: 25,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'HIST-MEC-107',
-    ticketId: 'PPM-4491',
-    date: '2026-10-08T10:30:00.000Z',
-    dateFormatted: '08 Oct 2026, 10:30 AM',
-    personName: 'Karthik S',
-    personRole: 'Plant Maintenance Electrician',
-    personTrade: 'ELECTRICIAN',
-    machineId: 'FUS-PRS-401',
-    machineName: 'Continuous Collar / Cuff Fusing Press',
-    line: 'Finishing & Pressing',
-    stationNo: 'Station 01',
-    workType: 'PPM',
-    urgency: 'NORMAL',
-    faultCategory: 'Weekly Thermal Uniformity Calibration',
-    faultDetails: 'Standard temperature profile validation across PTFE belt.',
-    actionTaken: 'Audited 6-point infrared pyrometer temperature across Teflon belt. Calibrated PID temperature controller to 165°C ± 2°C. Verified emergency pressure release pneumatic cylinder stroke.',
-    partsUsedText: 'Thermal Grease Tube x1',
-    partsUsedCount: 1,
-    downtimeMinutes: 30,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'HIST-MEC-108',
-    ticketId: 'WO-1982',
-    date: '2026-10-07T14:40:00.000Z',
-    dateFormatted: '07 Oct 2026, 02:40 PM',
-    personName: 'Murugan K',
-    personRole: 'Workshop Overhaul Mechanic',
-    personTrade: 'MECHANIC',
-    machineId: 'MC-BTH-103',
-    machineName: 'Electronic Buttonhole Indexer (Brother HE-800)',
-    line: 'Line 02',
-    stationNo: 'Station 07',
-    workType: 'BREAKDOWN',
-    urgency: 'CRITICAL',
-    faultCategory: 'Cloth Cutting Knife Jammed Down',
-    faultDetails: 'Anvil solenoid stuck down after cut stroke.',
-    actionTaken: 'Disassembled knife driving link mechanism. Cleared compressed lint particles behind return spring. Replaced cracked impact anvil block. Performed 30 cut cycles test.',
-    partsUsedText: 'Knife Impact Anvil Block x1',
-    partsUsedCount: 1,
-    downtimeMinutes: 40,
-    status: 'COMPLETED',
-  },
-];
-
 export function PersonnelWorkHistoryTable() {
   const { user, role } = useAuth();
-  const currentUserName = user?.name || 'Technician';
+  const currentUserName =
+    user?.name ||
+    (role === 'SENIOR_ELECTRICIAN'
+      ? 'Anand Kumar'
+      : role === 'ELECTRICIAN'
+      ? 'Rajesh M'
+      : 'Ramesh Kumar');
 
   // Live state
   const [repairs, setRepairs] = useState<RepairTicket[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [parts, setParts] = useState<SparePart[]>([]);
 
-  // Filter & Search states
+  // Filter & Search states - defaults to 'MY' so each technician sees their own history first
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPerson, setSelectedPerson] = useState<string>('ALL'); // 'ALL' | 'MY' | specific name
+  const [selectedPerson, setSelectedPerson] = useState<string>('MY');
   const [selectedWorkType, setSelectedWorkType] = useState<'ALL' | 'BREAKDOWN' | 'PPM'>('ALL');
   const [selectedDateRange, setSelectedDateRange] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
 
@@ -328,12 +154,7 @@ export function PersonnelWorkHistoryTable() {
         };
       });
 
-    // Merge: live rows first, then seed rows that aren't duplicate tickets
-    const existingTicketIds = new Set(liveCompletedRows.map((r) => r.ticketId));
-    const uniqueSeedRows = SEED_PERSONNEL_WORK_LOGS.filter((s) => !existingTicketIds.has(s.ticketId));
-
-    const combined = [...liveCompletedRows, ...uniqueSeedRows];
-    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return liveCompletedRows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [repairs, machines]);
 
   // Unique list of people who have logged actions
@@ -416,7 +237,7 @@ export function PersonnelWorkHistoryTable() {
           .join(' ')
           .toLowerCase();
 
-        const allTokensMatch = tokens.every((token) => rowHaystack.includes(token));
+        const allTokensMatch = tokens.every((token: string) => rowHaystack.includes(token));
         if (!allTokensMatch) {
           return false;
         }
@@ -504,24 +325,63 @@ export function PersonnelWorkHistoryTable() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Work History &amp; Actions Ledger
+                {selectedPerson === 'MY'
+                  ? 'My Work History Ledger'
+                  : selectedPerson === 'ALL'
+                  ? 'Whole Factory Personnel Ledger'
+                  : `${selectedPerson}'s Work Ledger`}
               </h1>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                All Factory Personnel
+                {selectedPerson === 'MY'
+                  ? `👤 ${currentUserName}`
+                  : selectedPerson === 'ALL'
+                  ? '👥 All Factory Personnel'
+                  : `🔧 ${selectedPerson}`}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Table log showing what each person did • Repairs completed, overhauls executed &amp; parts consumed
+              {selectedPerson === 'MY'
+                ? `Work orders, repairs completed, and maintenance actions performed by you (${currentUserName})`
+                : 'Table log showing what each person did • Repairs completed, overhauls executed & parts consumed'}
             </p>
           </div>
         </div>
 
-        {/* Action Buttons: Export CSV & Print */}
+        {/* Toggle between My History & Whole Crew + Action Buttons */}
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap no-print">
+          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setSelectedPerson('MY')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                selectedPerson === 'MY'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+              title="Show only your completed tasks and repairs"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>My History</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedPerson('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                selectedPerson === 'ALL'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+              title="View entire factory maintenance crew logs"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Whole Crew</span>
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={handleExportCSV}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
             title="Download CSV spreadsheet of current table"
           >
             <Download className="w-3.5 h-3.5" />
@@ -640,8 +500,8 @@ export function PersonnelWorkHistoryTable() {
                   onChange={(e) => setSelectedPerson(e.target.value)}
                   className="text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
                 >
-                  <option value="ALL">All Persons (Whole Crew)</option>
                   <option value="MY">Assigned to Me ({currentUserName.split(' ')[0]})</option>
+                  <option value="ALL">All Persons (Whole Crew)</option>
                   <optgroup label="Mechanics &amp; Electricians">
                     {uniquePersonsList.map((p) => (
                       <option key={p} value={p}>
@@ -688,12 +548,12 @@ export function PersonnelWorkHistoryTable() {
           </div>
 
           {/* Active Filters Pill Bar */}
-          {(selectedPerson !== 'ALL' || selectedWorkType !== 'ALL' || selectedDateRange !== 'ALL' || searchQuery) && (
+          {(selectedPerson !== 'MY' || selectedWorkType !== 'ALL' || selectedDateRange !== 'ALL' || searchQuery) && (
             <div className="flex items-center gap-2 pt-1.5 border-t border-slate-200/70 text-xs text-slate-500 flex-wrap">
               <span className="text-[11px] font-semibold text-slate-600">Active Filters:</span>
-              {selectedPerson !== 'ALL' && (
+              {selectedPerson !== 'MY' && (
                 <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px]">
-                  Person: {selectedPerson === 'MY' ? currentUserName : selectedPerson}
+                  Person: {selectedPerson === 'ALL' ? 'Whole Crew' : selectedPerson}
                 </span>
               )}
               {selectedWorkType !== 'ALL' && (
@@ -714,7 +574,7 @@ export function PersonnelWorkHistoryTable() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedPerson('ALL');
+                  setSelectedPerson('MY');
                   setSelectedWorkType('ALL');
                   setSelectedDateRange('ALL');
                   setSearchQuery('');

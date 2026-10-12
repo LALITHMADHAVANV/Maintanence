@@ -375,7 +375,7 @@ export function TeamScheduleModal({
                   Total Technicians
                 </div>
                 <div className="text-xl font-extrabold text-slate-900 mt-0.5">
-                  5 On Floor
+                  {relevantTechnicians.length} On Floor
                 </div>
               </div>
               <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
