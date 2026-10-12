@@ -37,8 +37,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, logout } = useAuth();
-  const { hideNav } = useNav();
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const { hideNav, isMobileOpen, setIsMobileOpen, closeMobileNav } = useNav();
 
   const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
@@ -84,8 +83,8 @@ export function Sidebar() {
 
   // Close mobile sidebar on route change
   useEffect(() => {
-    setIsMobileOpen(false);
-  }, [pathname]);
+    closeMobileNav();
+  }, [pathname, closeMobileNav]);
 
   interface NavItem {
     label: string;
@@ -311,7 +310,7 @@ export function Sidebar() {
 
         {/* Mobile close button */}
         <button
-          onClick={() => setIsMobileOpen(false)}
+          onClick={closeMobileNav}
           className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
         >
           <X className="w-5 h-5" />
@@ -406,47 +405,14 @@ export function Sidebar() {
     </div>
   );
 
-  if (!user) return null;
-
   return (
     <>
-      {/* Mobile Top App Bar (Only visible on small screens) */}
-      <div className="md:hidden bg-white text-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-200 sticky top-0 z-40">
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setIsMobileOpen(true)}
-            className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 transition cursor-pointer"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-1.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-xs text-white">
-              <Wrench className="w-3.5 h-3.5" />
-            </div>
-            <span className="font-bold text-sm tracking-tight text-slate-900">Maintenance Module</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${getRoleBadgeColor()}`}>
-            {role}
-          </span>
-          <button
-            onClick={handleSignOut}
-            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-            title="Sign Out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
       {/* Mobile Sidebar Backdrop & Drawer */}
       {isMobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
-            onClick={() => setIsMobileOpen(false)}
+            onClick={closeMobileNav}
           />
           <div className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10 bg-white">
             {sidebarContent}

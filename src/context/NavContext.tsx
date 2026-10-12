@@ -7,6 +7,10 @@ interface NavContextType {
   toggleNav: () => void;
   hideNav: () => void;
   showNav: () => void;
+  isMobileOpen: boolean;
+  setIsMobileOpen: (open: boolean) => void;
+  openMobileNav: () => void;
+  closeMobileNav: () => void;
 }
 
 const NavContext = createContext<NavContextType>({
@@ -14,10 +18,15 @@ const NavContext = createContext<NavContextType>({
   toggleNav: () => {},
   hideNav: () => {},
   showNav: () => {},
+  isMobileOpen: false,
+  setIsMobileOpen: () => {},
+  openMobileNav: () => {},
+  closeMobileNav: () => {},
 });
 
 export function NavProvider({ children }: { children: React.ReactNode }) {
   const [isNavHidden, setIsNavHidden] = useState<boolean>(false);
+  const [isMobileOpen, setIsMobileOpen] = useState<boolean>(false);
 
   // Restore user preference from localStorage if available
   useEffect(() => {
@@ -55,8 +64,22 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
+  const openMobileNav = () => setIsMobileOpen(true);
+  const closeMobileNav = () => setIsMobileOpen(false);
+
   return (
-    <NavContext.Provider value={{ isNavHidden, toggleNav, hideNav, showNav }}>
+    <NavContext.Provider
+      value={{
+        isNavHidden,
+        toggleNav,
+        hideNav,
+        showNav,
+        isMobileOpen,
+        setIsMobileOpen,
+        openMobileNav,
+        closeMobileNav,
+      }}
+    >
       {children}
     </NavContext.Provider>
   );
