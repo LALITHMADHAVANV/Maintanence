@@ -343,10 +343,10 @@ export function MaintenanceMilestonesAndTasks({
           daysLeftText: isCritical
             ? 'Critical Action Required'
             : t.status === 'IN_PROGRESS'
-            ? 'In Progress Today'
-            : isReportedToday
-            ? 'New Today'
-            : 'Pending Action',
+              ? 'In Progress Today'
+              : isReportedToday
+                ? 'New Today'
+                : 'Pending Action',
           isOverdue: isCritical,
           currentStage: t.faultCategory || t.faultDetails || 'Breakdown Inspection',
           subStage: t.status === 'IN_PROGRESS' ? 'In Progress' : t.status === 'ASSIGNED' ? 'Assigned' : 'Reported',
@@ -579,11 +579,11 @@ export function MaintenanceMilestonesAndTasks({
     // If selected date is today, also include active critical/in-progress repairs that need attention today
     const additionalRepairs = isToday
       ? repairs.filter(
-          (r) =>
-            r.status !== 'COMPLETED' &&
-            (r.urgency === 'CRITICAL' || r.status === 'IN_PROGRESS') &&
-            !dateRepairs.some((dr) => dr.id === r.id)
-        )
+        (r) =>
+          r.status !== 'COMPLETED' &&
+          (r.urgency === 'CRITICAL' || r.status === 'IN_PROGRESS') &&
+          !dateRepairs.some((dr) => dr.id === r.id)
+      )
       : [];
 
     const allDateRepairs = [...dateRepairs, ...additionalRepairs];
@@ -626,8 +626,8 @@ export function MaintenanceMilestonesAndTasks({
         statusBadgeStyle: isCrit
           ? 'bg-rose-50 text-rose-800 border border-rose-200'
           : r.status === 'IN_PROGRESS'
-          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-          : 'bg-amber-50 text-amber-800 border border-amber-200',
+            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+            : 'bg-amber-50 text-amber-800 border border-amber-200',
         attendedBy: r.attendedBy || 'Unassigned',
         ticketObj: r,
       };
@@ -726,11 +726,10 @@ export function MaintenanceMilestonesAndTasks({
               <button
                 type="button"
                 onClick={() => setActiveTab('schedules')}
-                className={`${compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'} rounded-full transition cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'schedules'
+                className={`${compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'} rounded-full transition cursor-pointer flex items-center gap-1.5 ${activeTab === 'schedules'
                     ? 'border border-blue-400/90 bg-blue-50/40 text-blue-700 font-bold shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800 font-semibold'
-                }`}
+                  }`}
               >
                 <Truck className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-blue-600`} />
                 <span>Deliveries ({isSenior ? 124 : deliveriesList.length})</span>
@@ -740,11 +739,10 @@ export function MaintenanceMilestonesAndTasks({
               <button
                 type="button"
                 onClick={() => setActiveTab('month_grid')}
-                className={`${compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'} rounded-full transition cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'month_grid'
+                className={`${compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs'} rounded-full transition cursor-pointer flex items-center gap-1.5 ${activeTab === 'month_grid'
                     ? 'border border-indigo-400/90 bg-indigo-50/40 text-indigo-700 font-bold shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800 font-semibold'
-                }`}
+                  }`}
               >
                 <CalendarDays className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-slate-400`} />
                 <span>Month Grid</span>
@@ -805,9 +803,8 @@ export function MaintenanceMilestonesAndTasks({
                         <span>Ship: {item.dueDateFormatted}</span>
                       </div>
                       <div
-                        className={`${compact ? 'text-[9px]' : 'text-[10px]'} mt-0.5 font-semibold ${
-                          item.isOverdue ? 'text-rose-600' : 'text-amber-700'
-                        }`}
+                        className={`${compact ? 'text-[9px]' : 'text-[10px]'} mt-0.5 font-semibold ${item.isOverdue ? 'text-rose-600' : 'text-amber-700'
+                          }`}
                       >
                         {item.daysLeftText}
                       </div>
@@ -936,30 +933,27 @@ export function MaintenanceMilestonesAndTasks({
                         }
                       }
                     }}
-                    className={`h-[54px] sm:h-[60px] rounded-xl p-1.5 flex flex-col justify-between text-left transition cursor-pointer relative ${
-                      !cell.isCurrentMonth
+                    className={`h-[54px] sm:h-[60px] rounded-xl p-1.5 flex flex-col justify-between text-left transition cursor-pointer relative ${!cell.isCurrentMonth
                         ? 'border border-slate-100 bg-white text-slate-300'
                         : isToday || isSelected
-                        ? 'border border-indigo-500 bg-[#F0EFFE] text-slate-900 shadow-2xs'
-                        : hasWorks
-                        ? 'border border-indigo-200/80 bg-indigo-50/30 hover:border-indigo-400 text-slate-900'
-                        : 'border border-slate-200/70 bg-white hover:border-indigo-300 text-slate-700'
-                    } ${
-                      isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''
-                    }`}
+                          ? 'border border-indigo-500 bg-[#F0EFFE] text-slate-900 shadow-2xs'
+                          : hasWorks
+                            ? 'border border-indigo-200/80 bg-indigo-50/30 hover:border-indigo-400 text-slate-900'
+                            : 'border border-slate-200/70 bg-white hover:border-indigo-300 text-slate-700'
+                      } ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''
+                      }`}
                   >
                     {/* Top Row: Day Number and Today Purple Dot */}
                     <div className="flex items-center justify-between w-full">
                       <span
-                        className={`text-xs font-bold ${
-                          !cell.isCurrentMonth
+                        className={`text-xs font-bold ${!cell.isCurrentMonth
                             ? 'text-slate-300'
                             : isToday
-                            ? 'text-indigo-700 font-extrabold'
-                            : isSelected || hasWorks
-                            ? 'text-slate-900 font-extrabold'
-                            : 'text-slate-700'
-                        }`}
+                              ? 'text-indigo-700 font-extrabold'
+                              : isSelected || hasWorks
+                                ? 'text-slate-900 font-extrabold'
+                                : 'text-slate-700'
+                          }`}
                       >
                         {cell.dayNumber}
                       </span>
@@ -972,11 +966,10 @@ export function MaintenanceMilestonesAndTasks({
                     {hasWorks && (
                       <div className="w-full">
                         <span
-                          className={`inline-flex items-center justify-center gap-1 w-full rounded-md py-0.5 px-1 text-[10px] font-black tracking-tight shadow-2xs ${
-                            cell.hasCritical
+                          className={`inline-flex items-center justify-center gap-1 w-full rounded-md py-0.5 px-1 text-[10px] font-black tracking-tight shadow-2xs ${cell.hasCritical
                               ? 'bg-rose-600 text-white'
                               : 'bg-indigo-600 text-white'
-                          }`}
+                            }`}
                         >
                           <Wrench className="w-2.5 h-2.5" />
                           <span>{cell.workCount} {cell.workCount === 1 ? 'Work' : 'Works'}</span>
@@ -1019,9 +1012,8 @@ export function MaintenanceMilestonesAndTasks({
                     {scheduledWorksForSelectedDate.length} Works
                   </span>
                   <div
-                    className={`p-1 rounded-md text-slate-400 transition-transform duration-200 ${
-                      isDateDropdownOpen ? 'rotate-180' : ''
-                    }`}
+                    className={`p-1 rounded-md text-slate-400 transition-transform duration-200 ${isDateDropdownOpen ? 'rotate-180' : ''
+                      }`}
                   >
                     <ChevronDown className="w-4 h-4" />
                   </div>
@@ -1300,13 +1292,12 @@ export function MaintenanceMilestonesAndTasks({
                     </div>
                   </div>
                   <span
-                    className={`${compact ? 'px-2 py-0.2 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'} rounded-full font-bold border shrink-0 ${
-                      m.status === 'Present'
+                    className={`${compact ? 'px-2 py-0.2 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'} rounded-full font-bold border shrink-0 ${m.status === 'Present'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : m.status === 'Absent'
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}
                   >
                     {m.status}
                   </span>

@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
+import { QRCodeSVG } from 'qrcode.react';
+import { subscribeMachines } from '@/lib/services/cmmsService';
+import type { Machine } from '@/types/cmms';
 import {
   Search,
   Columns,
@@ -36,6 +39,7 @@ import {
   ExternalLink,
   MapPin,
   ArrowRightLeft,
+  QrCode,
 } from 'lucide-react';
 
 export type AssetCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
@@ -100,6 +104,8 @@ export interface AssetHistoryRecord {
   purchaseDate: string;
   purchasePrice: number;
   totalMaintenanceCost: number;
+  totalPpmCost?: number;
+  totalRepairCost?: number;
   age: string;
   downtimeMins: number;
   stages: Record<string, StageDetail>;
@@ -107,6 +113,24 @@ export interface AssetHistoryRecord {
   ppmChecklist: PPMCheckItem[];
   locationHistory?: LocationHistoryEntry[];
 }
+
+export const getAssetPpmCost = (asset: AssetHistoryRecord): number => {
+  if (typeof asset.totalPpmCost === 'number') return asset.totalPpmCost;
+  const fromLogs = asset.serviceLogs
+    .filter((l) => l.faultCategory.toLowerCase().includes('ppm') || l.faultCategory.toLowerCase().includes('lubrication') || l.faultCategory.toLowerCase().includes('routine'))
+    .reduce((sum, l) => sum + (l.costIncurred || 0), 0);
+  return fromLogs > 0 ? fromLogs : Math.round(asset.totalMaintenanceCost * 0.35);
+};
+
+export const getAssetRepairCost = (asset: AssetHistoryRecord): number => {
+  if (typeof asset.totalRepairCost === 'number') return asset.totalRepairCost;
+  const fromLogs = asset.serviceLogs
+    .filter((l) => !l.faultCategory.toLowerCase().includes('ppm') && !l.faultCategory.toLowerCase().includes('routine'))
+    .reduce((sum, l) => sum + (l.costIncurred || 0), 0);
+  if (fromLogs > 0) return fromLogs;
+  const ppm = getAssetPpmCost(asset);
+  return Math.max(0, asset.totalMaintenanceCost - ppm);
+};
 
 export const getAssetLocationHistory = (asset: AssetHistoryRecord): LocationHistoryEntry[] => {
   if (asset.locationHistory && asset.locationHistory.length > 0) {
@@ -1287,10 +1311,22 @@ export default function HistoryPage() {
   const isAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER';
   const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('ASSETS');
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
+  const [liveMachines, setLiveMachines] = useState<Machine[]>([]);
   const [statusFilter] = useState<'active' | 'completed' | 'all'>('all');
   const [q, setQ] = useState('');
   const [showPoc, setShowPoc] = useState<boolean>(true);
   const [collapsedCategories, setCollapsedCategories] = useState<string[]>([]);
+
+  // QR Modal Selection State
+  const [selectedQrAsset, setSelectedQrAsset] = useState<AssetHistoryRecord | null>(null);
+
+  // Subscribe to live machines from DB/storage
+  useEffect(() => {
+    const unsub = subscribeMachines((machines) => {
+      setLiveMachines(machines);
+    });
+    return () => unsub();
+  }, []);
 
   // Category & Date Range Filter for Export & Matrix
   const [exportCategory, setExportCategory] = useState<'ALL' | AssetCategory>('ALL');
@@ -1314,9 +1350,55 @@ export default function HistoryPage() {
     }
   };
 
+  // Combined items including any newly registered live machines
+  const allItems = useMemo(() => {
+    const initialIds = new Set(items.map((i) => i.assetId.toLowerCase()));
+    const extraLive: AssetHistoryRecord[] = liveMachines
+      .filter((m) => !initialIds.has(m.id.toLowerCase()))
+      .map((m) => {
+        const cost = m.cost || 75000;
+        return {
+          _id: `live-${m.id}`,
+          assetId: m.id,
+          serialNo: `SN-${m.brand ? m.brand.slice(0, 2).toUpperCase() : 'MC'}-${m.id.replace(/[^0-9]/g, '') || '88102'}`,
+          name: m.name || `${m.brand || ''} ${m.typeName || m.type || 'Machine'}`.trim(),
+          model: m.model || 'Standard',
+          brand: m.brand || 'OEM',
+          category: (m.category as any) || 'MACHINE',
+          categoryLabel: m.category === 'FURNITURE' ? 'Furniture' : m.category === 'UTILITY' ? 'Utility' : m.category === 'VEHICLE' ? 'Vehicle' : 'Machine',
+          unit: `${m.currentLine}${m.stationNo ? ` • ${m.stationNo}` : ''}`,
+          riskLevel: (m.status === 'BREAKDOWN' ? 'CRITICAL' : m.totalDowntimeMinutes > 120 ? 'HIGH' : m.totalDowntimeMinutes > 40 ? 'MEDIUM' : 'LOW') as any,
+          status: m.status === 'BREAKDOWN' ? 'active' : 'completed',
+          purchaseDate: m.purchaseDate || '2024-01-15',
+          purchasePrice: cost,
+          totalMaintenanceCost: Math.round(cost * 0.16),
+          totalPpmCost: Math.round(cost * 0.05),
+          totalRepairCost: Math.round(cost * 0.11),
+          age: `${m.ageYears || 2.1} yrs`,
+          downtimeMins: m.totalDowntimeMinutes || 0,
+          stages: {},
+          serviceLogs: [],
+          ppmChecklist: [],
+          locationHistory: [
+            {
+              transferId: `TRF-${m.id}-01`,
+              date: m.lastMovedAt ? m.lastMovedAt.slice(0, 10) : '2026-08-15',
+              fromLocation: `${m.previousLine || 'Maintenance Workshop'}${m.previousStation ? ` (${m.previousStation})` : ''}`,
+              toLocation: `${m.currentLine}${m.stationNo ? ` (${m.stationNo})` : ''}`,
+              reason: m.lastMovedReason || 'Relocation & line balancing',
+              movedBy: m.lastMovedBy || 'Line Supervisor',
+              status: 'CURRENT',
+            },
+          ],
+        };
+      });
+
+    return [...items, ...extraLive];
+  }, [items, liveMachines]);
+
   // Filtered items based on active/completed status, category, and search query
   const filtered = useMemo(() => {
-    return items.filter((item) => {
+    return allItems.filter((item) => {
       // Category filter
       if (exportCategory !== 'ALL' && item.category !== exportCategory) {
         return false;
@@ -1336,14 +1418,18 @@ export default function HistoryPage() {
         const matchesModel = item.model.toLowerCase().includes(query);
         const matchesUnit = item.unit.toLowerCase().includes(query);
         const matchesSerial = item.serialNo.toLowerCase().includes(query);
-        if (!matchesId && !matchesName && !matchesBrand && !matchesModel && !matchesUnit && !matchesSerial) {
+        const loc = getAssetLocationHistory(item);
+        const curLoc = loc.find((l) => l.status === 'CURRENT')?.toLocation || '';
+        const prevLoc = loc.find((l) => l.status === 'CURRENT')?.fromLocation || '';
+        const matchesLoc = curLoc.toLowerCase().includes(query) || prevLoc.toLowerCase().includes(query);
+        if (!matchesId && !matchesName && !matchesBrand && !matchesModel && !matchesUnit && !matchesSerial && !matchesLoc) {
           return false;
         }
       }
 
       return true;
     });
-  }, [items, exportCategory, statusFilter, q]);
+  }, [allItems, exportCategory, statusFilter, q]);
 
   // Display categories (filtered by category selector if specific category chosen)
   const activeCategoriesMeta = useMemo(() => {
@@ -1383,8 +1469,8 @@ export default function HistoryPage() {
   const handleExportFilteredData = () => {
     // 1. Target assets based on category
     const targetAssets = exportCategory === 'ALL'
-      ? items
-      : items.filter((i) => i.category === exportCategory);
+      ? allItems
+      : allItems.filter((i) => i.category === exportCategory);
 
     const headers = [
       'Asset ID',
@@ -2377,14 +2463,16 @@ export default function HistoryPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                        {cat.title} — Time &amp; Action Matrix
+                        {cat.id === 'MACHINE' ? 'Machine History' : `${cat.title} — Time & Action Matrix`}
                       </h2>
                       <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
                         {catItems.length} units
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500">
-                      Click any asset name to open its full service history dossier
+                      {cat.id === 'MACHINE'
+                        ? 'Asset ID, name, unit/station, breakdown risk, relocation tracking, lifecycle costs & QR tags'
+                        : 'Click any asset name to open its full service history dossier'}
                     </p>
                   </div>
                 </div>
@@ -2428,224 +2516,504 @@ export default function HistoryPage() {
               {!isCollapsed && (
                 <div
                   className="relative overflow-x-auto overflow-y-auto scrollbar-thin"
-                  style={{ maxHeight: '420px' }}
+                  style={{ maxHeight: '450px' }}
                 >
-                  <table className="w-full text-left border-collapse text-xs">
-                    {/* Sticky Table Header */}
-                    <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-2xs">
-                      {/* Row 1 Header */}
-                      <tr>
-                        <th
-                          rowSpan={2}
-                          className="sticky left-0 z-40 bg-slate-100 px-3 py-2.5 text-center w-10 border-r border-slate-200"
-                        >
-                          <input type="checkbox" aria-label="Select all" className="rounded" />
-                        </th>
-                        <th
-                          rowSpan={2}
-                          className="sticky left-10 z-40 bg-slate-100 px-3.5 py-2.5 min-w-[130px] border-r border-slate-200"
-                        >
-                          Asset ID
-                        </th>
-                        <th
-                          rowSpan={2}
-                          className="sticky left-[170px] z-40 bg-slate-100 px-3.5 py-2.5 min-w-[220px] border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]"
-                        >
-                          Name &amp; Model (Click to Open)
-                        </th>
-                        <th
-                          rowSpan={2}
-                          className="px-3 py-2.5 min-w-[140px] text-center border-r border-slate-200"
-                        >
-                          Unit / Station
-                        </th>
-                        <th
-                          rowSpan={2}
-                          className="px-3 py-2.5 min-w-[120px] text-center border-r border-slate-200"
-                        >
-                          Breakdown Risk
-                        </th>
-                        {columns.map((c) => (
-                          <th
-                            key={c}
-                            colSpan={2}
-                            className="px-3 py-2 text-center bg-slate-200/80 border-r border-slate-300 font-bold text-slate-800 text-[11px]"
-                          >
-                            {c}
+                  {cat.id === 'MACHINE' ? (
+                    /* DEDICATED MACHINE HISTORY TABLE */
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-2xs">
+                        <tr>
+                          <th className="sticky left-0 z-40 bg-slate-100 px-3 py-3 text-center w-10 border-r border-slate-200">
+                            <input type="checkbox" aria-label="Select all" className="rounded" />
                           </th>
-                        ))}
-                      </tr>
+                          <th className="sticky left-10 z-40 bg-slate-100 px-3.5 py-3 min-w-[130px] border-r border-slate-200">
+                            Asset ID
+                          </th>
+                          <th className="sticky left-[170px] z-40 bg-slate-100 px-3.5 py-3 min-w-[210px] border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
+                            Name
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[130px] text-center border-r border-slate-200">
+                            Unit / Station
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[120px] text-center border-r border-slate-200">
+                            Breakdown Risk
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
+                            Current Relocation
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
+                            Relocation From
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
+                            Purchase Cost
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
+                            Total PPM Cost
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[120px] text-right border-r border-slate-200">
+                            Total Repair Cost
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[125px] text-center border-r border-slate-200">
+                            Total Repair Time
+                          </th>
+                          <th className="px-3.5 py-3 min-w-[120px] text-center">
+                            QR of the Machine
+                          </th>
+                        </tr>
+                      </thead>
 
-                      {/* Row 2 Sub-Headers: Planned vs Actual */}
-                      <tr className="bg-slate-100/90 border-t border-slate-200">
-                        {columns.map((c) => (
-                          <React.Fragment key={c}>
-                            <th className="px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-500 border-r border-slate-200 min-w-[95px] bg-slate-50">
-                              Planned
-                            </th>
-                            <th className="px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-500 border-r border-slate-300 min-w-[95px] bg-slate-50">
-                              Actual
-                            </th>
-                          </React.Fragment>
-                        ))}
-                      </tr>
-                    </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {catItems.map((o) => {
+                          const locHistory = getAssetLocationHistory(o);
+                          const currentEntry = locHistory.find((l) => l.status === 'CURRENT') || locHistory[0];
+                          const currentReloc = currentEntry ? currentEntry.toLocation : o.unit;
+                          const fromReloc = currentEntry ? currentEntry.fromLocation : 'Maintenance Workshop';
+                          const ppmCost = getAssetPpmCost(o);
+                          const repairCost = getAssetRepairCost(o);
 
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {catItems.map((o) => (
-                        <tr
-                          key={o._id}
-                          className="hover:bg-slate-50/90 transition-colors duration-100 group"
-                        >
-                          {/* Checkbox */}
-                          <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 px-3 py-2.5 text-center border-r border-slate-200">
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${o.assetId}`}
-                              className="rounded"
-                            />
-                          </td>
-
-                          {/* Asset ID */}
-                          <td
-                            onClick={() => setSelectedAssetForHistory(o)}
-                            className="sticky left-10 z-10 bg-white group-hover:bg-indigo-50/40 px-3.5 py-2.5 border-r border-slate-200 cursor-pointer"
-                            title="Click to view complete history"
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
-                                {o.assetId}
-                              </span>
-                            </div>
-                            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                              {o.serialNo}
-                            </div>
-                          </td>
-
-                          {/* Name & Model: TOUCHING THIS OPENS THE COMPLETE HISTORY PAGE */}
-                          <td
-                            onClick={() => setSelectedAssetForHistory(o)}
-                            className="sticky left-[170px] z-10 bg-white group-hover:bg-indigo-50/60 px-3.5 py-2.5 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] cursor-pointer"
-                            title="Touch to open all history of this item"
-                          >
-                            <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs flex items-center justify-between gap-1">
-                              <span className="truncate max-w-[180px]">{o.name}</span>
-                              <span className="text-[10px] font-semibold text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 flex items-center gap-0.5">
-                                <span>History</span>
-                                <ExternalLink className="w-2.5 h-2.5" />
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                              {o.brand} • {o.model}
-                            </div>
-                          </td>
-
-                          {/* Unit / Location */}
-                          <td className="px-3 py-2.5 text-center text-[11px] text-slate-700 font-medium border-r border-slate-200">
-                            {o.unit}
-                          </td>
-
-                          {/* Risk Level */}
-                          <td className="px-3 py-2.5 text-center border-r border-slate-200">
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${riskBadgeClass(
-                                o.riskLevel
-                              )}`}
+                          return (
+                            <tr
+                              key={o._id}
+                              className="hover:bg-slate-50/90 transition-colors duration-100 group"
                             >
-                              {o.riskLevel} Risk
-                            </span>
-                          </td>
+                              {/* Checkbox */}
+                              <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 px-3 py-2.5 text-center border-r border-slate-200">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${o.assetId}`}
+                                  className="rounded"
+                                />
+                              </td>
 
-                          {/* Stages Matrix */}
-                          {columns.map((c) => {
-                            const s = o.stages[c];
-                            if (!s) {
+                              {/* Asset ID */}
+                              <td
+                                onClick={() => setSelectedAssetForHistory(o)}
+                                className="sticky left-10 z-10 bg-white group-hover:bg-indigo-50/40 px-3.5 py-2.5 border-r border-slate-200 cursor-pointer"
+                                title="Click to view complete history dossier"
+                              >
+                                <div className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
+                                  {o.assetId}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                  {o.serialNo}
+                                </div>
+                              </td>
+
+                              {/* Name */}
+                              <td
+                                onClick={() => setSelectedAssetForHistory(o)}
+                                className="sticky left-[170px] z-10 bg-white group-hover:bg-indigo-50/60 px-3.5 py-2.5 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] cursor-pointer"
+                                title="Touch to open complete history dossier"
+                              >
+                                <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs flex items-center justify-between gap-1">
+                                  <span className="truncate max-w-[170px]">{o.name}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                </div>
+                                <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                  {o.brand} • {o.model}
+                                </div>
+                              </td>
+
+                              {/* Unit / Station */}
+                              <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold">
+                                  {o.unit}
+                                </span>
+                              </td>
+
+                              {/* Breakdown Risk */}
+                              <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
+                                <span
+                                  className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase border ${riskBadgeClass(
+                                    o.riskLevel
+                                  )}`}
+                                >
+                                  {o.riskLevel} Risk
+                                </span>
+                              </td>
+
+                              {/* Current Relocation */}
+                              <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                                  <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span>{currentReloc}</span>
+                                </div>
+                                <div className="text-[10px] text-emerald-700 font-medium pl-5 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  <span>Active Placement</span>
+                                </div>
+                              </td>
+
+                              {/* Relocation From */}
+                              <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                  <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                  <span>{fromReloc}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 pl-5 truncate max-w-[150px]" title={currentEntry?.reason}>
+                                  {currentEntry?.reason || 'Previous Placement'}
+                                </div>
+                              </td>
+
+                              {/* Purchase Cost */}
+                              <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                                <div>₹{o.purchasePrice.toLocaleString('en-IN')}</div>
+                                <div className="text-[10px] font-sans font-normal text-slate-400">Acquisition</div>
+                              </td>
+
+                              {/* Total PPM Cost */}
+                              <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
+                                <div className="bg-indigo-50/70 text-indigo-700 px-2 py-0.5 rounded inline-block">
+                                  ₹{ppmCost.toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-[10px] font-sans font-normal text-indigo-500/80">Preventive</div>
+                              </td>
+
+                              {/* Total Repair Cost */}
+                              <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-rose-700 border-r border-slate-200 whitespace-nowrap">
+                                <div className="bg-rose-50/70 text-rose-700 px-2 py-0.5 rounded inline-block">
+                                  ₹{repairCost.toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-[10px] font-sans font-normal text-rose-500/80">
+                                  {o.serviceLogs.length} ticket{o.serviceLogs.length > 1 ? 's' : ''}
+                                </div>
+                              </td>
+
+                              {/* Total Repair Time */}
+                              <td className="px-3.5 py-2.5 text-center font-mono text-xs font-bold text-slate-800 border-r border-slate-200 whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1 text-slate-800">
+                                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                  <span>{o.downtimeMins}m</span>
+                                </div>
+                                {o.downtimeMins >= 60 && (
+                                  <div className="text-[10px] font-sans font-normal text-slate-400">
+                                    ({Math.floor(o.downtimeMins / 60)}h {o.downtimeMins % 60}m)
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* QR of the Machine */}
+                              <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedQrAsset(o)}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer shadow-2xs group-hover:border-indigo-300"
+                                  title="View & Print Machine QR Code"
+                                >
+                                  <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>View QR</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                        {catItems.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={12}
+                              className="p-12 text-center text-slate-400 text-xs font-medium"
+                            >
+                              No records in Machine History matching your current filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="w-full text-left border-collapse text-xs">
+                      {/* Sticky Table Header */}
+                      <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-2xs">
+                        {/* Row 1 Header */}
+                        <tr>
+                          <th
+                            rowSpan={2}
+                            className="sticky left-0 z-40 bg-slate-100 px-3 py-2.5 text-center w-10 border-r border-slate-200"
+                          >
+                            <input type="checkbox" aria-label="Select all" className="rounded" />
+                          </th>
+                          <th
+                            rowSpan={2}
+                            className="sticky left-10 z-40 bg-slate-100 px-3.5 py-2.5 min-w-[130px] border-r border-slate-200"
+                          >
+                            Asset ID
+                          </th>
+                          <th
+                            rowSpan={2}
+                            className="sticky left-[170px] z-40 bg-slate-100 px-3.5 py-2.5 min-w-[220px] border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]"
+                          >
+                            Name &amp; Model (Click to Open)
+                          </th>
+                          <th
+                            rowSpan={2}
+                            className="px-3 py-2.5 min-w-[140px] text-center border-r border-slate-200"
+                          >
+                            Unit / Station
+                          </th>
+                          <th
+                            rowSpan={2}
+                            className="px-3 py-2.5 min-w-[120px] text-center border-r border-slate-200"
+                          >
+                            Breakdown Risk
+                          </th>
+                          {columns.map((c) => (
+                            <th
+                              key={c}
+                              colSpan={2}
+                              className="px-3 py-2 text-center bg-slate-200/80 border-r border-slate-300 font-bold text-slate-800 text-[11px]"
+                            >
+                              {c}
+                            </th>
+                          ))}
+                        </tr>
+
+                        {/* Row 2 Sub-Headers: Planned vs Actual */}
+                        <tr className="bg-slate-100/90 border-t border-slate-200">
+                          {columns.map((c) => (
+                            <React.Fragment key={c}>
+                              <th className="px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-500 border-r border-slate-200 min-w-[95px] bg-slate-50">
+                                Planned
+                              </th>
+                              <th className="px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-500 border-r border-slate-300 min-w-[95px] bg-slate-50">
+                                Actual
+                              </th>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {catItems.map((o) => (
+                          <tr
+                            key={o._id}
+                            className="hover:bg-slate-50/90 transition-colors duration-100 group"
+                          >
+                            {/* Checkbox */}
+                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 px-3 py-2.5 text-center border-r border-slate-200">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${o.assetId}`}
+                                className="rounded"
+                              />
+                            </td>
+
+                            {/* Asset ID */}
+                            <td
+                              onClick={() => setSelectedAssetForHistory(o)}
+                              className="sticky left-10 z-10 bg-white group-hover:bg-indigo-50/40 px-3.5 py-2.5 border-r border-slate-200 cursor-pointer"
+                              title="Click to view complete history"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
+                                  {o.assetId}
+                                </span>
+                              </div>
+                              <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                {o.serialNo}
+                              </div>
+                            </td>
+
+                            {/* Name & Model: TOUCHING THIS OPENS THE COMPLETE HISTORY PAGE */}
+                            <td
+                              onClick={() => setSelectedAssetForHistory(o)}
+                              className="sticky left-[170px] z-10 bg-white group-hover:bg-indigo-50/60 px-3.5 py-2.5 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] cursor-pointer"
+                              title="Touch to open all history of this item"
+                            >
+                              <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs flex items-center justify-between gap-1">
+                                <span className="truncate max-w-[180px]">{o.name}</span>
+                                <span className="text-[10px] font-semibold text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 flex items-center gap-0.5">
+                                  <span>History</span>
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                {o.brand} • {o.model}
+                              </div>
+                            </td>
+
+                            {/* Unit / Location */}
+                            <td className="px-3 py-2.5 text-center text-[11px] text-slate-700 font-medium border-r border-slate-200">
+                              {o.unit}
+                            </td>
+
+                            {/* Risk Level */}
+                            <td className="px-3 py-2.5 text-center border-r border-slate-200">
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${riskBadgeClass(
+                                  o.riskLevel
+                                )}`}
+                              >
+                                {o.riskLevel} Risk
+                              </span>
+                            </td>
+
+                            {/* Stages Matrix */}
+                            {columns.map((c) => {
+                              const s = o.stages[c];
+                              if (!s) {
+                                return (
+                                  <React.Fragment key={c}>
+                                    <td className="px-2 py-2 text-center text-slate-300 italic text-[11px] border-r border-slate-100 bg-slate-50/40">
+                                      N/A
+                                    </td>
+                                    <td className="px-2 py-2 text-center text-slate-300 italic text-[11px] border-r border-slate-200 bg-slate-50/40">
+                                      N/A
+                                    </td>
+                                  </React.Fragment>
+                                );
+                              }
+
+                              const cellBg = cellStatusStyle(s);
+
                               return (
                                 <React.Fragment key={c}>
-                                  <td className="px-2 py-2 text-center text-slate-300 italic text-[11px] border-r border-slate-100 bg-slate-50/40">
-                                    N/A
+                                  {/* Planned Cell */}
+                                  <td
+                                    className={`px-2 py-1.5 text-center border-r border-slate-100 ${cellBg}`}
+                                  >
+                                    <div className="text-[11px] font-semibold">
+                                      {shortDate(s.revisedDate || s.plannedDate)}
+                                    </div>
+                                    {showPoc && (
+                                      <div className="text-[9px] text-slate-500 truncate mt-0.5 flex items-center justify-center gap-0.5">
+                                        <User className="w-2.5 h-2.5 text-slate-400" />
+                                        <span>{s.assignee || '—'}</span>
+                                      </div>
+                                    )}
                                   </td>
-                                  <td className="px-2 py-2 text-center text-slate-300 italic text-[11px] border-r border-slate-200 bg-slate-50/40">
-                                    N/A
+
+                                  {/* Actual Cell */}
+                                  <td
+                                    className={`px-2 py-1.5 text-center border-r border-slate-200 ${cellBg}`}
+                                  >
+                                    {s.status === 'COMPLETED' && s.actualDate ? (
+                                      <span
+                                        className={`text-[11px] font-bold inline-flex items-center gap-1 ${
+                                          s.lateDays && s.lateDays > 0
+                                            ? 'text-rose-700'
+                                            : 'text-emerald-700'
+                                        }`}
+                                      >
+                                        {shortDate(s.actualDate)}
+                                      </span>
+                                    ) : s.status === 'PARTIAL' ? (
+                                      <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[9px] uppercase tracking-wider">
+                                        Partial
+                                      </span>
+                                    ) : s.status === 'DELAYED' && s.lateDays ? (
+                                      <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded border border-rose-300">
+                                        +{s.lateDays}d
+                                      </span>
+                                    ) : s.status === 'IN_PROGRESS' ? (
+                                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded border border-indigo-200 inline-flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                                        <span>Current</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400 font-normal">—</span>
+                                    )}
                                   </td>
                                 </React.Fragment>
                               );
-                            }
+                            })}
+                          </tr>
+                        ))}
 
-                            const cellBg = cellStatusStyle(s);
-
-                            return (
-                              <React.Fragment key={c}>
-                                {/* Planned Cell */}
-                                <td
-                                  className={`px-2 py-1.5 text-center border-r border-slate-100 ${cellBg}`}
-                                >
-                                  <div className="text-[11px] font-semibold">
-                                    {shortDate(s.revisedDate || s.plannedDate)}
-                                  </div>
-                                  {showPoc && (
-                                    <div className="text-[9px] text-slate-500 truncate mt-0.5 flex items-center justify-center gap-0.5">
-                                      <User className="w-2.5 h-2.5 text-slate-400" />
-                                      <span>{s.assignee || '—'}</span>
-                                    </div>
-                                  )}
-                                </td>
-
-                                {/* Actual Cell */}
-                                <td
-                                  className={`px-2 py-1.5 text-center border-r border-slate-200 ${cellBg}`}
-                                >
-                                  {s.status === 'COMPLETED' && s.actualDate ? (
-                                    <span
-                                      className={`text-[11px] font-bold inline-flex items-center gap-1 ${
-                                        s.lateDays && s.lateDays > 0
-                                          ? 'text-rose-700'
-                                          : 'text-emerald-700'
-                                      }`}
-                                    >
-                                      {shortDate(s.actualDate)}
-                                    </span>
-                                  ) : s.status === 'PARTIAL' ? (
-                                    <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[9px] uppercase tracking-wider">
-                                      Partial
-                                    </span>
-                                  ) : s.status === 'DELAYED' && s.lateDays ? (
-                                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded border border-rose-300">
-                                      +{s.lateDays}d
-                                    </span>
-                                  ) : s.status === 'IN_PROGRESS' ? (
-                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded border border-indigo-200 inline-flex items-center gap-1">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-                                      <span>Current</span>
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 font-normal">—</span>
-                                  )}
-                                </td>
-                              </React.Fragment>
-                            );
-                          })}
-                        </tr>
-                      ))}
-
-                      {catItems.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={5 + columns.length * 2}
-                            className="p-12 text-center text-slate-400 text-xs font-medium"
-                          >
-                            No records in {cat.title} matching your current filters.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                        {catItems.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={5 + columns.length * 2}
+                              className="p-12 text-center text-slate-400 text-xs font-medium"
+                            >
+                              No records in {cat.title} matching your current filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               )}
             </section>
           );
         })}
       </div>
+
+      {/* 4. MODAL: MACHINE QR ASSET STICKER VIEWER */}
+      {selectedQrAsset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shadow-2xs">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">Machine QR Asset Tag</h3>
+                  <p className="text-[10px] text-slate-500">Scan tag for instant relocation & tickets</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedQrAsset(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* QR Card */}
+            <div className="bg-slate-50/80 p-4 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center text-center space-y-3">
+              <div className="p-3 bg-white rounded-2xl border-2 border-slate-900 shadow-xs">
+                <QRCodeSVG
+                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/scan/${encodeURIComponent(selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
+                  size={160}
+                  level="H"
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                />
+              </div>
+
+              <div>
+                <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-200">
+                  {selectedQrAsset.assetId}
+                </span>
+                <h4 className="text-xs font-extrabold text-slate-900 mt-1.5">{selectedQrAsset.name}</h4>
+                <p className="text-[11px] text-slate-500">{selectedQrAsset.brand} • {selectedQrAsset.model}</p>
+                <p className="text-[11px] font-semibold text-slate-700 mt-0.5">
+                  Station: <span className="text-indigo-600 font-bold">{selectedQrAsset.unit}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    const url = `${window.location.origin}/scan/${encodeURIComponent(selectedQrAsset.assetId)}`;
+                    navigator.clipboard?.writeText(url);
+                    showToast('Asset QR URL copied to clipboard!', 'success');
+                  }
+                }}
+                className="flex-1 py-2 px-3 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition cursor-pointer"
+              >
+                Copy Link
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-1 py-2 px-3 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shadow-indigo-600/30"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Sticker</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
