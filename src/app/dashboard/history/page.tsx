@@ -1483,16 +1483,14 @@ export default function HistoryPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                        {cat.id === 'MACHINE' ? 'Machine History' : `${cat.title} — Time & Action Matrix`}
+                        {cat.title}
                       </h2>
                       <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
                         {catItems.length} units
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500">
-                      {cat.id === 'MACHINE'
-                        ? 'Asset ID, name, unit/station, breakdown risk, relocation tracking, lifecycle costs & QR tags'
-                        : 'Click any asset name to open its full service history dossier'}
+                      Asset ID, name, unit/station, breakdown risk, relocation tracking, lifecycle costs &amp; QR tags
                     </p>
                   </div>
                 </div>
@@ -1538,272 +1536,58 @@ export default function HistoryPage() {
                   className="relative overflow-x-auto overflow-y-auto scrollbar-thin"
                   style={{ maxHeight: '450px' }}
                 >
-                  {cat.id === 'MACHINE' ? (
-                    /* DEDICATED MACHINE HISTORY TABLE */
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-2xs">
-                        <tr>
-                          <th className="sticky left-0 z-40 bg-slate-100 px-3 py-3 text-center w-10 border-r border-slate-200">
-                            <input type="checkbox" aria-label="Select all" className="rounded" />
-                          </th>
-                          <th className="sticky left-10 z-40 bg-slate-100 px-3.5 py-3 min-w-[130px] border-r border-slate-200">
-                            Asset ID
-                          </th>
-                          <th className="sticky left-[170px] z-40 bg-slate-100 px-3.5 py-3 min-w-[210px] border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
-                            Name
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[130px] text-center border-r border-slate-200">
-                            Unit / Station
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[120px] text-center border-r border-slate-200">
-                            Breakdown Risk
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
-                            Current Relocation
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
-                            Relocation From
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
-                            Purchase Cost
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
-                            Total PPM Cost
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[120px] text-right border-r border-slate-200">
-                            Total Repair Cost
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[125px] text-center border-r border-slate-200">
-                            Total Repair Time
-                          </th>
-                          <th className="px-3.5 py-3 min-w-[120px] text-center">
-                            QR of the Machine
-                          </th>
-                        </tr>
-                      </thead>
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-2xs">
+                      <tr>
+                        <th className="sticky left-0 z-40 bg-slate-100 px-3 py-3 text-center w-10 border-r border-slate-200">
+                          <input type="checkbox" aria-label="Select all" className="rounded" />
+                        </th>
+                        <th className="sticky left-10 z-40 bg-slate-100 px-3.5 py-3 min-w-[130px] border-r border-slate-200">
+                          Asset ID
+                        </th>
+                        <th className="sticky left-[170px] z-40 bg-slate-100 px-3.5 py-3 min-w-[210px] border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
+                          Name
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[130px] text-center border-r border-slate-200">
+                          Unit / Station
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[120px] text-center border-r border-slate-200">
+                          Breakdown Risk
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
+                          Current Relocation
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
+                          Relocation From
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
+                          Purchase Cost
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
+                          Total PPM Cost
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[120px] text-right border-r border-slate-200">
+                          Total Repair Cost
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[125px] text-center border-r border-slate-200">
+                          Total Repair Time
+                        </th>
+                        <th className="px-3.5 py-3 min-w-[120px] text-center">
+                          QR of the Asset
+                        </th>
+                      </tr>
+                    </thead>
 
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {catItems.map((o) => {
-                          const locHistory = getAssetLocationHistory(o);
-                          const currentEntry = locHistory.find((l) => l.status === 'CURRENT') || locHistory[0];
-                          const currentReloc = currentEntry ? currentEntry.toLocation : o.unit;
-                          const fromReloc = currentEntry ? currentEntry.fromLocation : 'Maintenance Workshop';
-                          const ppmCost = getAssetPpmCost(o);
-                          const repairCost = getAssetRepairCost(o);
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {catItems.map((o) => {
+                        const locHistory = getAssetLocationHistory(o);
+                        const currentEntry = locHistory.find((l) => l.status === 'CURRENT') || locHistory[0];
+                        const currentReloc = currentEntry ? currentEntry.toLocation : o.unit;
+                        const fromReloc = currentEntry ? currentEntry.fromLocation : 'Maintenance Workshop';
+                        const ppmCost = getAssetPpmCost(o);
+                        const repairCost = getAssetRepairCost(o);
 
-                          return (
-                            <tr
-                              key={o._id}
-                              className="hover:bg-slate-50/90 transition-colors duration-100 group"
-                            >
-                              {/* Checkbox */}
-                              <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 px-3 py-2.5 text-center border-r border-slate-200">
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Select ${o.assetId}`}
-                                  className="rounded"
-                                />
-                              </td>
-
-                              {/* Asset ID */}
-                              <td
-                                onClick={() => setSelectedAssetForHistory(o)}
-                                className="sticky left-10 z-10 bg-white group-hover:bg-indigo-50/40 px-3.5 py-2.5 border-r border-slate-200 cursor-pointer"
-                                title="Click to view complete history dossier"
-                              >
-                                <div className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
-                                  {o.assetId}
-                                </div>
-                                <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                                  {o.serialNo}
-                                </div>
-                              </td>
-
-                              {/* Name */}
-                              <td
-                                onClick={() => setSelectedAssetForHistory(o)}
-                                className="sticky left-[170px] z-10 bg-white group-hover:bg-indigo-50/60 px-3.5 py-2.5 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] cursor-pointer"
-                                title="Touch to open complete history dossier"
-                              >
-                                <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs flex items-center justify-between gap-1">
-                                  <span className="truncate max-w-[170px]">{o.name}</span>
-                                  <ExternalLink className="w-2.5 h-2.5 text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                                </div>
-                                <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                                  {o.brand} • {o.model}
-                                </div>
-                              </td>
-
-                              {/* Unit / Station */}
-                              <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold">
-                                  {o.unit}
-                                </span>
-                              </td>
-
-                              {/* Breakdown Risk */}
-                              <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
-                                <span
-                                  className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase border ${riskBadgeClass(
-                                    o.riskLevel
-                                  )}`}
-                                >
-                                  {o.riskLevel} Risk
-                                </span>
-                              </td>
-
-                              {/* Current Relocation */}
-                              <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                                  <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                  <span>{currentReloc}</span>
-                                </div>
-                                <div className="text-[10px] text-emerald-700 font-medium pl-5 flex items-center gap-1">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                  <span>Active Placement</span>
-                                </div>
-                              </td>
-
-                              {/* Relocation From */}
-                              <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                                  <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                                  <span>{fromReloc}</span>
-                                </div>
-                                <div className="text-[10px] text-slate-400 pl-5 truncate max-w-[150px]" title={currentEntry?.reason}>
-                                  {currentEntry?.reason || 'Previous Placement'}
-                                </div>
-                              </td>
-
-                              {/* Purchase Cost */}
-                              <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
-                                <div>₹{o.purchasePrice.toLocaleString('en-IN')}</div>
-                                <div className="text-[10px] font-sans font-normal text-slate-400">Acquisition</div>
-                              </td>
-
-                              {/* Total PPM Cost */}
-                              <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
-                                <div className="bg-indigo-50/70 text-indigo-700 px-2 py-0.5 rounded inline-block">
-                                  ₹{ppmCost.toLocaleString('en-IN')}
-                                </div>
-                                <div className="text-[10px] font-sans font-normal text-indigo-500/80">Preventive</div>
-                              </td>
-
-                              {/* Total Repair Cost */}
-                              <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-rose-700 border-r border-slate-200 whitespace-nowrap">
-                                <div className="bg-rose-50/70 text-rose-700 px-2 py-0.5 rounded inline-block">
-                                  ₹{repairCost.toLocaleString('en-IN')}
-                                </div>
-                                <div className="text-[10px] font-sans font-normal text-rose-500/80">
-                                  {o.serviceLogs.length} ticket{o.serviceLogs.length > 1 ? 's' : ''}
-                                </div>
-                              </td>
-
-                              {/* Total Repair Time */}
-                              <td className="px-3.5 py-2.5 text-center font-mono text-xs font-bold text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                                <div className="inline-flex items-center gap-1 text-slate-800">
-                                  <Clock className="w-3.5 h-3.5 text-amber-500" />
-                                  <span>{o.downtimeMins}m</span>
-                                </div>
-                                {o.downtimeMins >= 60 && (
-                                  <div className="text-[10px] font-sans font-normal text-slate-400">
-                                    ({Math.floor(o.downtimeMins / 60)}h {o.downtimeMins % 60}m)
-                                  </div>
-                                )}
-                              </td>
-
-                              {/* QR of the Machine */}
-                              <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedQrAsset(o)}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer shadow-2xs group-hover:border-indigo-300"
-                                  title="View & Print Machine QR Code"
-                                >
-                                  <QrCode className="w-3.5 h-3.5 text-indigo-600" />
-                                  <span>View QR</span>
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-
-                        {catItems.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={12}
-                              className="p-12 text-center text-slate-400 text-xs font-medium"
-                            >
-                              No records in Machine History matching your current filters.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <table className="w-full text-left border-collapse text-xs">
-                      {/* Sticky Table Header */}
-                      <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-2xs">
-                        {/* Row 1 Header */}
-                        <tr>
-                          <th
-                            rowSpan={2}
-                            className="sticky left-0 z-40 bg-slate-100 px-3 py-2.5 text-center w-10 border-r border-slate-200"
-                          >
-                            <input type="checkbox" aria-label="Select all" className="rounded" />
-                          </th>
-                          <th
-                            rowSpan={2}
-                            className="sticky left-10 z-40 bg-slate-100 px-3.5 py-2.5 min-w-[130px] border-r border-slate-200"
-                          >
-                            Asset ID
-                          </th>
-                          <th
-                            rowSpan={2}
-                            className="sticky left-[170px] z-40 bg-slate-100 px-3.5 py-2.5 min-w-[220px] border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]"
-                          >
-                            Name &amp; Model (Click to Open)
-                          </th>
-                          <th
-                            rowSpan={2}
-                            className="px-3 py-2.5 min-w-[140px] text-center border-r border-slate-200"
-                          >
-                            Unit / Station
-                          </th>
-                          <th
-                            rowSpan={2}
-                            className="px-3 py-2.5 min-w-[120px] text-center border-r border-slate-200"
-                          >
-                            Breakdown Risk
-                          </th>
-                          {columns.map((c) => (
-                            <th
-                              key={c}
-                              colSpan={2}
-                              className="px-3 py-2 text-center bg-slate-200/80 border-r border-slate-300 font-bold text-slate-800 text-[11px]"
-                            >
-                              {c}
-                            </th>
-                          ))}
-                        </tr>
-
-                        {/* Row 2 Sub-Headers: Planned vs Actual */}
-                        <tr className="bg-slate-100/90 border-t border-slate-200">
-                          {columns.map((c) => (
-                            <React.Fragment key={c}>
-                              <th className="px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-500 border-r border-slate-200 min-w-[95px] bg-slate-50">
-                                Planned
-                              </th>
-                              <th className="px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-500 border-r border-slate-300 min-w-[95px] bg-slate-50">
-                                Actual
-                              </th>
-                            </React.Fragment>
-                          ))}
-                        </tr>
-                      </thead>
-
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {catItems.map((o) => (
+                        return (
                           <tr
                             key={o._id}
                             className="hover:bg-slate-50/90 transition-colors duration-100 group"
@@ -1821,45 +1605,42 @@ export default function HistoryPage() {
                             <td
                               onClick={() => setSelectedAssetForHistory(o)}
                               className="sticky left-10 z-10 bg-white group-hover:bg-indigo-50/40 px-3.5 py-2.5 border-r border-slate-200 cursor-pointer"
-                              title="Click to view complete history"
+                              title="Click to view complete history dossier"
                             >
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
-                                  {o.assetId}
-                                </span>
+                              <div className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
+                                {o.assetId}
                               </div>
                               <div className="text-[10px] font-mono text-slate-400 mt-0.5">
                                 {o.serialNo}
                               </div>
                             </td>
 
-                            {/* Name & Model: TOUCHING THIS OPENS THE COMPLETE HISTORY PAGE */}
+                            {/* Name */}
                             <td
                               onClick={() => setSelectedAssetForHistory(o)}
                               className="sticky left-[170px] z-10 bg-white group-hover:bg-indigo-50/60 px-3.5 py-2.5 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] cursor-pointer"
-                              title="Touch to open all history of this item"
+                              title="Touch to open complete history dossier"
                             >
                               <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs flex items-center justify-between gap-1">
-                                <span className="truncate max-w-[180px]">{o.name}</span>
-                                <span className="text-[10px] font-semibold text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 flex items-center gap-0.5">
-                                  <span>History</span>
-                                  <ExternalLink className="w-2.5 h-2.5" />
-                                </span>
+                                <span className="truncate max-w-[170px]">{o.name}</span>
+                                <ExternalLink className="w-2.5 h-2.5 text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                               </div>
                               <div className="text-[10px] text-slate-500 truncate mt-0.5">
                                 {o.brand} • {o.model}
                               </div>
                             </td>
 
-                            {/* Unit / Location */}
-                            <td className="px-3 py-2.5 text-center text-[11px] text-slate-700 font-medium border-r border-slate-200">
-                              {o.unit}
+                            {/* Unit / Station */}
+                            <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold">
+                                {o.unit}
+                              </span>
                             </td>
 
-                            {/* Risk Level */}
-                            <td className="px-3 py-2.5 text-center border-r border-slate-200">
+                            {/* Breakdown Risk */}
+                            <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
                               <span
-                                className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${riskBadgeClass(
+                                className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase border ${riskBadgeClass(
                                   o.riskLevel
                                 )}`}
                               >
@@ -1867,91 +1648,94 @@ export default function HistoryPage() {
                               </span>
                             </td>
 
-                            {/* Stages Matrix */}
-                            {columns.map((c) => {
-                              const s = o.stages[c];
-                              if (!s) {
-                                return (
-                                  <React.Fragment key={c}>
-                                    <td className="px-2 py-2 text-center text-slate-300 italic text-[11px] border-r border-slate-100 bg-slate-50/40">
-                                      N/A
-                                    </td>
-                                    <td className="px-2 py-2 text-center text-slate-300 italic text-[11px] border-r border-slate-200 bg-slate-50/40">
-                                      N/A
-                                    </td>
-                                  </React.Fragment>
-                                );
-                              }
+                            {/* Current Relocation */}
+                            <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{currentReloc}</span>
+                              </div>
+                              <div className="text-[10px] text-emerald-700 font-medium pl-5 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span>Active Placement</span>
+                              </div>
+                            </td>
 
-                              const cellBg = cellStatusStyle(s);
+                            {/* Relocation From */}
+                            <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <span>{fromReloc}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 pl-5 truncate max-w-[150px]" title={currentEntry?.reason}>
+                                {currentEntry?.reason || 'Previous Placement'}
+                              </div>
+                            </td>
 
-                              return (
-                                <React.Fragment key={c}>
-                                  {/* Planned Cell */}
-                                  <td
-                                    className={`px-2 py-1.5 text-center border-r border-slate-100 ${cellBg}`}
-                                  >
-                                    <div className="text-[11px] font-semibold">
-                                      {shortDate(s.revisedDate || s.plannedDate)}
-                                    </div>
-                                    {showPoc && (
-                                      <div className="text-[9px] text-slate-500 truncate mt-0.5 flex items-center justify-center gap-0.5">
-                                        <User className="w-2.5 h-2.5 text-slate-400" />
-                                        <span>{s.assignee || '—'}</span>
-                                      </div>
-                                    )}
-                                  </td>
+                            {/* Purchase Cost */}
+                            <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                              <div>₹{o.purchasePrice.toLocaleString('en-IN')}</div>
+                              <div className="text-[10px] font-sans font-normal text-slate-400">Acquisition</div>
+                            </td>
 
-                                  {/* Actual Cell */}
-                                  <td
-                                    className={`px-2 py-1.5 text-center border-r border-slate-200 ${cellBg}`}
-                                  >
-                                    {s.status === 'COMPLETED' && s.actualDate ? (
-                                      <span
-                                        className={`text-[11px] font-bold inline-flex items-center gap-1 ${
-                                          s.lateDays && s.lateDays > 0
-                                            ? 'text-rose-700'
-                                            : 'text-emerald-700'
-                                        }`}
-                                      >
-                                        {shortDate(s.actualDate)}
-                                      </span>
-                                    ) : s.status === 'PARTIAL' ? (
-                                      <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[9px] uppercase tracking-wider">
-                                        Partial
-                                      </span>
-                                    ) : s.status === 'DELAYED' && s.lateDays ? (
-                                      <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded border border-rose-300">
-                                        +{s.lateDays}d
-                                      </span>
-                                    ) : s.status === 'IN_PROGRESS' ? (
-                                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded border border-indigo-200 inline-flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-                                        <span>Current</span>
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-400 font-normal">—</span>
-                                    )}
-                                  </td>
-                                </React.Fragment>
-                              );
-                            })}
-                          </tr>
-                        ))}
+                            {/* Total PPM Cost */}
+                            <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
+                              <div className="bg-indigo-50/70 text-indigo-700 px-2 py-0.5 rounded inline-block">
+                                ₹{ppmCost.toLocaleString('en-IN')}
+                              </div>
+                              <div className="text-[10px] font-sans font-normal text-indigo-500/80">Preventive</div>
+                            </td>
 
-                        {catItems.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={5 + columns.length * 2}
-                              className="p-12 text-center text-slate-400 text-xs font-medium"
-                            >
-                              No records in {cat.title} matching your current filters.
+                            {/* Total Repair Cost */}
+                            <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-rose-700 border-r border-slate-200 whitespace-nowrap">
+                              <div className="bg-rose-50/70 text-rose-700 px-2 py-0.5 rounded inline-block">
+                                ₹{repairCost.toLocaleString('en-IN')}
+                              </div>
+                              <div className="text-[10px] font-sans font-normal text-rose-500/80">
+                                {o.serviceLogs.length} ticket{o.serviceLogs.length > 1 ? 's' : ''}
+                              </div>
+                            </td>
+
+                            {/* Total Repair Time */}
+                            <td className="px-3.5 py-2.5 text-center font-mono text-xs font-bold text-slate-800 border-r border-slate-200 whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1 text-slate-800">
+                                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                <span>{o.downtimeMins}m</span>
+                              </div>
+                              {o.downtimeMins >= 60 && (
+                                <div className="text-[10px] font-sans font-normal text-slate-400">
+                                  ({Math.floor(o.downtimeMins / 60)}h {o.downtimeMins % 60}m)
+                                </div>
+                              )}
+                            </td>
+
+                            {/* QR of the Asset */}
+                            <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedQrAsset(o)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer shadow-2xs group-hover:border-indigo-300"
+                                title="View & Print Asset QR Code"
+                              >
+                                <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>View QR</span>
+                              </button>
                             </td>
                           </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  )}
+                        );
+                      })}
+
+                      {catItems.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={12}
+                            className="p-12 text-center text-slate-400 text-xs font-medium"
+                          >
+                            No records in {cat.title} matching your current filters.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </section>

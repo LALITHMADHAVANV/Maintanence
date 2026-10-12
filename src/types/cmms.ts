@@ -204,7 +204,14 @@ export interface PPMSchedule {
   frequency: PPMFrequency;
   lastServiced: string;
   nextDue: string;
-  status: PPMStatus;
+  status: PPMStatus | 'IN_PROGRESS';
+  assignedTo?: string;
+  assignedBy?: string;
+  startedAt?: string;
+  completedAt?: string;
+  completionProofImage?: string;
+  actualDurationMinutes?: number;
+  technicianNotes?: string;
 }
 
 export type UserRole =

@@ -736,9 +736,50 @@ export function subscribePPMSchedules(callback: (schedules: PPMSchedule[]) => vo
   };
 }
 
+export async function startPPMTask(
+  scheduleId: string,
+  mechanicName: string = 'Technician'
+): Promise<void> {
+  const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
+  const now = new Date().toISOString();
+
+  const updatedSchedules = currentSchedules.map((s) =>
+    s.id === scheduleId
+      ? {
+          ...s,
+          startedAt: s.startedAt || now,
+          assignedTo: s.assignedTo || mechanicName,
+          status: 'IN_PROGRESS' as const,
+        }
+      : s
+  );
+  setLocal(STORAGE_KEYS.PPM, updatedSchedules);
+  notifyLocal('ppm', updatedSchedules);
+
+  try {
+    await fetch('/api/ppm', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: scheduleId,
+        updates: {
+          startedAt: now,
+          assignedTo: mechanicName,
+          status: 'IN_PROGRESS',
+        },
+      }),
+    });
+  } catch (err) {
+    console.warn('MongoDB startPPMTask fallback:', err);
+  }
+}
+
 export async function completePPMTask(
   scheduleId: string,
-  mechanicName: string = 'Ramesh Kumar'
+  mechanicName: string = 'Ramesh Kumar',
+  proofImage?: string,
+  durationMinutes?: number,
+  notes?: string
 ): Promise<void> {
   const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
   const target = currentSchedules.find((s) => s.id === scheduleId);
@@ -748,13 +789,26 @@ export async function completePPMTask(
   const nextDueDate = new Date(today);
   nextDueDate.setDate(nextDueDate.getDate() + (target.intervalDays || 14));
 
+  // Calculate actual elapsed minutes between startedAt and completion for MTTR
+  let calculatedDuration = durationMinutes;
+  if (!calculatedDuration && target.startedAt) {
+    const startMs = new Date(target.startedAt).getTime();
+    const elapsedMins = Math.round((today.getTime() - startMs) / 60000);
+    calculatedDuration = Math.max(1, elapsedMins);
+  }
+  const finalDuration = calculatedDuration || 20;
+
   const updatedSchedules = currentSchedules.map((s) =>
     s.id === scheduleId
       ? {
           ...s,
           lastServiced: today.toISOString().slice(0, 10),
           nextDue: nextDueDate.toISOString().slice(0, 10),
-          status: 'PENDING' as const,
+          status: 'COMPLETED' as const,
+          completedAt: today.toISOString(),
+          completionProofImage: proofImage,
+          actualDurationMinutes: finalDuration,
+          technicianNotes: notes,
         }
       : s
   );
@@ -766,16 +820,18 @@ export async function completePPMTask(
     machineId: target.machineId,
     machineType: 'Sewing Machinery',
     line: 'Floor Maintenance',
-    reportedAt: today.toISOString(),
-    reportedBy: 'System Routine PPM',
+    reportedAt: target.startedAt || today.toISOString(),
+    reportedBy: target.assignedBy || 'System Routine PPM',
     faultCategory: 'Preventive Overhaul',
     faultDetails: target.task,
     urgency: 'WARNING',
     status: 'COMPLETED',
     attendedBy: mechanicName,
     resolvedAt: today.toISOString(),
-    downtimeMinutes: 15,
-    actionTaken: `Executed scheduled PPM overhaul: ${target.task}. Cleaned blower lint, tested tension discs, checked oil wick siphon.`,
+    downtimeMinutes: finalDuration,
+    actionTaken:
+      notes ||
+      `Executed scheduled PPM overhaul: ${target.task}. Verified calibration, cleaned lint, lubricated mechanism. Inspection proof archived.`,
     partsUsed: [],
   };
 
@@ -793,7 +849,10 @@ export async function completePPMTask(
         updates: {
           lastServiced: today.toISOString().slice(0, 10),
           nextDue: nextDueDate.toISOString().slice(0, 10),
-          status: 'PENDING',
+          status: 'COMPLETED',
+          completedAt: today.toISOString(),
+          actualDurationMinutes: finalDuration,
+          completionProofImage: proofImage,
         },
       }),
     });

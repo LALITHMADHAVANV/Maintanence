@@ -28,6 +28,8 @@ interface MaintenanceMilestonesAndTasksProps {
   defaultTab?: 'schedules' | 'month_grid';
   onOpenResolve?: (ticket: RepairTicket) => void;
   onCompletePPM?: (ppmId: string, machineId: string) => void;
+  onStartPPM?: (ppm: PPMSchedule) => void;
+  onInspectPPM?: (ppm: PPMSchedule) => void;
   onOpenCalendarDate?: (dateString: string) => void;
   onOpenFullCalendar?: () => void;
 }
@@ -91,6 +93,8 @@ export function MaintenanceMilestonesAndTasks({
   defaultTab,
   onOpenResolve,
   onCompletePPM,
+  onStartPPM,
+  onInspectPPM,
   onOpenCalendarDate,
   onOpenFullCalendar,
 }: MaintenanceMilestonesAndTasksProps) {
@@ -264,8 +268,57 @@ export function MaintenanceMilestonesAndTasks({
       };
     });
 
-    return ticketTasks.sort((a, b) => a.duePriority - b.duePriority);
-  }, [repairs, machines, userName]);
+    // PPM tasks assigned specifically to this technician (or unassigned for juniors)
+    const myPpms = ppmSchedules.filter((p) => {
+      if (p.status === 'COMPLETED') return false;
+      if (p.assignedTo) {
+        const attendedClean = p.assignedTo.trim().toLowerCase();
+        return (
+          attendedClean === userNameClean ||
+          (firstName.length > 2 && attendedClean.includes(firstName)) ||
+          (attendedClean.split(' ')[0]?.length > 2 && userNameClean.includes(attendedClean.split(' ')[0]))
+        );
+      }
+      return !isSenior; // If unassigned, show to floor technicians
+    });
+
+    const ppmTasks: MyTaskItem[] = myPpms.map((p) => {
+      const mch = machines.find((m) => m.id === p.machineId);
+      const isStarted = !!p.startedAt || p.status === 'IN_PROGRESS';
+      const isOverdue = p.status === 'OVERDUE';
+
+      return {
+        id: p.id,
+        rawId: p.id,
+        title: p.task || `${p.frequency} Routine Overhaul`,
+        code: p.machineId,
+        machineId: p.machineId,
+        machineType: mch?.type || 'Machine Unit',
+        line: mch?.currentLine || 'Line 01',
+        stationNo: mch?.stationNo || 'Station 01',
+        assignedTo: p.assignedTo || userName,
+        dueBadgeText: isStarted
+          ? 'Inspection In Progress'
+          : isOverdue
+          ? 'Overdue PPM'
+          : p.assignedBy
+          ? 'Assigned by Senior'
+          : `${p.frequency} PPM`,
+        dueBadgeStyle: isStarted
+          ? 'bg-amber-50 text-amber-800 border-amber-300'
+          : isOverdue
+          ? 'bg-rose-50 text-rose-700 border-rose-200'
+          : 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        duePriority: isStarted ? 0 : isOverdue ? 1 : 2,
+        type: 'PPM' as const,
+        stage: isStarted ? 'IN_PROGRESS' : 'ASSIGNED',
+        ppmObj: p,
+      };
+    });
+
+    const combined = [...ticketTasks, ...ppmTasks];
+    return combined.sort((a, b) => a.duePriority - b.duePriority);
+  }, [repairs, ppmSchedules, machines, userName, isSenior]);
 
   // ─── 3. MONTH GRID CELLS (CALCULATED DIRECTLY FROM LIVE DATA) ───────────
   const monthGridCells = useMemo(() => {
@@ -484,8 +537,15 @@ export function MaintenanceMilestonesAndTasks({
   const handleTaskClick = (task: MyTaskItem) => {
     if (task.ticketObj && onOpenResolve) {
       onOpenResolve(task.ticketObj);
-    } else if (task.ppmObj && onCompletePPM) {
-      onCompletePPM(task.ppmObj.id, task.ppmObj.machineId);
+    } else if (task.ppmObj) {
+      const isStarted = !!task.ppmObj.startedAt || task.ppmObj.status === 'IN_PROGRESS';
+      if (!isStarted && onStartPPM) {
+        onStartPPM(task.ppmObj);
+      } else if (isStarted && onInspectPPM) {
+        onInspectPPM(task.ppmObj);
+      } else if (onCompletePPM) {
+        onCompletePPM(task.ppmObj.id, task.ppmObj.machineId);
+      }
     } else {
       setSelectedTaskDetail({
         id: task.id,
@@ -895,15 +955,30 @@ export function MaintenanceMilestonesAndTasks({
                               <span>Resolve</span>
                             </button>
                           )}
-                          {item.type === 'PPM' && item.ppmObj && onCompletePPM && (
-                            <button
-                              type="button"
-                              onClick={() => onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId)}
-                              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
-                            >
-                              <CheckCheck className="w-3.5 h-3.5" />
-                              <span>Complete PPM</span>
-                            </button>
+                          {item.type === 'PPM' && item.ppmObj && (
+                            !item.ppmObj.startedAt && item.ppmObj.status !== 'IN_PROGRESS' ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (onStartPPM) onStartPPM(item.ppmObj!);
+                                  else if (onCompletePPM) onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId);
+                                }}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                              >
+                                <span>⚡ Start PPM</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (onInspectPPM) onInspectPPM(item.ppmObj!);
+                                  else if (onCompletePPM) onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId);
+                                }}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                              >
+                                <span>📷 Inspect &amp; Complete</span>
+                              </button>
+                            )
                           )}
                           <button
                             type="button"
@@ -991,13 +1066,43 @@ export function MaintenanceMilestonesAndTasks({
                   </div>
                 </div>
 
-                {/* Right: Soft Rounded Badge */}
-                <div className="shrink-0">
-                  <span
-                    className={`inline-block ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1 text-xs'} rounded-full font-bold border ${task.dueBadgeStyle}`}
-                  >
-                    {task.dueBadgeText}
-                  </span>
+                {/* Right: Soft Rounded Badge or Action Button */}
+                <div className="shrink-0 flex items-center gap-1.5">
+                  {task.type === 'PPM' && task.ppmObj ? (
+                    !task.ppmObj.startedAt && task.ppmObj.status !== 'IN_PROGRESS' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onStartPPM) onStartPPM(task.ppmObj!);
+                          else handleTaskClick(task);
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                        title="Click to start PPM timer and inspection"
+                      >
+                        <span>⚡ Start PPM</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onInspectPPM) onInspectPPM(task.ppmObj!);
+                          else handleTaskClick(task);
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                        title="Click to upload proof photo and complete PPM"
+                      >
+                        <span>📷 Inspect &amp; Complete</span>
+                      </button>
+                    )
+                  ) : (
+                    <span
+                      className={`inline-block ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1 text-xs'} rounded-full font-bold border ${task.dueBadgeStyle}`}
+                    >
+                      {task.dueBadgeText}
+                    </span>
+                  )}
                 </div>
               </div>
             ))
@@ -1189,16 +1294,44 @@ export function MaintenanceMilestonesAndTasks({
                       >
                         {task.dueBadgeText}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsTaskDrawerOpen(false);
-                          handleTaskClick(task);
-                        }}
-                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                      >
-                        Attend
-                      </button>
+                      {task.type === 'PPM' && task.ppmObj ? (
+                        !task.ppmObj.startedAt && task.ppmObj.status !== 'IN_PROGRESS' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsTaskDrawerOpen(false);
+                              if (onStartPPM) onStartPPM(task.ppmObj!);
+                              else handleTaskClick(task);
+                            }}
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
+                          >
+                            <span>⚡ Start PPM</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsTaskDrawerOpen(false);
+                              if (onInspectPPM) onInspectPPM(task.ppmObj!);
+                              else handleTaskClick(task);
+                            }}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
+                          >
+                            <span>📷 Inspect &amp; Complete</span>
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsTaskDrawerOpen(false);
+                            handleTaskClick(task);
+                          }}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                        >
+                          Attend
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -1280,18 +1413,34 @@ export function MaintenanceMilestonesAndTasks({
                   Resolve &amp; Log Parts
                 </button>
               )}
-              {selectedTaskDetail.ppmObj && onCompletePPM && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const p = selectedTaskDetail.ppmObj!;
-                    setSelectedTaskDetail(null);
-                    onCompletePPM(p.id, p.machineId);
-                  }}
-                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  Complete PPM Task
-                </button>
+              {selectedTaskDetail.ppmObj && (
+                !selectedTaskDetail.ppmObj.startedAt && selectedTaskDetail.ppmObj.status !== 'IN_PROGRESS' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = selectedTaskDetail.ppmObj!;
+                      setSelectedTaskDetail(null);
+                      if (onStartPPM) onStartPPM(p);
+                      else if (onCompletePPM) onCompletePPM(p.id, p.machineId);
+                    }}
+                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>⚡ Start PPM Inspection</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = selectedTaskDetail.ppmObj!;
+                      setSelectedTaskDetail(null);
+                      if (onInspectPPM) onInspectPPM(p);
+                      else if (onCompletePPM) onCompletePPM(p.id, p.machineId);
+                    }}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>📷 Inspect &amp; Complete (Upload Proof)</span>
+                  </button>
+                )
               )}
               <button
                 type="button"

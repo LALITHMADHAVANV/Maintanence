@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CalendarDays,
   Calendar as CalendarIcon,
@@ -72,6 +72,10 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<'month' | 'agenda' | 'milestones'>('milestones');
   const [filterType, setFilterType] = useState<'ALL' | 'CRITICAL' | 'REPAIRS' | 'PPM' | 'COMPLETED'>('ALL');
 
+  // Refs to prevent repetitive auto-popup re-triggering during background poll intervals
+  const initialDispatchHandledRef = useRef(false);
+  const openedTicketIdRef = useRef<string | null>(null);
+
   // Handle URL params and set default view to milestones for all persons
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -82,30 +86,54 @@ export default function CalendarPage() {
       } else {
         setViewMode('milestones');
       }
-      const ticketId = params.get('ticketId');
-      if (ticketId && repairs.length > 0) {
-        const ticket = repairs.find((r) => r.id === ticketId);
-        if (ticket) {
-          const tDate = ticket.reportedAt ? ticket.reportedAt.slice(0, 10) : toDateKey(new Date());
-          setSelectedDate(tDate);
-        }
-      }
+
       const actionParam = params.get('action') || params.get('tab');
       if (
-        actionParam === 'dispatch' ||
-        actionParam === 'assign' ||
-        actionParam === 'move' ||
-        params.get('assign') === 'true'
+        !initialDispatchHandledRef.current &&
+        (actionParam === 'dispatch' ||
+          actionParam === 'assign' ||
+          actionParam === 'move' ||
+          params.get('assign') === 'true')
       ) {
+        initialDispatchHandledRef.current = true;
         setIsInlineDispatchOpen(true);
         if (actionParam === 'move') {
           setDispatchTab('move');
         } else {
           setDispatchTab('assign');
         }
+
+        // Clean query parameters from URL immediately so background poll ticks don't re-open it every 5s
+        const url = new URL(window.location.href);
+        url.searchParams.delete('action');
+        url.searchParams.delete('tab');
+        url.searchParams.delete('assign');
+        window.history.replaceState({}, '', url.toString());
       }
     }
-  }, [repairs, role]);
+  }, []);
+
+  // When ticketId is in search params, auto-open that ticket in the modal
+  useEffect(() => {
+    if (typeof window !== 'undefined' && repairs.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const ticketId = params.get('ticketId');
+      if (ticketId && openedTicketIdRef.current !== ticketId) {
+        const ticket = repairs.find((r) => r.id === ticketId);
+        if (ticket) {
+          openedTicketIdRef.current = ticketId;
+          const tDate = ticket.reportedAt ? ticket.reportedAt.slice(0, 10) : toDateKey(new Date());
+          setSelectedDate(tDate);
+          setSelectedTicket(ticket);
+          setDowntimeMinutes(ticket.urgency === 'CRITICAL' ? 35 : 20);
+          setActionTaken('');
+          setSelectedPartId('');
+          setSelectedPartQty(1);
+          setIsResolveOpen(true);
+        }
+      }
+    }
+  }, [repairs]);
 
   // Senior Mechanic and Senior Electrician have authority to schedule new PPM overhauls
   const canSchedulePPM = role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN';
@@ -126,6 +154,9 @@ export default function CalendarPage() {
   const [newPPMTask, setNewPPMTask] = useState('');
   const [newPPMFrequency, setNewPPMFrequency] = useState<'Weekly' | 'Monthly' | '6-Month'>('Monthly');
   const [newPPMDueDate, setNewPPMDueDate] = useState<string>(() => toDateKey(new Date()));
+  const [newPPMAssignee, setNewPPMAssignee] = useState(() =>
+    role === 'SENIOR_ELECTRICIAN' ? 'Vijay Kumar' : 'Suresh Babu'
+  );
   const [isCreatingPPM, setIsCreatingPPM] = useState(false);
 
   // Senior Mechanic Team Work Schedule Pop-up state
@@ -482,6 +513,11 @@ export default function CalendarPage() {
         'success'
       );
       setIsResolveOpen(false);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('ticketId');
+        window.history.replaceState({}, '', url.toString());
+      }
       setSelectedTicket(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -559,6 +595,13 @@ export default function CalendarPage() {
       );
       setInlineTaskTitle('');
       setIsInlineDispatchOpen(false);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('action');
+        url.searchParams.delete('tab');
+        url.searchParams.delete('assign');
+        window.history.replaceState({}, '', url.toString());
+      }
     } catch (err) {
       console.error(err);
       showToast('Failed to assign task', 'error');
@@ -591,6 +634,8 @@ export default function CalendarPage() {
       lastServiced: toDateKey(new Date()),
       nextDue: newPPMDueDate,
       status: 'PENDING',
+      assignedTo: newPPMAssignee,
+      assignedBy: user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'),
     };
 
     try {
@@ -1364,6 +1409,23 @@ export default function CalendarPage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Assign Junior Technician *
+                </label>
+                <select
+                  value={newPPMAssignee}
+                  onChange={(e) => setNewPPMAssignee(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 font-semibold"
+                >
+                  {relevantTechnicians.map((tech) => (
+                    <option key={tech.name} value={tech.name}>
+                      {tech.name} ({tech.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
                 <button
                   type="button"
@@ -1421,7 +1483,16 @@ export default function CalendarPage() {
                 </div>
               </div>
               <button
-                onClick={() => setIsInlineDispatchOpen(false)}
+                onClick={() => {
+                  setIsInlineDispatchOpen(false);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('action');
+                    url.searchParams.delete('tab');
+                    url.searchParams.delete('assign');
+                    window.history.replaceState({}, '', url.toString());
+                  }
+                }}
                 className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition cursor-pointer"
                 aria-label="Close"
               >

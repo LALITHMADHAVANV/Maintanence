@@ -706,9 +706,9 @@ export function PlantOperationsDashboard({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-3.5">
         {/* Open Work Orders */}
         <div
-          onClick={() => openDrillDown('open_tickets', 'Open Work Orders & Tickets')}
+          onClick={() => router.push('/dashboard/calendar?filter=REPAIRS')}
           className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-indigo-400 hover:shadow-sm transition cursor-pointer group"
-          title="Click to view Open Tickets drill-down"
+          title="Click to view all open tickets in Calendar"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">Open Tickets</span>

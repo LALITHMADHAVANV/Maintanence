@@ -1073,7 +1073,14 @@ export function WidgetDrilldownDrawer({
                   ) : (
                     drawerData.rows.map((row) => (
                       <tr key={row.id} className="hover:bg-slate-50/80 transition group">
-                        <td className="p-3 sm:px-4 font-bold text-indigo-600 font-mono">
+                        <td
+                          onClick={() => {
+                            onClose();
+                            router.push(row.actionUrl);
+                          }}
+                          className="p-3 sm:px-4 font-bold text-indigo-600 font-mono cursor-pointer hover:underline"
+                          title="Click to view details in Calendar"
+                        >
                           {row.col1}
                         </td>
                         <td className="p-3 sm:px-4 font-medium text-slate-800">

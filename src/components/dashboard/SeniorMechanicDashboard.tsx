@@ -382,9 +382,9 @@ export function SeniorMechanicDashboard({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {/* Open Work Orders */}
         <div
-          onClick={() => openDrillDown('open_tickets', `Floor Active Tickets Queue (${metrics.openTicketsCount})`)}
+          onClick={() => router.push('/dashboard/calendar?filter=REPAIRS')}
           className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-indigo-400 transition cursor-pointer group"
-          title="Click to view Active Tickets in slide-over drawer"
+          title="Click to view all tickets in Calendar"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-indigo-600 transition">Active Tickets</span>
@@ -738,14 +738,18 @@ export function SeniorMechanicDashboard({
                       return (
                         <tr key={t.id} className="hover:bg-slate-50/80 transition group">
                           {/* Ticket ID & Urgency */}
-                          <td className="py-3 px-3">
+                          <td
+                            className="py-3 px-3 cursor-pointer group-hover:bg-indigo-50/50"
+                            onClick={() => router.push(`/dashboard/calendar?ticketId=${t.id}`)}
+                            title="Click to open ticket in Calendar"
+                          >
                             <div className="flex items-center gap-2">
                               <span
                                 className={`w-2 h-2 rounded-full ${
                                   isCritical ? 'bg-rose-500 animate-pulse' : 'bg-amber-400'
                                 }`}
                               />
-                              <span className="font-extrabold text-slate-900 font-mono">{t.id}</span>
+                              <span className="font-extrabold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 font-mono">{t.id}</span>
                             </div>
                             <div className="text-[10px] text-slate-400 mt-0.5">
                               {t.reportedAt ? new Date(t.reportedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
@@ -811,6 +815,14 @@ export function SeniorMechanicDashboard({
                                   {t.attendedBy ? 'Reassign' : 'Assign'}
                                 </button>
                               )}
+                              <button
+                                onClick={() => router.push(`/dashboard/calendar?ticketId=${t.id}`)}
+                                title="Open & Resolve in Calendar"
+                                className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer flex items-center gap-1"
+                              >
+                                <CalendarCheck className="w-3 h-3 text-indigo-600" />
+                                <span>Calendar</span>
+                              </button>
                               <button
                                 onClick={() => router.push(`/scan/${t.machineId}`)}
                                 title="View Asset & Ticket Details"
