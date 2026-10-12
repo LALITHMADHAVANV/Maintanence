@@ -191,9 +191,6 @@ export function MechanicDeskDashboard({
               <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                 Welcome, {userName}
               </h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
-                Workstation Desk
-              </span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                 Shift A
               </span>

@@ -176,7 +176,7 @@ export function Sidebar() {
       },
     ];
   } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
-    // 🔧 Senior Mechanic: Supervisor Dashboard, Calendar, Floor Tracker, Roster, Group Indent, History
+    // 🔧 Senior Mechanic: Supervisor Dashboard, Calendar, Roster, Group Indent, History
     navItems = [
       {
         label: 'Supervisor Dashboard',
@@ -189,11 +189,6 @@ export function Sidebar() {
         icon: CalendarCheck,
         badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
         badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'Floor Tracker',
-        href: '/dashboard/floor-tracker',
-        icon: Layers,
       },
       {
         label: 'Mechanic Roster',

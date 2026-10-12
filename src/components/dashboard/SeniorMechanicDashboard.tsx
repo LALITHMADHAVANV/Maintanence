@@ -351,14 +351,6 @@ export function SeniorMechanicDashboard({
           </button>
 
           <button
-            onClick={() => router.push('/dashboard/floor-tracker')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-          >
-            <Layers className="w-3.5 h-3.5 text-cyan-600" />
-            <span>Floor Tracker</span>
-          </button>
-
-          <button
             onClick={() => router.push('/dashboard/inventory')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
           >

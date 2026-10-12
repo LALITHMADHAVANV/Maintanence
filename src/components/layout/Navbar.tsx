@@ -150,11 +150,6 @@ export function Navbar() {
         badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
       },
       {
-        label: 'Floor Tracker',
-        href: '/dashboard/floor-tracker',
-        icon: Layers,
-      },
-      {
         label: 'Group Indent',
         href: '/dashboard/inventory',
         icon: Package,

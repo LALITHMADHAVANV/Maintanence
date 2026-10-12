@@ -40,6 +40,20 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       }
       return;
     }
+
+    // 3. Mechanic and Supervisor User: Restricted from Floor Workstation / Floor Tracker
+    if (
+      role === 'MECHANIC' ||
+      role === 'ELECTRICIAN' ||
+      role === 'SENIOR_MECHANIC' ||
+      role === 'SENIOR_ELECTRICIAN'
+    ) {
+      if (pathname.startsWith('/dashboard/floor-tracker')) {
+        showToast('Floor Workstations are managed by Plant Administrators.', 'info');
+        router.replace('/dashboard');
+      }
+      return;
+    }
   }, [user, role, isLoading, pathname, router, showToast]);
 
   // Prevent flash of content during loading
@@ -87,6 +101,24 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
         <div className="text-center space-y-2">
           <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm font-semibold text-slate-600">Redirecting to Machine Registry...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Prevent flash of forbidden pages for Mechanics & Supervisors (Floor Tracker)
+  if (
+    (role === 'MECHANIC' ||
+      role === 'ELECTRICIAN' ||
+      role === 'SENIOR_MECHANIC' ||
+      role === 'SENIOR_ELECTRICIAN') &&
+    pathname.startsWith('/dashboard/floor-tracker')
+  ) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-2">
+          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-slate-600">Redirecting to Dashboard...</p>
         </div>
       </div>
     );

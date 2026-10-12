@@ -158,7 +158,11 @@ function MobileScanContent() {
 
       showToast(`Machine ${machine.id} relocated to ${targetLine} (${targetStation})`, 'success');
       setRelocateReason('');
-      router.push('/dashboard/floor-tracker');
+      if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
+        router.push('/dashboard/floor-tracker');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       showToast('Failed to relocate machine', 'error');
       console.error(err);
