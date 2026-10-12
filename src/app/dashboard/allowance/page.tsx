@@ -928,12 +928,7 @@ export default function AllowancePage() {
       };
     });
 
-    const combined = [...dbItems];
-    for (const def of DEFAULT_MIXED_ASSETS) {
-      if (!combined.some((item) => item.id === def.id)) {
-        combined.push(def);
-      }
-    }
+    const combined = dbItems;
 
     return combined.map((item) => {
       const allw = getAllowanceData(item.id, item.category);

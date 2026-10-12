@@ -16,6 +16,7 @@ import {
   Truck,
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
+import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
 
 interface MaintenanceMilestonesAndTasksProps {
   repairs: RepairTicket[];
@@ -44,7 +45,7 @@ export interface MyTaskItem {
   dueBadgeText: string;
   dueBadgeStyle: string;
   duePriority: number;
-  type: 'TICKET' | 'PPM' | 'DEMO';
+  type: 'TICKET' | 'PPM';
   stage: string;
   ticketObj?: RepairTicket;
   ppmObj?: PPMSchedule;
@@ -80,195 +81,6 @@ function toDateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-const SENIOR_DELIVERY_MILESTONES: DeliveryItem[] = [
-  {
-    id: 'DEL-SEN-7186464',
-    type: 'TICKET' as const,
-    machineId: '7186464',
-    machineName: '7186464',
-    stationCode: '800',
-    line: 'Knitting',
-    dueDateFormatted: '31 Oct 2026',
-    daysLeftText: '21 days left',
-    isOverdue: false,
-    currentStage: 'Knitting (Process)',
-    subStage: 'Process',
-    progressPct: 35,
-    progressText: '14/40 (35%)',
-    riskBadgeText: 'At Risk',
-    riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
-    progressBarColor: 'bg-amber-500',
-    rawPriority: 0,
-    assignedTo: 'Line 01 Knitting',
-  },
-  {
-    id: 'DEL-SEN-71B4356',
-    type: 'TICKET' as const,
-    machineId: '71B4356',
-    machineName: '71b4356',
-    stationCode: '800',
-    line: 'Knitting',
-    dueDateFormatted: '31 Oct 2026',
-    daysLeftText: '21 days left',
-    isOverdue: false,
-    currentStage: 'Knitting (Process)',
-    subStage: 'Process',
-    progressPct: 35,
-    progressText: '13/37 (35%)',
-    riskBadgeText: 'At Risk',
-    riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
-    progressBarColor: 'bg-amber-500',
-    rawPriority: 1,
-    assignedTo: 'Line 01 Knitting',
-  },
-  {
-    id: 'DEL-SEN-71Y9856',
-    type: 'TICKET' as const,
-    machineId: '71Y9856',
-    machineName: '71Y9856',
-    stationCode: '800',
-    line: 'Knitting',
-    dueDateFormatted: '31 Oct 2026',
-    daysLeftText: '21 days left',
-    isOverdue: false,
-    currentStage: 'Knitting (Process)',
-    subStage: 'Process',
-    progressPct: 36,
-    progressText: '14/39 (36%)',
-    riskBadgeText: 'At Risk',
-    riskBadgeStyle: 'bg-amber-50 text-amber-800 border border-amber-200',
-    progressBarColor: 'bg-amber-500',
-    rawPriority: 2,
-    assignedTo: 'Line 02 Knitting',
-  },
-  {
-    id: 'DEL-SEN-BGW2705',
-    type: 'PPM' as const,
-    machineId: 'BGW2705-CW1',
-    machineName: 'BGW2705-CW1',
-    stationCode: '234-M',
-    line: 'DD Sample',
-    dueDateFormatted: '2 Nov 2026',
-    daysLeftText: '23 days left',
-    isOverdue: false,
-    currentStage: 'DD Sample (Sample)',
-    subStage: 'Sample',
-    progressPct: 20,
-    progressText: '5/25 (20%)',
-    riskBadgeText: 'On Track',
-    riskBadgeStyle: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
-    progressBarColor: 'bg-emerald-500',
-    rawPriority: 3,
-    assignedTo: 'Sampling Dept',
-  },
-];
-
-const SENIOR_DEFAULT_TASKS: MyTaskItem[] = [
-  {
-    id: 'TSK-SEN-1',
-    rawId: 'LGW27205-CW3-1',
-    title: 'lab dip given',
-    code: 'LGW27205-CW3',
-    machineId: 'LGW27205-CW3',
-    machineType: 'LGW27205-CW3',
-    line: 'Knitting',
-    stationNo: '234-M',
-    assignedTo: 'Senior Lead',
-    dueBadgeText: 'Due Today',
-    dueBadgeStyle: 'bg-rose-50 text-rose-700 border-rose-200',
-    duePriority: 0,
-    type: 'DEMO',
-    stage: 'Knitting (Process)',
-  },
-  {
-    id: 'TSK-SEN-2',
-    rawId: 'LGW27205-CW3-2',
-    title: 'lab dip received',
-    code: 'LGW27205-CW3',
-    machineId: 'LGW27205-CW3',
-    machineType: 'LGW27205-CW3',
-    line: 'Knitting',
-    stationNo: '234-M',
-    assignedTo: 'Senior Lead',
-    dueBadgeText: 'Tomorrow',
-    dueBadgeStyle: 'bg-amber-50 text-amber-700 border-amber-200',
-    duePriority: 1,
-    type: 'DEMO',
-    stage: 'Knitting (Process)',
-  },
-  {
-    id: 'TSK-SEN-3',
-    rawId: 'LGW27205-CW3-3',
-    title: 'Lab Dip Approval',
-    code: 'LGW27205-CW3',
-    machineId: 'LGW27205-CW3',
-    machineType: 'LGW27205-CW3',
-    line: 'Knitting',
-    stationNo: '234-M',
-    assignedTo: 'Senior Lead',
-    dueBadgeText: 'In 2 Days',
-    dueBadgeStyle: 'bg-blue-50 text-blue-700 border-blue-200',
-    duePriority: 2,
-    type: 'DEMO',
-    stage: 'Knitting (Process)',
-  },
-  {
-    id: 'TSK-SEN-4',
-    rawId: 'LGW27205-CW3-4',
-    title: 'Art work given',
-    code: 'LGW27205-CW3',
-    machineId: 'LGW27205-CW3',
-    machineType: 'LGW27205-CW3',
-    line: 'Knitting',
-    stationNo: '234-M',
-    assignedTo: 'Senior Lead',
-    dueBadgeText: 'Due Today',
-    dueBadgeStyle: 'bg-rose-50 text-rose-700 border-rose-200',
-    duePriority: 0,
-    type: 'DEMO',
-    stage: 'Knitting (Process)',
-  },
-];
-
-const FACTORY_ATTENDANCE_ROSTER = [
-  { id: 'ATT-1', initial: 'M', name: 'Mathan', role: 'Team Member', status: 'Absent' as const },
-  { id: 'ATT-2', initial: 'R', name: 'Ravi', role: 'Team Member', status: 'Present' as const },
-  { id: 'ATT-3', initial: 'M', name: 'Moorthi', role: 'Team Member', status: 'Present' as const },
-  { id: 'ATT-4', initial: 'S', name: 'Suresh Babu', role: 'Line Sewing Mechanic', status: 'Present' as const },
-  { id: 'ATT-5', initial: 'P', name: 'Praveen Raj', role: 'Overlock Specialist', status: 'Present' as const },
-  { id: 'ATT-6', initial: 'A', name: 'Anand Kumar', role: 'Senior Plant Electrician', status: 'Present' as const },
-  { id: 'ATT-7', initial: 'R', name: 'Ramesh Kumar', role: 'Master Mechanic (Lead)', status: 'Present' as const },
-  { id: 'ATT-8', initial: 'K', name: 'Karthik S', role: 'Maintenance Electrician', status: 'Absent' as const },
-  { id: 'ATT-9', initial: 'M', name: 'Mani Kandan', role: 'Line Mechanic', status: 'Absent' as const },
-  { id: 'ATT-10', initial: 'R', name: 'Rajesh M', role: 'Assistant Electrician', status: 'Absent' as const },
-  { id: 'ATT-11', initial: 'D', name: 'Dinesh K', role: 'Pneumatics Technician', status: 'Absent' as const },
-  { id: 'ATT-12', initial: 'V', name: 'Vignesh R', role: 'Flatlock Specialist', status: 'Absent' as const },
-  { id: 'ATT-13', initial: 'S', name: 'Saravanan T', role: 'Mechanical Fitter', status: 'Absent' as const },
-  { id: 'ATT-14', initial: 'G', name: 'Gowtham P', role: 'Boiler / Utility Operator', status: 'Absent' as const },
-  { id: 'ATT-15', initial: 'B', name: 'Balaji S', role: 'Sewing Tech Specialist', status: 'Absent' as const },
-  { id: 'ATT-16', initial: 'N', name: 'Naveen Kumar', role: 'Electrical Apprentice', status: 'Absent' as const },
-  { id: 'ATT-17', initial: 'J', name: 'Jayakumar M', role: 'Overlock Maintenance', status: 'Absent' as const },
-  { id: 'ATT-18', initial: 'P', name: 'Pradeep R', role: 'Tool Crib Assistant', status: 'Absent' as const },
-  { id: 'ATT-19', initial: 'M', name: 'Murugan K', role: 'Line Mechanic', status: 'Absent' as const },
-  { id: 'ATT-20', initial: 'K', name: 'Kumaran V', role: 'Shift Electrician', status: 'Absent' as const },
-  { id: 'ATT-21', initial: 'S', name: 'Senthil Nathan', role: 'Spreader Mechanic', status: 'Absent' as const },
-  { id: 'ATT-22', initial: 'A', name: 'Arun Prasath', role: 'Cutting Table Tech', status: 'Absent' as const },
-  { id: 'ATT-23', initial: 'M', name: 'Manikandan P', role: 'Lockstitch Specialist', status: 'Absent' as const },
-  { id: 'ATT-24', initial: 'V', name: 'Vijay S', role: 'Maintenance Assistant', status: 'Absent' as const },
-  { id: 'ATT-25', initial: 'T', name: 'Thirunavukkarasu', role: 'Electrical Supervisor', status: 'Absent' as const },
-  { id: 'ATT-26', initial: 'S', name: 'Subramanian C', role: 'Motor Calibration Tech', status: 'Absent' as const },
-  { id: 'ATT-27', initial: 'K', name: 'Kannan M', role: 'Line Mechanic', status: 'Absent' as const },
-  { id: 'ATT-28', initial: 'P', name: 'Perumal R', role: 'Oiler / Lubricator', status: 'Absent' as const },
-  { id: 'ATT-29', initial: 'R', name: 'Rajendran V', role: 'Iron / Press Tech', status: 'Absent' as const },
-  { id: 'ATT-30', initial: 'S', name: 'Sathish Kumar', role: 'PPM Specialist', status: 'Absent' as const },
-  { id: 'ATT-31', initial: 'M', name: 'Muthukumar T', role: 'Overlock Mechanic', status: 'Absent' as const },
-  { id: 'ATT-32', initial: 'A', name: 'Alagappan K', role: 'Line Electrician', status: 'Absent' as const },
-  { id: 'ATT-33', initial: 'E', name: 'Elango P', role: 'Compressor Maintenance', status: 'Absent' as const },
-  { id: 'ATT-34', initial: 'V', name: 'Velmurugan S', role: 'Floor Technician', status: 'Absent' as const },
-  { id: 'ATT-35', initial: 'G', name: 'Ganesh Moorthy', role: 'Line Mechanic', status: 'Absent' as const },
-  { id: 'ATT-36', initial: 'C', name: 'Chandran K', role: 'Tool Room Incharge', status: 'Absent' as const },
-];
-
 export function MaintenanceMilestonesAndTasks({
   repairs = [],
   ppmSchedules = [],
@@ -294,7 +106,7 @@ export function MaintenanceMilestonesAndTasks({
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<{
     id: string;
     title: string;
-    type: 'TICKET' | 'PPM' | 'DEMO';
+    type: 'TICKET' | 'PPM';
     machineId: string;
     line: string;
     stage: string;
@@ -406,11 +218,9 @@ export function MaintenanceMilestonesAndTasks({
         };
       });
 
-    const combined: DeliveryItem[] = isSenior
-      ? [...activeRepairs, ...activePpms, ...SENIOR_DELIVERY_MILESTONES]
-      : [...activeRepairs, ...activePpms];
+    const combined: DeliveryItem[] = [...activeRepairs, ...activePpms];
     return combined.sort((a, b) => a.rawPriority - b.rawPriority);
-  }, [repairs, ppmSchedules, machines, todayKey, isSenior]);
+  }, [repairs, ppmSchedules, machines, todayKey]);
 
   // ─── 2. DERIVED DATA FOR RIGHT CARD: MY TASKS (SHOW ONLY THEIR WORKS) ─────
   const myTasksList = useMemo(() => {
@@ -454,12 +264,8 @@ export function MaintenanceMilestonesAndTasks({
       };
     });
 
-    const allTasks = isSenior
-      ? [...ticketTasks, ...SENIOR_DEFAULT_TASKS]
-      : ticketTasks;
-
-    return allTasks.sort((a, b) => a.duePriority - b.duePriority);
-  }, [repairs, machines, userName, isSenior]);
+    return ticketTasks.sort((a, b) => a.duePriority - b.duePriority);
+  }, [repairs, machines, userName]);
 
   // ─── 3. MONTH GRID CELLS (CALCULATED DIRECTLY FROM LIVE DATA) ───────────
   const monthGridCells = useMemo(() => {
@@ -697,6 +503,26 @@ export function MaintenanceMilestonesAndTasks({
     }
   };
 
+  // ─── 5. LIVE FACTORY ATTENDANCE (MAPPED FROM FACTORY_MECHANICS_ROSTER) ────
+  const attendanceList = useMemo(() => {
+    return FACTORY_MECHANICS_ROSTER.map((m) => ({
+      id: m.id,
+      initial: m.name.charAt(0).toUpperCase(),
+      name: m.name,
+      role: m.role,
+      status: m.status === 'ON_DUTY' ? ('Present' as const) : m.status === 'ON_LEAVE' ? ('On Leave' as const) : ('Absent' as const),
+    }));
+  }, []);
+
+  const attendanceStats = useMemo(() => {
+    const total = attendanceList.length;
+    const present = attendanceList.filter((m) => m.status === 'Present').length;
+    const onLeave = attendanceList.filter((m) => m.status === 'On Leave').length;
+    const absent = total - present - onLeave;
+    const pct = total > 0 ? (present / total) * 100 : 0;
+    return { total, present, onLeave, absent, pct };
+  }, [attendanceList]);
+
   return (
     <div className={isSenior ? (compact ? "grid grid-cols-1 lg:grid-cols-3 gap-3.5 w-full items-stretch" : "grid grid-cols-1 lg:grid-cols-3 gap-5 w-full items-stretch") : "grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch"}>
       {/* =================================================================== */}
@@ -732,7 +558,7 @@ export function MaintenanceMilestonesAndTasks({
                   }`}
               >
                 <Truck className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-blue-600`} />
-                <span>Deliveries ({isSenior ? 124 : deliveriesList.length})</span>
+                <span>Deliveries ({deliveriesList.length})</span>
               </button>
 
               {/* Tab 2: Month Grid */}
@@ -1238,7 +1064,7 @@ export function MaintenanceMilestonesAndTasks({
             {/* Total Team Badge */}
             <div className={`bg-white rounded-xl border border-slate-200/90 ${compact ? 'px-2 py-1' : 'px-3 py-1.5'} text-center shrink-0 shadow-2xs`}>
               <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} text-slate-400 font-bold uppercase tracking-wider`}>Total Team</div>
-              <div className={`${compact ? 'text-xs' : 'text-sm'} font-black text-slate-900 font-mono`}>36 staff</div>
+              <div className={`${compact ? 'text-xs' : 'text-sm'} font-black text-slate-900 font-mono`}>{attendanceStats.total} staff</div>
             </div>
           </div>
 
@@ -1246,10 +1072,10 @@ export function MaintenanceMilestonesAndTasks({
           <div className={`${compact ? 'space-y-1 mt-2' : 'space-y-1.5 mt-3'} shrink-0`}>
             <div className="flex items-center justify-between text-xs">
               <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-slate-600`}>Turnout Ratio</span>
-              <span className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold text-slate-800 font-mono`}>6 of 36 present</span>
+              <span className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold text-slate-800 font-mono`}>{attendanceStats.present} of {attendanceStats.total} present</span>
             </div>
             <div className={`${compact ? 'h-2' : 'h-2.5'} w-full rounded-full overflow-hidden flex bg-rose-500`}>
-              <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: '16.7%' }} />
+              <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${attendanceStats.pct.toFixed(1)}%` }} />
             </div>
           </div>
 
@@ -1258,19 +1084,19 @@ export function MaintenanceMilestonesAndTasks({
             {/* Present */}
             <div className={`bg-emerald-50/70 border border-emerald-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
               <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-emerald-700`}>Present</div>
-              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-emerald-700 font-mono`}>6</div>
+              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-emerald-700 font-mono`}>{attendanceStats.present}</div>
             </div>
 
             {/* Absent */}
             <div className={`bg-rose-50/70 border border-rose-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
               <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-rose-700`}>Absent</div>
-              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-rose-700 font-mono`}>30</div>
+              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-rose-700 font-mono`}>{attendanceStats.absent}</div>
             </div>
 
             {/* On Leave */}
             <div className={`bg-amber-50/70 border border-amber-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
               <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-amber-700`}>On Leave</div>
-              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-amber-700 font-mono`}>0</div>
+              <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-amber-700 font-mono`}>{attendanceStats.onLeave}</div>
             </div>
           </div>
 
@@ -1280,7 +1106,7 @@ export function MaintenanceMilestonesAndTasks({
               LIVE ROSTER STATUS
             </div>
             <div className={`space-y-1.5 overflow-y-auto ${compact ? 'max-h-[105px]' : 'max-h-[175px]'} pr-1 divide-y divide-slate-100/80 scrollbar-thin`}>
-              {FACTORY_ATTENDANCE_ROSTER.map((m) => (
+              {attendanceList.map((m) => (
                 <div key={m.id} className={`${compact ? 'pt-1.5' : 'pt-2'} first:pt-0 flex items-center justify-between gap-2.5`}>
                   <div className="flex items-center gap-2 min-w-0">
                     <div className={`${compact ? 'w-6 h-6 text-[10px]' : 'w-7 h-7 text-xs'} rounded-full bg-slate-100 text-slate-700 font-extrabold flex items-center justify-center shrink-0 font-mono`}>

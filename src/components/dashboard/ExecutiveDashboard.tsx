@@ -75,7 +75,7 @@ export function ExecutiveDashboard({
   const breakdownAssets = machines.filter((m) => m.status === 'BREAKDOWN').length;
 
   const plantAvailabilityPct =
-    totalAssets > 0 ? Math.round((activeAssets / totalAssets) * 100) : 98;
+    totalAssets > 0 ? Math.round((activeAssets / totalAssets) * 100) : 100;
 
   // Pending CEO approvals
   const ceoPendingReqs = useMemo(() => {

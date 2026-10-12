@@ -161,11 +161,11 @@ export function SeniorMechanicDashboard({
             completedWithDowntime.reduce((s, r) => s + r.downtimeMinutes, 0) /
               completedWithDowntime.length
           )
-        : 28; // standard factory benchmark
+        : 0;
 
     // SLA compliance (% of completed tickets under 60 mins)
     const onTime = completed.filter((r) => (r.downtimeMinutes || 0) <= 60).length;
-    const slaRate = completed.length > 0 ? Math.round((onTime / completed.length) * 100) : 94;
+    const slaRate = completed.length > 0 ? Math.round((onTime / completed.length) * 100) : 100;
 
     const ppmDueThisWeek = ppmSchedules.filter(
       (p) => p.status === 'DUE_SOON' || p.status === 'OVERDUE' || p.status === 'PENDING'

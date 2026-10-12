@@ -746,14 +746,7 @@ export default function AssetsPage() {
       };
     });
 
-    const combined = [...dbItems];
-    for (const def of DEFAULT_MIXED_ASSETS) {
-      if (!combined.some((item) => item.id === def.id)) {
-        combined.push(def);
-      }
-    }
-
-    return combined;
+    return dbItems;
   }, [machines]);
 
   // Counts for each of the 4 categories
