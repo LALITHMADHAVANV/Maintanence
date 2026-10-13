@@ -414,23 +414,23 @@ export default function UserManagementPage() {
       </div>
 
       {/* User Directory Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-300 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+          <table className="w-full text-left text-xs text-slate-800 border-collapse border border-slate-300">
+            <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
               <tr>
-                <th className="py-3.5 px-4">User &amp; Profile</th>
-                <th className="py-3.5 px-4">Factory Role</th>
-                <th className="py-3.5 px-4">Department &amp; Title</th>
-                <th className="py-3.5 px-4">Contact (Email / Phone)</th>
-                <th className="py-3.5 px-4">Status</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
+                <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 min-w-[200px]">User &amp; Profile</th>
+                <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Factory Role</th>
+                <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Department &amp; Title</th>
+                <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 font-mono">Contact (Email / Phone)</th>
+                <th className="py-2.5 px-3 text-center bg-slate-100 border-r border-b border-slate-300">Status</th>
+                <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-300">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
+            <tbody className="divide-y divide-slate-200 font-medium bg-white">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400 italic">
+                  <td colSpan={6} className="py-8 text-center text-slate-400 italic border-b border-slate-200">
                     No users matching search filters found.
                   </td>
                 </tr>
@@ -441,16 +441,16 @@ export default function UserManagementPage() {
                   const isCurrent = currentUser?.email?.toLowerCase() === u.email.toLowerCase();
 
                   return (
-                    <tr key={u.uid || u.email} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
+                    <tr key={u.uid || u.email} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                      <td className="py-2 px-3 border-r border-b border-slate-200">
+                        <div className="flex items-center gap-2.5">
                           <div
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs uppercase shrink-0 shadow-xs ${badge.avatarBg}`}
+                            className={`w-7 h-7 rounded-md flex items-center justify-center text-white font-bold text-xs uppercase shrink-0 shadow-xs ${badge.avatarBg}`}
                           >
                             {u.name?.charAt(0) || 'U'}
                           </div>
                           <div>
-                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5 leading-tight">
                               <span>{u.name}</span>
                               {isCurrent && (
                                 <span className="text-[9px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded-full border border-indigo-200">
@@ -465,21 +465,21 @@ export default function UserManagementPage() {
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4">
+                      <td className="py-2 px-3 border-r border-b border-slate-200">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badge.color}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${badge.color}`}
                         >
                           <BadgeIcon className="w-3 h-3" />
                           <span>{badge.label}</span>
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4">
+                      <td className="py-2 px-3 border-r border-b border-slate-200">
                         <div className="font-semibold text-slate-800">{u.title || 'Staff'}</div>
                         <div className="text-[10px] text-slate-500">{u.department || 'Floor Unit'}</div>
                       </td>
 
-                      <td className="py-3.5 px-4 space-y-0.5">
+                      <td className="py-2 px-3 space-y-0.5 border-r border-b border-slate-200">
                         <div className="flex items-center gap-1 text-slate-700 font-mono text-[11px]">
                           <Mail className="w-3 h-3 text-slate-400" />
                           <span>{u.email}</span>
@@ -492,21 +492,21 @@ export default function UserManagementPage() {
                         )}
                       </td>
 
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <td className="py-2 px-3 text-center border-r border-b border-slate-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                           <span>ACTIVE</span>
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 text-right space-x-1.5">
+                      <td className="py-2 px-3 text-right space-x-1.5 border-b border-slate-200">
                         <button
                           type="button"
                           onClick={() => {
                             setPasswordModalUser(u);
                             setModalNewPassword(u.defaultPassword || 'sewing123');
                           }}
-                          className="px-2.5 py-1 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition inline-flex items-center gap-1"
+                          className="px-2 py-1 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded border border-slate-300 transition inline-flex items-center gap-1 cursor-pointer"
                           title="Reset / Set Password in MongoDB"
                         >
                           <KeyRound className="w-3 h-3 text-slate-500" />
@@ -528,7 +528,7 @@ export default function UserManagementPage() {
                               showToast(`Switch failed: ${msg}`, 'error');
                             }
                           }}
-                          className="px-2.5 py-1 text-[11px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold rounded-lg transition inline-flex items-center gap-1"
+                          className="px-2 py-1 text-[11px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold rounded transition inline-flex items-center gap-1 cursor-pointer"
                           title="Simulate authentication as this user"
                         >
                           <LogIn className="w-3 h-3" />

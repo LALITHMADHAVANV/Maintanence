@@ -113,11 +113,6 @@ export function Navbar() {
         badgeColor: 'bg-rose-600 text-white animate-pulse',
         highlight: true,
       },
-      {
-        label: 'Work History',
-        href: '/dashboard/history',
-        icon: History,
-      },
     ];
   } else if (role === 'STORE_PERSON') {
     navTabs = [

@@ -775,24 +775,24 @@ export default function AdminSettingsPage() {
               </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
-                    <th className="py-3 px-4">Rank & Worker</th>
-                    <th className="py-3 px-3">Role & Line</th>
-                    <th className="py-3 px-3 text-center">Breakdowns</th>
-                    <th className="py-3 px-3 text-center">PPM Done</th>
-                    <th className="py-3 px-3 text-center">Avg MTTR</th>
-                    <th className="py-3 px-3 text-center">SLA Adherence</th>
-                    <th className="py-3 px-4 text-center">Composite KPI</th>
-                    <th className="py-3 px-4 text-right">Action</th>
+            <div className="overflow-x-auto border border-slate-300 rounded-lg shadow-2xs">
+              <table className="w-full text-left border-collapse border border-slate-300 text-xs sm:text-sm">
+                <thead className="sticky top-0 bg-slate-100 border-b border-slate-300 z-10 shadow-2xs select-none">
+                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[10px] uppercase tracking-wider">
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Rank & Worker</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Role & Line</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-center">Breakdowns</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-center">PPM Done</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-center">Avg MTTR</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-center">SLA Adherence</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-center">Composite KPI</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-b border-slate-300 text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
+                <tbody className="font-medium">
                   {filteredKpiWorkers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                      <td colSpan={8} className="py-12 text-center text-slate-400 border-b border-slate-200">
                         <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                         <p className="text-sm font-semibold">No technicians matched your filter criteria.</p>
                       </td>
@@ -804,10 +804,10 @@ export default function AdminSettingsPage() {
                       return (
                         <tr
                           key={worker.id}
-                          className="hover:bg-indigo-50/30 transition group"
+                          className="hover:bg-blue-50/60 even:bg-slate-50/40 transition group"
                         >
                           {/* Rank & Worker */}
-                          <td className="py-3.5 px-4">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200">
                             <div className="flex items-center gap-3">
                               <div className="w-6 text-center font-black text-xs">
                                 {isTop3 ? (
@@ -820,7 +820,7 @@ export default function AdminSettingsPage() {
                                   <span className="text-slate-400">#{index + 1}</span>
                                 )}
                               </div>
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black uppercase shrink-0 ${worker.avatarColor}`}>
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black uppercase shrink-0 ${worker.avatarColor}`}>
                                 {worker.name.charAt(0)}
                               </div>
                               <div>
@@ -844,7 +844,7 @@ export default function AdminSettingsPage() {
                           </td>
 
                           {/* Role & Line */}
-                          <td className="py-3.5 px-3">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200">
                             <div>
                               <span className="font-semibold text-slate-800 text-xs block">
                                 {worker.roleTitle}
@@ -856,25 +856,25 @@ export default function AdminSettingsPage() {
                           </td>
 
                           {/* Breakdowns Completed */}
-                          <td className="py-3.5 px-3 text-center">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 font-bold text-xs border border-rose-100">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200 text-center">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-rose-50 text-rose-700 font-bold text-xs border border-rose-200">
                               <Wrench className="w-3 h-3" />
                               {worker.completedBreakdowns}
                             </span>
                           </td>
 
                           {/* PPM Completed */}
-                          <td className="py-3.5 px-3 text-center">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-100">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200 text-center">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200">
                               <CheckCircle2 className="w-3 h-3" />
                               {worker.completedPpms}
                             </span>
                           </td>
 
                           {/* Avg MTTR */}
-                          <td className="py-3.5 px-3 text-center">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200 text-center">
                             <div className="inline-flex flex-col items-center">
-                              <span className="font-black text-slate-900 text-xs">
+                              <span className="font-black text-slate-900 text-xs font-mono">
                                 {worker.avgMttrMinutes}m
                               </span>
                               <span className="text-[10px] text-slate-400 font-semibold">
@@ -884,12 +884,12 @@ export default function AdminSettingsPage() {
                           </td>
 
                           {/* SLA Adherence */}
-                          <td className="py-3.5 px-3 text-center">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200 text-center">
                             <div className="flex flex-col items-center">
-                              <span className="font-bold text-slate-800 text-xs">
+                              <span className="font-bold text-slate-800 text-xs font-mono">
                                 {worker.slaOnTimeRate}%
                               </span>
-                              <div className="w-16 bg-slate-100 rounded-full h-1.5 mt-1 overflow-hidden">
+                              <div className="w-16 bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden">
                                 <div
                                   className={`h-full rounded-full ${
                                     worker.slaOnTimeRate >= 90 ? 'bg-emerald-500' : 'bg-amber-500'
@@ -901,17 +901,17 @@ export default function AdminSettingsPage() {
                           </td>
 
                           {/* Composite KPI Score */}
-                          <td className="py-3.5 px-4 text-center">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200 text-center">
                             <div className="inline-flex flex-col items-center">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-base font-black text-slate-900">
+                                <span className="text-sm font-black text-slate-900 font-mono">
                                   {worker.kpiScore}%
                                 </span>
-                                <span className={`px-2 py-0.5 text-[10px] font-black rounded-full border ${worker.rankBadge.bgColor} ${worker.rankBadge.borderColor}`}>
+                                <span className={`px-2 py-0.5 text-[10px] font-black rounded border ${worker.rankBadge.bgColor} ${worker.rankBadge.borderColor}`}>
                                   {worker.rankBadge.tier} • {worker.rankBadge.label}
                                 </span>
                               </div>
-                              <div className="w-24 bg-slate-100 rounded-full h-2 mt-1.5 overflow-hidden">
+                              <div className="w-24 bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all duration-500 ${
                                     worker.kpiScore >= 90
@@ -927,10 +927,10 @@ export default function AdminSettingsPage() {
                           </td>
 
                           {/* Action */}
-                          <td className="py-3.5 px-4 text-right">
+                          <td className="py-2.5 px-3 border-b border-slate-200 text-right">
                             <button
                               onClick={() => setSelectedWorkerDetail(worker)}
-                              className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 rounded-xl transition cursor-pointer"
+                              className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition cursor-pointer"
                             >
                               Details
                             </button>
@@ -1032,34 +1032,34 @@ export default function AdminSettingsPage() {
               </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
-                    <th className="py-3 px-4">User</th>
-                    <th className="py-3 px-3">Role</th>
-                    <th className="py-3 px-3">Department</th>
-                    <th className="py-3 px-3">Contact</th>
-                    <th className="py-3 px-3">Default Pass</th>
-                    <th className="py-3 px-3 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+            <div className="overflow-x-auto border border-slate-300 rounded-lg shadow-2xs">
+              <table className="w-full text-left border-collapse border border-slate-300 text-xs sm:text-sm">
+                <thead className="sticky top-0 bg-slate-100 border-b border-slate-300 z-10 shadow-2xs select-none">
+                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[10px] uppercase tracking-wider">
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">User</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Role</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Department</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Contact</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Default Pass</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-center">Status</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-b border-slate-300 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
+                <tbody className="font-medium">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                      <td colSpan={7} className="py-12 text-center text-slate-400 border-b border-slate-200">
                         <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                         <p className="text-sm font-semibold">No users found matching your search.</p>
                       </td>
                     </tr>
                   ) : (
                     filteredUsers.map((u) => (
-                      <tr key={u.uid} className="hover:bg-indigo-50/20 transition">
+                      <tr key={u.uid} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
                         {/* User Profile */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-2 px-3 border-r border-b border-slate-200">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-slate-700 text-xs shrink-0">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-slate-700 text-xs shrink-0">
                               {u.name.charAt(0)}
                             </div>
                             <div>
@@ -1070,48 +1070,48 @@ export default function AdminSettingsPage() {
                         </td>
 
                         {/* Role Badge */}
-                        <td className="py-3.5 px-3">
-                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border ${getRoleBadgeStyle(u.role)}`}>
+                        <td className="py-2 px-3 border-r border-b border-slate-200">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold border ${getRoleBadgeStyle(u.role)}`}>
                             {u.role.replace('_', ' ')}
                           </span>
                         </td>
 
                         {/* Department */}
-                        <td className="py-3.5 px-3">
+                        <td className="py-2 px-3 border-r border-b border-slate-200">
                           <span className="text-slate-600 text-xs block">{u.department || 'Plant Operations'}</span>
                           <span className="text-[11px] text-slate-400">{u.title}</span>
                         </td>
 
                         {/* Contact */}
-                        <td className="py-3.5 px-3">
+                        <td className="py-2 px-3 border-r border-b border-slate-200">
                           <span className="text-slate-800 text-xs block font-mono">{u.email}</span>
                           <span className="text-[11px] text-slate-400">{u.phone || 'No phone'}</span>
                         </td>
 
                         {/* Default Pass */}
-                        <td className="py-3.5 px-3">
-                          <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        <td className="py-2 px-3 border-r border-b border-slate-200">
+                          <span className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                             {u.defaultPassword || '••••••••'}
                           </span>
                         </td>
 
                         {/* Status */}
-                        <td className="py-3.5 px-3 text-center">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <td className="py-2 px-3 border-r border-b border-slate-200 text-center">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             ACTIVE
                           </span>
                         </td>
 
                         {/* Actions */}
-                        <td className="py-3.5 px-4 text-right">
+                        <td className="py-2 px-3 border-b border-slate-200 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => {
                                 setPasswordModalUser(u);
                                 setModalNewPassword('');
                               }}
-                              className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 border border-slate-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                              className="px-2 py-1 text-xs font-bold text-slate-700 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 border border-slate-200 rounded transition flex items-center gap-1 cursor-pointer"
                               title="Reset Password"
                             >
                               <KeyRound className="w-3 h-3" />
@@ -1122,7 +1122,7 @@ export default function AdminSettingsPage() {
                                 loginAsRole(u.role);
                                 showToast(`Switched active session to ${u.name} (${u.role})`, 'info');
                               }}
-                              className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                              className="px-2 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition flex items-center gap-1 cursor-pointer"
                               title="Test role session"
                             >
                               <Zap className="w-3 h-3" />

@@ -19,14 +19,13 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 1. CEO User: Access to Executive Dashboard, Approvals, and Work History
+    // 1. CEO User: Access to Executive Dashboard and Approvals
     if (role === 'CEO') {
       if (
         pathname !== '/dashboard' &&
-        pathname !== '/dashboard/messages' &&
-        pathname !== '/dashboard/history'
+        pathname !== '/dashboard/messages'
       ) {
-        showToast('CEO account has access to Executive Dashboard, Approvals, and Work History.', 'info');
+        showToast('CEO account has access to Executive Dashboard and Approvals.', 'info');
         router.replace('/dashboard');
       }
       return;
@@ -85,8 +84,7 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
   if (
     role === 'CEO' &&
     pathname !== '/dashboard' &&
-    pathname !== '/dashboard/messages' &&
-    pathname !== '/dashboard/history'
+    pathname !== '/dashboard/messages'
   ) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">

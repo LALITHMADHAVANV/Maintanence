@@ -730,35 +730,35 @@ export function SeniorMechanicDashboard({
             </div>
 
             {/* Tickets Table / List */}
-            <div className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-auto">
+            <div className="mt-2 flex-1 min-h-0 overflow-y-auto overflow-x-auto border border-slate-300 rounded-lg shadow-2xs">
               {filteredTickets.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs">
+                <div className="py-12 text-center text-slate-400 text-xs bg-white">
                   <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500" />
                   No tickets found matching current filters.
                 </div>
               ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 bg-white/95 backdrop-blur-xs z-10 border-b border-slate-200 shadow-2xs">
-                    <tr className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="py-2.5 px-3">Ticket</th>
-                      <th className="py-2.5 px-3">Machine & Line</th>
-                      <th className="py-2.5 px-3">Fault Details</th>
-                      <th className="py-2.5 px-3">Assigned Mechanic</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3 text-right">Actions</th>
+                <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+                  <thead className="sticky top-0 bg-slate-100 z-10 border-b border-slate-300 shadow-xs select-none">
+                    <tr className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 font-mono">Ticket</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Machine &amp; Line</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 min-w-[180px]">Fault Details</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Assigned Mechanic</th>
+                      <th className="py-2.5 px-3 text-center bg-slate-100 border-r border-b border-slate-300">Status</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-300">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
+                  <tbody className="divide-y divide-slate-200 text-xs bg-white font-medium">
                     {filteredTickets.map((t) => {
                       const isCritical = t.urgency === 'CRITICAL';
                       const isUnassigned = !t.attendedBy;
                       const isCompleted = t.status === 'COMPLETED';
 
                       return (
-                        <tr key={t.id} className="hover:bg-slate-50/80 transition group">
+                        <tr key={t.id} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition group">
                           {/* Ticket ID & Urgency */}
                           <td
-                            className="py-3 px-3 cursor-pointer group-hover:bg-indigo-50/50"
+                            className="py-2 px-3 cursor-pointer border-r border-b border-slate-200 group-hover:bg-blue-50/70"
                             onClick={() => {
                               setSelectedTicketForAssign(t);
                               setIsAssignModalOpen(true);
@@ -771,7 +771,7 @@ export function SeniorMechanicDashboard({
                                   isCritical ? 'bg-rose-500 animate-pulse' : 'bg-amber-400'
                                 }`}
                               />
-                              <span className="font-extrabold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 font-mono">{t.id}</span>
+                              <span className="font-extrabold text-indigo-700 hover:text-indigo-900 underline underline-offset-2 font-mono">{t.id}</span>
                             </div>
                             <div className="text-[10px] text-slate-400 mt-0.5">
                               {t.reportedAt ? new Date(t.reportedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
@@ -779,44 +779,44 @@ export function SeniorMechanicDashboard({
                           </td>
 
                           {/* Machine & Line */}
-                          <td className="py-3 px-3">
-                            <div className="font-semibold text-slate-800">{t.machineId}</div>
+                          <td className="py-2 px-3 border-r border-b border-slate-200">
+                            <div className="font-bold text-slate-900 font-mono">{t.machineId}</div>
                             <div className="text-[11px] text-slate-500">{t.line || 'Line 01'}</div>
                           </td>
 
                           {/* Fault Category */}
-                          <td className="py-3 px-3 max-w-[200px]">
-                            <div className="font-medium text-slate-800 truncate">{t.faultCategory}</div>
-                            <div className="text-[11px] text-slate-400 truncate">{t.faultDetails}</div>
+                          <td className="py-2 px-3 max-w-[200px] border-r border-b border-slate-200">
+                            <div className="font-semibold text-slate-800 truncate">{t.faultCategory}</div>
+                            <div className="text-[11px] text-slate-500 truncate">{t.faultDetails}</div>
                           </td>
 
                           {/* Assigned Mechanic */}
-                          <td className="py-3 px-3">
+                          <td className="py-2 px-3 border-r border-b border-slate-200">
                             {t.attendedBy ? (
                               <div className="flex items-center gap-1.5">
-                                <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center">
+                                <span className="w-5 h-5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center">
                                   {t.attendedBy.slice(0, 2).toUpperCase()}
                                 </span>
-                                <span className="font-medium text-slate-700">{t.attendedBy}</span>
+                                <span className="font-semibold text-slate-800">{t.attendedBy}</span>
                               </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                 ⚠️ Unassigned
                               </span>
                             )}
                           </td>
 
                           {/* Status */}
-                          <td className="py-3 px-3">
+                          <td className="py-2 px-3 text-center border-r border-b border-slate-200">
                             <span
-                              className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                                 isCompleted
-                                  ? 'bg-emerald-100 text-emerald-800'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                   : t.status === 'IN_PROGRESS'
-                                  ? 'bg-blue-100 text-blue-800'
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
                                   : isUnassigned
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-amber-100 text-amber-800'
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-200'
                               }`}
                             >
                               {t.status}
@@ -824,7 +824,7 @@ export function SeniorMechanicDashboard({
                           </td>
 
                           {/* Actions */}
-                          <td className="py-3 px-3 text-right">
+                          <td className="py-2 px-3 text-right border-b border-slate-200">
                             <div className="flex items-center justify-end gap-1.5">
                               {!isCompleted && (
                                 <button
@@ -832,7 +832,7 @@ export function SeniorMechanicDashboard({
                                     setSelectedTicketForAssign(t);
                                     setIsAssignModalOpen(true);
                                   }}
-                                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition cursor-pointer"
+                                  className="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer"
                                 >
                                   {t.attendedBy ? 'Reassign' : 'Assign'}
                                 </button>
@@ -843,7 +843,7 @@ export function SeniorMechanicDashboard({
                                   setIsAssignModalOpen(true);
                                 }}
                                 title="Open & Manage Ticket Details"
-                                className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer flex items-center gap-1"
+                                className="px-2 py-1 rounded text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition cursor-pointer flex items-center gap-1"
                               >
                                 <Wrench className="w-3 h-3 text-indigo-600" />
                                 <span>Details</span>
@@ -851,7 +851,7 @@ export function SeniorMechanicDashboard({
                               <button
                                 onClick={() => router.push(`/scan/${t.machineId}`)}
                                 title="View Asset & Ticket Details"
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                                className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </button>

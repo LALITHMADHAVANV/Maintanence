@@ -112,11 +112,6 @@ export function Sidebar() {
         badgeColor: 'bg-rose-600 text-white animate-pulse',
         highlight: true,
       },
-      {
-        label: 'Work History',
-        href: '/dashboard/history',
-        icon: History,
-      },
     ];
   } else if (role === 'STORE_PERSON') {
     navItems = [
@@ -405,8 +400,42 @@ export function Sidebar() {
     </div>
   );
 
+  if (!user) return null;
+
   return (
     <>
+      {/* Mobile Top App Bar (Only visible on small screens) */}
+      <div className="md:hidden bg-white text-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-200 sticky top-0 z-40">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setIsMobileOpen(true)}
+            className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 transition cursor-pointer"
+            title="Open Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-1.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-xs text-white">
+              <Wrench className="w-3.5 h-3.5" />
+            </div>
+            <span className="font-bold text-sm tracking-tight text-slate-900">Maintenance Module</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${getRoleBadgeColor()}`}>
+            {role}
+          </span>
+          <button
+            onClick={handleSignOut}
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
       {/* Mobile Sidebar Backdrop & Drawer */}
       {isMobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">

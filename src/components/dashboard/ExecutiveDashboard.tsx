@@ -1240,33 +1240,33 @@ export function ExecutiveDashboard({
               </h3>
             </div>
 
-            <div className="overflow-x-auto mt-2">
-              <table className="w-full text-left text-xs text-slate-600">
-                <thead className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+            <div className="overflow-x-auto mt-2 border border-slate-300 rounded-lg shadow-2xs">
+              <table className="w-full text-left text-xs text-slate-800 border-collapse border border-slate-300">
+                <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                   <tr>
-                    <th className="py-2 px-1">Problem</th>
-                    <th className="py-2 px-2 text-center">Occurrences</th>
-                    <th className="py-2 px-1 text-right">Mechanic / Team</th>
+                    <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300">Problem</th>
+                    <th className="py-2 px-2.5 text-center bg-slate-100 border-r border-b border-slate-300 font-mono">Occurrences</th>
+                    <th className="py-2 px-2.5 text-right bg-slate-100 border-b border-slate-300">Mechanic / Team</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-200 bg-white font-medium">
                   {recurringProblems.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="py-6 text-center text-slate-400">
+                      <td colSpan={3} className="py-6 text-center text-slate-400 border-b border-slate-200">
                         No recurring equipment failures detected across the plant.
                       </td>
                     </tr>
                   ) : (
                     recurringProblems.map((rp, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/70 transition">
-                        <td className="py-2.5 px-1 font-semibold text-slate-800 flex items-center gap-1.5">
+                      <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                        <td className="py-2 px-2.5 font-semibold text-slate-900 border-r border-b border-slate-200 flex items-center gap-1.5">
                           <span className={`w-2 h-2 rounded-full ${rp.dotColor} shrink-0`} />
-                          <span className="truncate max-w-[130px]">{rp.problem}</span>
+                          <span className="truncate max-w-[140px]">{rp.problem}</span>
                         </td>
-                        <td className="py-2.5 px-2 text-center font-bold text-slate-900 font-mono">
+                        <td className="py-2 px-2.5 text-center font-bold text-slate-900 font-mono border-r border-b border-slate-200 tabular-nums">
                           {rp.count}
                         </td>
-                        <td className="py-2.5 px-1 text-right font-medium text-slate-700 truncate max-w-[120px]">
+                        <td className="py-2 px-2.5 text-right font-medium text-slate-700 border-b border-slate-200 truncate max-w-[120px]">
                           {rp.mechanic}
                         </td>
                       </tr>
@@ -1292,20 +1292,20 @@ export function ExecutiveDashboard({
               </h3>
             </div>
 
-            <div className="overflow-x-auto mt-2">
-              <table className="w-full text-left text-xs text-slate-600">
-                <thead className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+            <div className="overflow-x-auto mt-2 border border-slate-300 rounded-lg shadow-2xs">
+              <table className="w-full text-left text-xs text-slate-800 border-collapse border border-slate-300">
+                <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                   <tr>
-                    <th className="py-2 px-1">Machine</th>
-                    <th className="py-2 px-2">Reason</th>
-                    <th className="py-2 px-2 text-right">Est. Capex</th>
-                    <th className="py-2 px-1 text-right">Priority</th>
+                    <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300 font-mono">Machine</th>
+                    <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300">Reason</th>
+                    <th className="py-2 px-2.5 text-right bg-slate-100 border-r border-b border-slate-300 font-mono">Est. Capex</th>
+                    <th className="py-2 px-2.5 text-right bg-slate-100 border-b border-slate-300">Priority</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-200 bg-white font-medium">
                   {machineReplacements.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-6 text-center text-slate-400">
+                      <td colSpan={4} className="py-6 text-center text-slate-400 border-b border-slate-200">
                         All plant machinery operating within normal lifecycle parameters.
                       </td>
                     </tr>
@@ -1314,20 +1314,20 @@ export function ExecutiveDashboard({
                       <tr
                         key={idx}
                         onClick={() => setSelectedReplacement(mr)}
-                        className="hover:bg-slate-50 transition cursor-pointer"
+                        className="hover:bg-blue-50/60 even:bg-slate-50/40 transition cursor-pointer"
                         title="Click to review replacement Capex proposal"
                       >
-                        <td className="py-2.5 px-1 font-bold text-slate-900 text-xs">
+                        <td className="py-2 px-2.5 font-bold text-slate-900 text-xs font-mono border-r border-b border-slate-200">
                           {mr.machineId || mr.machine}
                         </td>
-                        <td className="py-2.5 px-2 text-[11px] text-slate-500 max-w-[120px] truncate" title={mr.reason}>
+                        <td className="py-2 px-2.5 text-[11px] text-slate-600 max-w-[130px] truncate border-r border-b border-slate-200" title={mr.reason}>
                           {mr.reason}
                         </td>
-                        <td className="py-2.5 px-2 text-right font-mono font-bold text-slate-900">
+                        <td className="py-2 px-2.5 text-right font-mono font-bold text-slate-900 border-r border-b border-slate-200 tabular-nums">
                           {formatMoney(mr.cost)}
                         </td>
-                        <td className="py-2.5 px-1 text-right">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${mr.priorityColor}`}>
+                        <td className="py-2 px-2.5 text-right border-b border-slate-200">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${mr.priorityColor}`}>
                             {mr.priority}
                           </span>
                         </td>
@@ -1366,37 +1366,37 @@ export function ExecutiveDashboard({
               </span>
             </div>
 
-            <div className="overflow-x-auto mt-2">
-              <table className="w-full text-left text-xs text-slate-600">
-                <thead className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+            <div className="overflow-x-auto mt-2 border border-slate-300 rounded-lg shadow-2xs">
+              <table className="w-full text-left text-xs text-slate-800 border-collapse border border-slate-300">
+                <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                   <tr>
-                    <th className="py-2 px-1">Date</th>
-                    <th className="py-2 px-1">Machine</th>
-                    <th className="py-2 px-2">Issue / Fault</th>
-                    <th className="py-2 px-1 text-center">Downtime</th>
-                    <th className="py-2 px-1 text-right">Cost</th>
-                    <th className="py-2 px-2">Mechanic</th>
-                    <th className="py-2 px-1 text-right">Status</th>
+                    <th className="py-2 px-2 bg-slate-100 border-r border-b border-slate-300 font-mono">Date</th>
+                    <th className="py-2 px-2 bg-slate-100 border-r border-b border-slate-300 font-mono">Machine</th>
+                    <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300">Issue / Fault</th>
+                    <th className="py-2 px-2 text-center bg-slate-100 border-r border-b border-slate-300 font-mono">Downtime</th>
+                    <th className="py-2 px-2 text-right bg-slate-100 border-r border-b border-slate-300 font-mono">Cost</th>
+                    <th className="py-2 px-2 bg-slate-100 border-r border-b border-slate-300">Mechanic</th>
+                    <th className="py-2 px-2 text-right bg-slate-100 border-b border-slate-300">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-200 bg-white font-medium">
                   {recentMajorProblems.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-6 text-center text-slate-400">
+                      <td colSpan={7} className="py-6 text-center text-slate-400 border-b border-slate-200">
                         No major equipment breakdown tickets logged in the system.
                       </td>
                     </tr>
                   ) : (
                     recentMajorProblems.map((p, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/70 transition">
-                        <td className="py-2.5 px-1 font-mono text-[11px] text-slate-500 whitespace-nowrap">{p.date}</td>
-                        <td className="py-2.5 px-1 font-bold text-slate-900 font-mono">{p.machine}</td>
-                        <td className="py-2.5 px-2 font-medium text-slate-800 truncate max-w-[120px]" title={p.issue}>{p.issue}</td>
-                        <td className="py-2.5 px-1 text-center font-mono font-bold text-slate-700">{p.downtime}</td>
-                        <td className="py-2.5 px-1 text-right font-mono font-bold text-slate-900">{formatMoney(p.cost)}</td>
-                        <td className="py-2.5 px-2 text-slate-600 whitespace-nowrap">{p.mechanic}</td>
-                        <td className="py-2.5 px-1 text-right">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.statusClass}`}>
+                      <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                        <td className="py-2 px-2 font-mono text-[11px] text-slate-600 whitespace-nowrap border-r border-b border-slate-200 tabular-nums">{p.date}</td>
+                        <td className="py-2 px-2 font-bold text-slate-900 font-mono border-r border-b border-slate-200">{p.machine}</td>
+                        <td className="py-2 px-2.5 font-medium text-slate-800 truncate max-w-[130px] border-r border-b border-slate-200" title={p.issue}>{p.issue}</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-slate-700 border-r border-b border-slate-200 tabular-nums">{p.downtime}</td>
+                        <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 border-r border-b border-slate-200 tabular-nums">{formatMoney(p.cost)}</td>
+                        <td className="py-2 px-2 text-slate-700 whitespace-nowrap border-r border-b border-slate-200">{p.mechanic}</td>
+                        <td className="py-2 px-2 text-right border-b border-slate-200">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.statusClass}`}>
                             {p.status}
                           </span>
                         </td>

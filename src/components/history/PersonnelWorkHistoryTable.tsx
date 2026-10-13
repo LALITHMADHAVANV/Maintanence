@@ -590,26 +590,27 @@ export function PersonnelWorkHistoryTable() {
         </div>
 
         {/* Scrollable Table Viewport with Sticky Header (Flex Scroll) */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto scrollbar-thin">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead className="sticky top-0 bg-slate-900 text-white font-extrabold uppercase text-[10px] tracking-wider z-10 shadow-xs">
-              <tr className="border-b border-slate-800">
-                <th className="py-3 px-4 whitespace-nowrap">Date &amp; Time</th>
-                <th className="py-3 px-4 whitespace-nowrap">Person / Tech</th>
-                <th className="py-3 px-3 whitespace-nowrap">Work Order</th>
-                <th className="py-3 px-4 whitespace-nowrap">Machine &amp; Line</th>
-                <th className="py-3 px-4 whitespace-nowrap">Issue / Task</th>
-                <th className="py-3 px-5 min-w-[280px]">Action Taken (What They Did)</th>
-                <th className="py-3 px-4 whitespace-nowrap">Parts Replaced</th>
-                <th className="py-3 px-3 whitespace-nowrap">Downtime</th>
-                <th className="py-3 px-3 whitespace-nowrap text-center">Status</th>
-                <th className="py-3 px-4 text-right no-print">Action</th>
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto scrollbar-thin border border-slate-300 rounded-lg shadow-2xs">
+          <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+            <thead className="sticky top-0 bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider z-20 shadow-xs select-none">
+              <tr className="border-b border-slate-300">
+                <th className="py-2.5 px-3 w-12 text-center bg-slate-200/80 border-r border-b border-slate-300 text-slate-600 font-mono">#</th>
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">Date &amp; Time</th>
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">Person / Tech</th>
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">Work Order</th>
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">Machine &amp; Line</th>
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">Issue / Task</th>
+                <th className="py-2.5 px-4 min-w-[260px] bg-slate-100 border-r border-b border-slate-300">Action Taken (What They Did)</th>
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">Parts Replaced</th>
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">Downtime</th>
+                <th className="py-2.5 px-3 whitespace-nowrap text-center bg-slate-100 border-r border-b border-slate-300">Status</th>
+                <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-300 no-print">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="divide-y divide-slate-200 bg-white">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400 space-y-2">
+                  <td colSpan={11} className="py-16 text-center text-slate-400 space-y-2 border-b border-slate-200">
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                       <Wrench className="w-6 h-6" />
                     </div>
@@ -620,18 +621,23 @@ export function PersonnelWorkHistoryTable() {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => {
+                filteredRows.map((row, idx) => {
                   const isCritical = row.urgency === 'CRITICAL';
                   const isPPM = row.workType === 'PPM';
 
                   return (
                     <tr
                       key={row.id}
-                      className="hover:bg-indigo-50/30 transition-colors group"
+                      className="hover:bg-blue-50/60 even:bg-slate-50/40 transition-colors group"
                     >
+                      {/* 0. Row # */}
+                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-500 bg-slate-50/80 group-hover:bg-blue-50/60 text-center border-r border-b border-slate-200 select-none align-top">
+                        {idx + 1}
+                      </td>
+
                       {/* 1. Date & Time */}
-                      <td className="py-3.5 px-4 whitespace-nowrap align-top">
-                        <div className="font-bold text-slate-900 font-mono text-[11px]">
+                      <td className="py-2.5 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
+                        <div className="font-bold text-slate-900 font-mono text-[11px] tabular-nums">
                           {row.dateFormatted}
                         </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">
@@ -640,10 +646,10 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 2. Person / Tech */}
-                      <td className="py-3.5 px-4 whitespace-nowrap align-top">
+                      <td className="py-2.5 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                         <div className="flex items-center gap-2">
                           <div
-                            className={`w-7 h-7 rounded-lg text-white font-black text-[11px] flex items-center justify-center shrink-0 shadow-2xs ${
+                            className={`w-6 h-6 rounded-md text-white font-black text-[10px] flex items-center justify-center shrink-0 shadow-2xs ${
                               row.personTrade === 'ELECTRICIAN'
                                 ? 'bg-cyan-600'
                                 : row.personTrade === 'SUPERVISOR'
@@ -654,7 +660,7 @@ export function PersonnelWorkHistoryTable() {
                             {row.personName.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-extrabold text-slate-900">
+                            <div className="font-bold text-slate-900 leading-tight">
                               {row.personName}
                             </div>
                             <div className="text-[10px] text-slate-500 font-medium">
@@ -665,13 +671,13 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 3. Work Order # */}
-                      <td className="py-3.5 px-3 whitespace-nowrap align-top">
+                      <td className="py-2.5 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                         <span className="font-mono font-bold text-slate-800 text-xs">
                           {row.ticketId}
                         </span>
                         <div className="mt-1">
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                            className={`px-1.5 py-0.2 rounded text-[9px] font-black ${
                               isCritical
                                 ? 'bg-rose-100 text-rose-800 border border-rose-200'
                                 : isPPM
@@ -685,11 +691,11 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 4. Machine & Line */}
-                      <td className="py-3.5 px-4 whitespace-nowrap align-top">
+                      <td className="py-2.5 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                         <div className="font-mono font-bold text-slate-900">
                           {row.machineId}
                         </div>
-                        <div className="text-[11px] text-slate-500 truncate max-w-[150px]">
+                        <div className="text-[11px] text-slate-600 truncate max-w-[150px]">
                           {row.machineName}
                         </div>
                         <div className="text-[10px] text-indigo-700 font-bold font-mono mt-0.5">
@@ -698,7 +704,7 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 5. Issue / Task */}
-                      <td className="py-3.5 px-4 whitespace-nowrap align-top">
+                      <td className="py-2.5 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                         <div className="font-bold text-slate-800 truncate max-w-[170px]">
                           {row.faultCategory}
                         </div>
@@ -708,8 +714,8 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 6. Action Taken (What They Did) - Highlighted */}
-                      <td className="py-3.5 px-5 align-top">
-                        <div className="bg-slate-50/90 rounded-xl p-2.5 border border-slate-200/80 group-hover:border-indigo-200 group-hover:bg-white transition">
+                      <td className="py-2.5 px-4 align-top border-r border-b border-slate-200">
+                        <div className="bg-slate-50/90 rounded-md p-2 border border-slate-200/80 group-hover:border-indigo-200 group-hover:bg-white transition">
                           <p className="text-xs font-semibold text-slate-800 leading-relaxed">
                             {row.actionTaken}
                           </p>
@@ -717,10 +723,10 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 7. Parts Replaced */}
-                      <td className="py-3.5 px-4 align-top">
+                      <td className="py-2.5 px-3 align-top border-r border-b border-slate-200">
                         <div className="max-w-[170px]">
                           <span
-                            className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-bold ${
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                               row.partsUsedCount > 0
                                 ? 'bg-amber-50 text-amber-900 border border-amber-200 font-mono'
                                 : 'bg-slate-100 text-slate-600'
@@ -732,7 +738,7 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 8. Downtime */}
-                      <td className="py-3.5 px-3 whitespace-nowrap align-top font-mono font-bold text-slate-900">
+                      <td className="py-2.5 px-3 whitespace-nowrap align-top font-mono font-bold text-slate-900 border-r border-b border-slate-200 tabular-nums">
                         <span className="inline-flex items-center gap-1 text-slate-800">
                           <Clock className="w-3 h-3 text-slate-400" />
                           <span>{row.downtimeMinutes}m</span>
@@ -740,19 +746,19 @@ export function PersonnelWorkHistoryTable() {
                       </td>
 
                       {/* 9. Status */}
-                      <td className="py-3.5 px-3 whitespace-nowrap text-center align-top">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      <td className="py-2.5 px-3 whitespace-nowrap text-center align-top border-r border-b border-slate-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                           <Check className="w-3 h-3 text-emerald-700" />
                           <span>Resolved</span>
                         </span>
                       </td>
 
                       {/* 10. Action: Inspect Button */}
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap align-top no-print">
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap align-top border-b border-slate-200 no-print">
                         <button
                           type="button"
                           onClick={() => setSelectedRowDetail(row)}
-                          className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] rounded-lg border border-slate-200 transition cursor-pointer shadow-2xs"
+                          className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] rounded border border-slate-300 transition cursor-pointer shadow-2xs"
                         >
                           Inspect
                         </button>

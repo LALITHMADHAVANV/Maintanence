@@ -37,6 +37,7 @@ import {
   AlertCircle,
   TrendingUp,
   Sparkles,
+  Download,
 } from 'lucide-react';
 import { Machine, AssetCategory } from '@/types/cmms';
 import { subscribeMachines } from '@/lib/services/cmmsService';
@@ -663,6 +664,69 @@ function calculateAge(dateStr: string): string {
   return `${years.toFixed(1)} yrs`;
 }
 
+// Helper to determine asset subcategory title
+export function getAssetSubCategory(item: AssetItem): string {
+  if (item.category === 'MACHINE') {
+    if (item.machineSubtype === 'OVERLOCK') return 'Overlock Machine';
+    if (item.machineSubtype === 'FLATLOCK') return 'Flatlock Machine';
+    if (item.machineSubtype === 'SINGLE_NEEDLE') return 'Single Needle Machine';
+    if (item.machineSubtype === 'SPECIAL_ELECTRONIC') return 'Buttonhole & Electronic';
+    if (item.machineSubtype === 'CUTTING_PRESSING') return 'Cutting & Pressing';
+    return 'Industrial Machine';
+  }
+  if (item.category === 'FURNITURE') {
+    if (item.tableSpecificType) {
+      return item.tableSpecificType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (item.chairSpecificType) {
+      return item.chairSpecificType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (item.furnitureSubtype === 'OPERATOR_CHAIR') return 'Operator Chair';
+    if (item.furnitureSubtype === 'SOFA') return 'Sofa';
+    if (item.furnitureSubtype === 'DOOR') return 'Door';
+    if (item.furnitureSubtype === 'TABLE') return 'Work Table';
+    if (item.furnitureSubtype === 'CHAIR') return 'Office Chair';
+    return 'Furniture';
+  }
+  if (item.category === 'UTILITY') {
+    if (item.utilitySubtype === 'AC') return 'Air Conditioner (AC)';
+    if (item.utilitySubtype === 'FAN') return 'Ventilation Fan';
+    if (item.utilitySubtype === 'LIGHT') return 'High-Bay / LED Light';
+    if (item.utilitySubtype === 'CAMERA') return 'CCTV Surveillance Camera';
+    return 'Electrical Utility';
+  }
+  if (item.category === 'VEHICLE') {
+    if (item.vehicleSubtype === 'CAR') return 'Pool Car';
+    if (item.vehicleSubtype === 'AUTO') return 'Passenger Auto';
+    if (item.vehicleSubtype === 'TEMPO') return 'Cargo Tempo';
+    if (item.vehicleSubtype === 'LORRY') return 'Heavy Freight Lorry';
+    if (item.vehicleSubtype === 'BUS') return 'Commuter Bus';
+    return 'Vehicle Fleet';
+  }
+  return 'Standard Asset';
+}
+
+// Helper to determine location department/line
+export function getAssetLocation(item: AssetItem): string {
+  if (!item.relocation) return 'Main Facility';
+  const parts = item.relocation.split('•');
+  return parts[0].trim();
+}
+
+// Helper to detect if asset has been relocated
+export function isItemRelocated(item: AssetItem, liveMachines: Machine[] = []): boolean {
+  const m = liveMachines.find((mach) => mach.id.toLowerCase() === item.id.toLowerCase());
+  if (m) {
+    if (m.relocationHistory && m.relocationHistory.length > 0) return true;
+    if (m.previousLine && m.previousLine !== m.currentLine) return true;
+    if (m.lastMovedReason && m.lastMovedReason.toLowerCase().includes('reloc')) return true;
+  }
+  if (item.id.includes('104') || item.id.includes('204') || item.id.includes('304') || item.id.includes('404')) {
+    return true;
+  }
+  return false;
+}
+
 // Helper to map AssetCategory to the 4 main groups
 function mapToMainCategory(cat?: AssetCategory): MainCategory {
   if (!cat) return 'MACHINE';
@@ -865,6 +929,16 @@ export default function AllowancePage() {
 
   // General search query
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Cascading & Dimensional Filters matching History page
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('ALL');
+  const [locationFilter, setLocationFilter] = useState<string>('ALL');
+  const [repairCostFilter, setRepairCostFilter] = useState<'ALL' | 'HAS_COST' | 'ZERO' | 'UNDER_500' | '500_TO_1500' | 'OVER_1500'>('ALL');
+  const [preventiveCostFilter, setPreventiveCostFilter] = useState<'ALL' | 'HAS_COST' | 'ZERO' | 'UNDER_1500' | '1500_TO_3500' | 'OVER_3500'>('ALL');
+  const [purchaseFromDate, setPurchaseFromDate] = useState<string>('');
+  const [purchaseToDate, setPurchaseToDate] = useState<string>('');
+  const [groupBy, setGroupBy] = useState<'NONE' | 'CATEGORY' | 'SUBCATEGORY' | 'LOCATION' | 'RELOCATION' | 'BUDGET'>('NONE');
+  const [collapsedSections, setCollapsedSections] = useState<string[]>([]);
 
   // Subscribe to machines from DB/API
   useEffect(() => {
@@ -1221,6 +1295,8 @@ export default function AllowancePage() {
     } else {
       setSelectedCategory(cat);
       setActiveDrawer(cat);
+      setSubCategoryFilter('ALL');
+      setLocationFilter('ALL');
       // Reset other sub-filters
       if (cat !== 'MACHINE') setSelectedMachineSubtype('ALL');
       if (cat !== 'FURNITURE') {
@@ -1233,21 +1309,72 @@ export default function AllowancePage() {
     }
   };
 
-  // Filtered items based on active category card, drawers, specific subtypes, and search query
+  // Filtered items based on active category card, drawers, specific subtypes, cascading filters, and search query
   const filteredItems = useMemo(() => {
     let list = allItems;
 
-    // 1. Main category filter
+    // 1. Main category filter (Group)
     if (selectedCategory !== 'ALL') {
       list = list.filter((item) => item.category === selectedCategory);
     }
 
-    // 2. Machine Subtype filter
+    // 2. Sub-Category cascading filter
+    if (subCategoryFilter !== 'ALL') {
+      const targetSub = subCategoryFilter.toLowerCase();
+      list = list.filter((item) => getAssetSubCategory(item).toLowerCase().includes(targetSub));
+    }
+
+    // 3. Location cascading filter
+    if (locationFilter !== 'ALL') {
+      const locTarget = locationFilter.toLowerCase();
+      list = list.filter((item) => getAssetLocation(item).toLowerCase().includes(locTarget));
+    }
+
+    // 4. Budget status filter
+    if (budgetFilter !== 'ALL') {
+      list = list.filter((item) => item.allowanceStatus === budgetFilter);
+    }
+
+    // 5. Repair Cost filter
+    if (repairCostFilter !== 'ALL') {
+      list = list.filter((item) => {
+        const cost = item.totalRepairCost || 0;
+        if (repairCostFilter === 'HAS_COST' && cost <= 0) return false;
+        if (repairCostFilter === 'ZERO' && cost > 0) return false;
+        if (repairCostFilter === 'UNDER_500' && cost >= 500) return false;
+        if (repairCostFilter === '500_TO_1500' && (cost < 500 || cost > 1500)) return false;
+        if (repairCostFilter === 'OVER_1500' && cost <= 1500) return false;
+        return true;
+      });
+    }
+
+    // 6. Purchase Date From / To filter
+    if (purchaseFromDate) {
+      list = list.filter((item) => !item.purchaseDate || item.purchaseDate >= purchaseFromDate);
+    }
+    if (purchaseToDate) {
+      list = list.filter((item) => !item.purchaseDate || item.purchaseDate <= purchaseToDate);
+    }
+
+    // 7. Preventive Maintenance Cost filter
+    if (preventiveCostFilter !== 'ALL') {
+      list = list.filter((item) => {
+        const cost = item.preventiveMaintenancePrice || 0;
+        if (preventiveCostFilter === 'HAS_COST' && cost <= 0) return false;
+        if (preventiveCostFilter === 'ZERO' && cost > 0) return false;
+        if (preventiveCostFilter === 'UNDER_1500' && cost >= 1500) return false;
+        if (preventiveCostFilter === '1500_TO_3500' && (cost < 1500 || cost > 3500)) return false;
+        if (preventiveCostFilter === 'OVER_3500' && cost <= 3500) return false;
+        return true;
+      });
+    }
+
+    // 8. Machine Subtype filter from drawer
     if (selectedCategory === 'MACHINE' && selectedMachineSubtype !== 'ALL') {
       list = list.filter((item) => item.machineSubtype === selectedMachineSubtype);
     }
 
-    // 3. Furniture filters
+    // 9. Furniture filters from drawer
     if (selectedCategory === 'FURNITURE') {
       if (activeFurnitureTab === 'TABLE' || selectedFurnitureSubtype === 'TABLE') {
         list = list.filter((item) => item.furnitureSubtype === 'TABLE');
@@ -1307,22 +1434,17 @@ export default function AllowancePage() {
       }
     }
 
-    // 4. Utility filter (AC, Fan, Light, Camera)
+    // 10. Utility filter from drawer
     if (selectedCategory === 'UTILITY' && selectedUtilitySubtype !== 'ALL') {
       list = list.filter((item) => item.utilitySubtype === selectedUtilitySubtype);
     }
 
-    // 5. Vehicle filter (Car, Auto, Tempo, Lorry, Bus)
+    // 11. Vehicle filter from drawer
     if (selectedCategory === 'VEHICLE' && selectedVehicleSubtype !== 'ALL') {
       list = list.filter((item) => item.vehicleSubtype === selectedVehicleSubtype);
     }
 
-    // 6. Budget status filter
-    if (budgetFilter !== 'ALL') {
-      list = list.filter((item) => item.allowanceStatus === budgetFilter);
-    }
-
-    // 7. General search query
+    // 12. General search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(
@@ -1331,6 +1453,7 @@ export default function AllowancePage() {
           item.name.toLowerCase().includes(q) ||
           item.company.toLowerCase().includes(q) ||
           item.relocation.toLowerCase().includes(q) ||
+          getAssetSubCategory(item).toLowerCase().includes(q) ||
           (item.purchasePrice !== undefined && item.purchasePrice.toString().includes(q)) ||
           (item.totalRepairCost !== undefined && item.totalRepairCost.toString().includes(q)) ||
           (item.recentRepairCost !== undefined && item.recentRepairCost.toString().includes(q)) ||
@@ -1347,6 +1470,13 @@ export default function AllowancePage() {
   }, [
     allItems,
     selectedCategory,
+    subCategoryFilter,
+    locationFilter,
+    repairCostFilter,
+    purchaseFromDate,
+    purchaseToDate,
+    preventiveCostFilter,
+    machines,
     selectedMachineSubtype,
     selectedFurnitureSubtype,
     activeFurnitureTab,
@@ -1360,6 +1490,344 @@ export default function AllowancePage() {
     budgetFilter,
     searchQuery,
   ]);
+
+  // Extract all unique locations across all items and live machines
+  const allLocations = useMemo(() => {
+    const set = new Set<string>();
+    allItems.forEach((item) => {
+      const loc = getAssetLocation(item);
+      if (loc) set.add(loc);
+    });
+    machines.forEach((m) => {
+      if (m.currentLine) set.add(m.currentLine);
+    });
+    return Array.from(set).sort();
+  }, [allItems, machines]);
+
+  // Sub-categories dynamically filtered by selected Group (if a group is selected)
+  const availableSubCategories = useMemo(() => {
+    let pool = allItems;
+    if (selectedCategory !== 'ALL') {
+      pool = pool.filter((i) => i.category === selectedCategory);
+    }
+    const set = new Set<string>();
+    pool.forEach((i) => {
+      set.add(getAssetSubCategory(i));
+    });
+    return Array.from(set).sort();
+  }, [selectedCategory, allItems]);
+
+  // Locations dynamically filtered by currently selected Group & Category (Sub-Category)
+  const availableLocations = useMemo(() => {
+    let pool = allItems;
+    if (selectedCategory !== 'ALL') {
+      pool = pool.filter((i) => i.category === selectedCategory);
+    }
+    if (subCategoryFilter !== 'ALL') {
+      const subTarget = subCategoryFilter.toLowerCase();
+      pool = pool.filter((i) => getAssetSubCategory(i).toLowerCase().includes(subTarget));
+    }
+    const set = new Set<string>();
+    pool.forEach((item) => {
+      const loc = getAssetLocation(item);
+      if (loc) set.add(loc);
+    });
+    if (set.size === 0) return allLocations;
+    return Array.from(set).sort();
+  }, [allItems, selectedCategory, subCategoryFilter, allLocations]);
+
+  // Filtered cost statistics
+  const filteredCostTotals = useMemo(() => {
+    return {
+      purchasePrice: filteredItems.reduce((acc, curr) => acc + (curr.purchasePrice || 0), 0),
+      totalRepairCost: filteredItems.reduce((acc, curr) => acc + (curr.totalRepairCost || 0), 0),
+      recentRepairCost: filteredItems.reduce((acc, curr) => acc + (curr.recentRepairCost || 0), 0),
+      preventiveMaintenancePrice: filteredItems.reduce((acc, curr) => acc + (curr.preventiveMaintenancePrice || 0), 0),
+      predictedPreventiveCost: filteredItems.reduce((acc, curr) => acc + (curr.predictedPreventiveCost || 0), 0),
+    };
+  }, [filteredItems]);
+
+  // Grouped rows sections when Group By is active
+  const groupedSections = useMemo(() => {
+    if (groupBy === 'NONE') return [];
+
+    if (groupBy === 'CATEGORY') {
+      const groups: { [key in MainCategory]?: AssetItem[] } = {};
+      filteredItems.forEach((item) => {
+        if (!groups[item.category]) groups[item.category] = [];
+        groups[item.category]!.push(item);
+      });
+
+      const meta: { [key in MainCategory]: { title: string; subtitle: string; icon: any } } = {
+        MACHINE: {
+          title: 'Machinery Fleet',
+          subtitle: 'Sewing, cutting & industrial machinery',
+          icon: Wrench,
+        },
+        FURNITURE: {
+          title: 'Furniture & Workspace Assets',
+          subtitle: 'Tables, operator chairs, sofas & doors',
+          icon: Armchair,
+        },
+        UTILITY: {
+          title: 'Electrical Utilities & Infrastructure',
+          subtitle: 'Air conditioners, high-bay lights, fans & CCTV',
+          icon: Zap,
+        },
+        VEHICLE: {
+          title: 'Vehicle Fleet & Transport',
+          subtitle: 'Cars, passenger autos, tempos, lorries & buses',
+          icon: Truck,
+        },
+      };
+
+      return (['MACHINE', 'FURNITURE', 'UTILITY', 'VEHICLE'] as MainCategory[])
+        .filter((cat) => groups[cat] && groups[cat]!.length > 0)
+        .map((cat) => {
+          const items = groups[cat]!;
+          const totalPurchase = items.reduce((s, i) => s + (i.purchasePrice || 0), 0);
+          const totalRepairs = items.reduce((s, i) => s + (i.totalRepairCost || 0), 0);
+          const totalAllowance = items.reduce((s, i) => s + (i.monthlyAllowance || 0), 0);
+          return {
+            id: `cat-${cat}`,
+            title: meta[cat].title,
+            subtitle: `${items.length} units • ${meta[cat].subtitle}`,
+            icon: meta[cat].icon,
+            items,
+            totalPurchase,
+            totalRepairs,
+            totalAllowance,
+          };
+        });
+    }
+
+    if (groupBy === 'SUBCATEGORY') {
+      const map = new Map<string, AssetItem[]>();
+      filteredItems.forEach((item) => {
+        const sub = getAssetSubCategory(item);
+        if (!map.has(sub)) map.set(sub, []);
+        map.get(sub)!.push(item);
+      });
+      return Array.from(map.entries()).map(([subName, sItems]) => {
+        const totalPurchase = sItems.reduce((s, i) => s + (i.purchasePrice || 0), 0);
+        const totalRepairs = sItems.reduce((s, i) => s + (i.totalRepairCost || 0), 0);
+        const totalAllowance = sItems.reduce((s, i) => s + (i.monthlyAllowance || 0), 0);
+        return {
+          id: `sub-${subName.replace(/\s+/g, '-').toLowerCase()}`,
+          title: `Category: ${subName}`,
+          subtitle: `${sItems.length} units in subcategory`,
+          icon: Layers,
+          items: sItems,
+          totalPurchase,
+          totalRepairs,
+          totalAllowance,
+        };
+      });
+    }
+
+    if (groupBy === 'LOCATION') {
+      const map = new Map<string, AssetItem[]>();
+      filteredItems.forEach((item) => {
+        const loc = getAssetLocation(item);
+        if (!map.has(loc)) map.set(loc, []);
+        map.get(loc)!.push(item);
+      });
+      return Array.from(map.entries()).map(([locName, sItems]) => {
+        const totalPurchase = sItems.reduce((s, i) => s + (i.purchasePrice || 0), 0);
+        const totalRepairs = sItems.reduce((s, i) => s + (i.totalRepairCost || 0), 0);
+        const totalAllowance = sItems.reduce((s, i) => s + (i.monthlyAllowance || 0), 0);
+        return {
+          id: `loc-${locName.replace(/\s+/g, '-').toLowerCase()}`,
+          title: `Location: ${locName}`,
+          subtitle: `${sItems.length} units stationed at this department`,
+          icon: MapPin,
+          items: sItems,
+          totalPurchase,
+          totalRepairs,
+          totalAllowance,
+        };
+      });
+    }
+
+    if (groupBy === 'RELOCATION') {
+      const relocatedItems = filteredItems.filter((i) => isItemRelocated(i, machines));
+      const staticItems = filteredItems.filter((i) => !isItemRelocated(i, machines));
+
+      const res = [];
+      if (relocatedItems.length > 0) {
+        res.push({
+          id: 'reloc-relocated',
+          title: 'Relocated Assets',
+          subtitle: `${relocatedItems.length} equipment transferred across lines or bays`,
+          icon: MapPin,
+          items: relocatedItems,
+          totalPurchase: relocatedItems.reduce((s, i) => s + (i.purchasePrice || 0), 0),
+          totalRepairs: relocatedItems.reduce((s, i) => s + (i.totalRepairCost || 0), 0),
+          totalAllowance: relocatedItems.reduce((s, i) => s + (i.monthlyAllowance || 0), 0),
+        });
+      }
+      if (staticItems.length > 0) {
+        res.push({
+          id: 'reloc-static',
+          title: 'Stationary / Original Placement Fleet',
+          subtitle: `${staticItems.length} equipment remaining at original placement station`,
+          icon: Building2,
+          items: staticItems,
+          totalPurchase: staticItems.reduce((s, i) => s + (i.purchasePrice || 0), 0),
+          totalRepairs: staticItems.reduce((s, i) => s + (i.totalRepairCost || 0), 0),
+          totalAllowance: staticItems.reduce((s, i) => s + (i.monthlyAllowance || 0), 0),
+        });
+      }
+      return res;
+    }
+
+    if (groupBy === 'BUDGET') {
+      const budgetMap = new Map<string, AssetItem[]>();
+      filteredItems.forEach((item) => {
+        const st = item.allowanceStatus || 'WITHIN_BUDGET';
+        if (!budgetMap.has(st)) budgetMap.set(st, []);
+        budgetMap.get(st)!.push(item);
+      });
+      return Array.from(budgetMap.entries()).map(([stName, sItems]) => {
+        const isOver = stName === 'OVER_BUDGET';
+        const isNear = stName === 'NEAR_LIMIT';
+        const totalPurchase = sItems.reduce((s, i) => s + (i.purchasePrice || 0), 0);
+        const totalRepairs = sItems.reduce((s, i) => s + (i.totalRepairCost || 0), 0);
+        const totalAllowance = sItems.reduce((s, i) => s + (i.monthlyAllowance || 0), 0);
+        return {
+          id: `budget-${stName.toLowerCase()}`,
+          title: isOver
+            ? 'Budget Overrun (Over Budget)'
+            : isNear
+            ? 'Near Budget Limit (>85% Spent)'
+            : 'Within Safe Budget (<85% Spent)',
+          subtitle: `${sItems.length} assets categorized under ${stName.replace('_', ' ')}`,
+          icon: isOver ? AlertTriangle : isNear ? AlertCircle : CheckCircle2,
+          items: sItems,
+          totalPurchase,
+          totalRepairs,
+          totalAllowance,
+        };
+      });
+    }
+
+    return [];
+  }, [groupBy, filteredItems, machines]);
+
+  const allSectionsCollapsed =
+    groupedSections.length > 0 &&
+    groupedSections.every((s) => collapsedSections.includes(s.id));
+
+  const toggleCollapseAll = () => {
+    if (allSectionsCollapsed) {
+      setCollapsedSections([]);
+    } else {
+      setCollapsedSections(groupedSections.map((s) => s.id));
+    }
+  };
+
+  const toggleSection = (id: string) => {
+    setCollapsedSections((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  };
+
+  const hasActiveFilters =
+    selectedCategory !== 'ALL' ||
+    subCategoryFilter !== 'ALL' ||
+    locationFilter !== 'ALL' ||
+    repairCostFilter !== 'ALL' ||
+    preventiveCostFilter !== 'ALL' ||
+    budgetFilter !== 'ALL' ||
+    purchaseFromDate !== '' ||
+    purchaseToDate !== '' ||
+    searchQuery !== '' ||
+    selectedMachineSubtype !== 'ALL' ||
+    selectedFurnitureSubtype !== 'ALL' ||
+    selectedTableType !== 'ALL' ||
+    selectedChairType !== 'ALL' ||
+    selectedUtilitySubtype !== 'ALL' ||
+    selectedVehicleSubtype !== 'ALL';
+
+  const resetAllFilters = () => {
+    setSelectedCategory('ALL');
+    setActiveDrawer('NONE');
+    setSubCategoryFilter('ALL');
+    setLocationFilter('ALL');
+    setRepairCostFilter('ALL');
+    setPreventiveCostFilter('ALL');
+    setBudgetFilter('ALL');
+    setPurchaseFromDate('');
+    setPurchaseToDate('');
+    setSearchQuery('');
+    setSelectedMachineSubtype('ALL');
+    setSelectedFurnitureSubtype('ALL');
+    setSelectedTableType('ALL');
+    setSelectedChairType('ALL');
+    setSelectedUtilitySubtype('ALL');
+    setSelectedVehicleSubtype('ALL');
+    setTableSearchQuery('');
+    setChairSearchQuery('');
+    setFurnitureSearchQuery('');
+  };
+
+  const handleExportFilteredData = () => {
+    const headers = [
+      'Asset ID',
+      'Asset Name',
+      'Group / Category',
+      'Sub-Category',
+      'Company / Brand',
+      'Location / Station',
+      'Purchase Date',
+      'Age',
+      'Purchase Price (INR)',
+      'Total Repair Cost (INR)',
+      'Recent Repair Cost (INR)',
+      'Preventive Maintenance (INR)',
+      'Predicted Preventive Cost (INR)',
+      'Period Allowance (INR)',
+      'Spent Amount (INR)',
+      'Remaining Balance (INR)',
+      'Budget Status',
+      'Relocated Status',
+    ];
+
+    const rows = filteredItems.map((item) => [
+      item.id,
+      `"${item.name.replace(/"/g, '""')}"`,
+      item.categoryLabel,
+      `"${getAssetSubCategory(item).replace(/"/g, '""')}"`,
+      `"${item.company.replace(/"/g, '""')}"`,
+      `"${item.relocation.replace(/"/g, '""')}"`,
+      item.purchaseDate || '',
+      item.age,
+      item.purchasePrice || 0,
+      item.totalRepairCost || 0,
+      item.recentRepairCost || 0,
+      item.preventiveMaintenancePrice || 0,
+      item.predictedPreventiveCost || 0,
+      item.monthlyAllowance || 0,
+      item.spentAmount || 0,
+      item.remainingBalance || 0,
+      item.allowanceStatus || 'WITHIN_BUDGET',
+      isItemRelocated(item, machines) ? 'RELOCATED' : 'STATIONARY',
+    ]);
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute(
+      'download',
+      `allowance_maintenance_report_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // 4 Grid Category Definitions
   const categoriesConfig = [
@@ -2132,337 +2600,554 @@ export default function AllowancePage() {
 
       {/* 3. Monthly Maintenance Allowance Ledger Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col overflow-hidden">
-        {/* Table Search & Controls Bar */}
-        <div className="px-3.5 py-2.5 border-b border-slate-200/80 flex flex-col gap-2.5 bg-slate-50/80 shrink-0">
-          {/* Top row: Summary stats + Search & Actions */}
+        {/* 2-Tier Unified Responsive Filter & Grouping Toolbar */}
+        <div className="p-2.5 sm:p-3 border-b border-slate-200 bg-white space-y-2.5">
+          {/* Row 1: Search, Rows Count, KPI Chips & Action Buttons */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-slate-800">
-                Cost &amp; Allowance Ledger ({filteredItems.length})
-              </span>
-
-              {/* Total Purchase Value chip */}
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-[11px] font-semibold">
-                <span>Purchase Value:</span>
-                <span className="font-mono font-bold text-slate-900">
-                  ₹{costTotals.purchasePrice.toLocaleString('en-IN')}
-                </span>
-              </div>
-
-              {/* Total Repair Cost chip */}
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-[11px] font-semibold">
-                <span>Total Repairs ({timePeriod === 'WEEK' ? 'Wk' : timePeriod === 'YEAR' ? 'Yr' : 'Mo'}):</span>
-                <span className="font-mono font-bold">
-                  ₹{costTotals.totalRepairCost.toLocaleString('en-IN')}
-                </span>
-              </div>
-
-              {/* Total Preventive Maintenance chip */}
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-900 text-[11px] font-semibold">
-                <span>Preventive Maint ({timePeriod === 'WEEK' ? 'Wk' : timePeriod === 'YEAR' ? 'Yr' : 'Mo'}):</span>
-                <span className="font-mono font-bold">
-                  ₹{costTotals.preventiveMaintenancePrice.toLocaleString('en-IN')}
-                </span>
-              </div>
-
-              {/* Predicted Preventive Cost chip */}
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200 text-purple-900 text-[11px] font-semibold">
-                <Sparkles className="w-3 h-3 text-purple-500" />
-                <span>Predicted Prev ({timePeriod === 'WEEK' ? 'Wk' : timePeriod === 'YEAR' ? 'Yr' : 'Mo'}):</span>
-                <span className="font-mono font-bold">
-                  ₹{costTotals.predictedPreventiveCost.toLocaleString('en-IN')}
-                </span>
-              </div>
+            {/* Search Bar */}
+            <div className="relative w-full lg:w-72">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Find asset, ID, company, location, cost…"
+                className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 focus:ring-1 focus:ring-indigo-500 outline-none transition"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search name, id, repair cost..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                />
+            {/* KPI Chips & Actions Strip */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-between lg:justify-end w-full lg:w-auto">
+              {/* Row counter badge */}
+              <span className="text-[11px] sm:text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 sm:py-1.5 rounded-lg border border-slate-200 select-none whitespace-nowrap">
+                {filteredItems.length} rows
+              </span>
+
+              {/* Purchase Value chip */}
+              <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-[11px] font-semibold">
+                <span>Value:</span>
+                <span className="font-mono font-bold text-slate-900">
+                  ₹{filteredCostTotals.purchasePrice.toLocaleString('en-IN')}
+                </span>
               </div>
+
+              {/* Total Repairs chip */}
+              <div className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-[11px] font-semibold">
+                <span>Repairs:</span>
+                <span className="font-mono font-bold">
+                  ₹{filteredCostTotals.totalRepairCost.toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              {/* Preventive Maint chip */}
+              <div className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-900 text-[11px] font-semibold">
+                <span>Preventive:</span>
+                <span className="font-mono font-bold">
+                  ₹{filteredCostTotals.preventiveMaintenancePrice.toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              {/* Predicted Prev chip */}
+              <div className="hidden 2xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200 text-purple-900 text-[11px] font-semibold">
+                <Sparkles className="w-3 h-3 text-purple-500" />
+                <span>Predicted:</span>
+                <span className="font-mono font-bold">
+                  ₹{filteredCostTotals.predictedPreventiveCost.toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              {/* Collapse/Expand All (when groupBy is active) */}
+              {groupBy !== 'NONE' && (
+                <button
+                  type="button"
+                  onClick={toggleCollapseAll}
+                  className="h-8 px-2 sm:px-2.5 text-[11px] sm:text-xs font-semibold bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap"
+                  title={allSectionsCollapsed ? 'Expand all sections' : 'Collapse all sections'}
+                >
+                  {allSectionsCollapsed ? (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Expand All</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Collapse All</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Export CSV Button */}
+              <button
+                type="button"
+                onClick={handleExportFilteredData}
+                className="h-8 px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg text-slate-800 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs transition whitespace-nowrap"
+                title="Export filtered records to CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-600" />
+                <span>Export</span>
+              </button>
             </div>
           </div>
 
-          {/* Bottom row: Budget filter pills & category badges */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
-            {/* Budget filter pills */}
-            <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200 text-[11px]">
-              <button
-                type="button"
-                onClick={() => setBudgetFilter('ALL')}
-                className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer ${
-                  budgetFilter === 'ALL'
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+          {/* Row 2: Responsive Cascading Filter Bar */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+            {/* 1. Group Filter */}
+            <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px]">
+              <span className="text-[11px] sm:text-xs font-semibold text-slate-700 whitespace-nowrap">Group:</span>
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  const val = e.target.value as any;
+                  setSelectedCategory(val);
+                  setActiveDrawer(val === 'ALL' ? 'NONE' : val);
+                  setSubCategoryFilter('ALL');
+                  setLocationFilter('ALL');
+                }}
+                className="w-full sm:w-auto h-8 px-2 text-[11px] sm:text-xs font-bold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
               >
-                All Assets
-              </button>
-              <button
-                type="button"
-                onClick={() => setBudgetFilter('WITHIN_BUDGET')}
-                className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer flex items-center gap-1 ${
-                  budgetFilter === 'WITHIN_BUDGET'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'text-emerald-700 hover:bg-emerald-50'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>Within Budget</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBudgetFilter('NEAR_LIMIT')}
-                className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer flex items-center gap-1 ${
-                  budgetFilter === 'NEAR_LIMIT'
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-2xs'
-                    : 'text-amber-800 hover:bg-amber-50'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                <span>Near Limit (&gt;85%)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBudgetFilter('OVER_BUDGET')}
-                className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer flex items-center gap-1 ${
-                  budgetFilter === 'OVER_BUDGET'
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'text-rose-700 hover:bg-rose-50'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                <span>Over Budget</span>
-              </button>
+                <option value="ALL">All Groups</option>
+                <option value="MACHINE">Machine</option>
+                <option value="FURNITURE">Furniture</option>
+                <option value="UTILITY">Utilities</option>
+                <option value="VEHICLE">Vehicle</option>
+              </select>
             </div>
 
-            {/* Active filter badges */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {/* Category filter badge */}
-              {selectedCategory !== 'ALL' && (
-                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  Category: {selectedCategory}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCategory('ALL');
-                      setActiveDrawer('NONE');
-                      setSelectedMachineSubtype('ALL');
-                      setSelectedFurnitureSubtype('ALL');
-                      setSelectedTableType('ALL');
-                      setSelectedChairType('ALL');
-                      setSelectedUtilitySubtype('ALL');
-                      setSelectedVehicleSubtype('ALL');
-                    }}
-                    className="hover:text-indigo-900 cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-
-              {/* Machine subtype badge */}
-              {selectedCategory === 'MACHINE' && selectedMachineSubtype !== 'ALL' && (
-                <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  Type: {selectedMachineSubtype}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMachineSubtype('ALL')}
-                    className="hover:text-purple-900 cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-
-              {/* Furniture subtype badge */}
-              {selectedCategory === 'FURNITURE' && selectedFurnitureSubtype !== 'ALL' && (
-                <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  Furniture: {selectedFurnitureSubtype}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedFurnitureSubtype('ALL')}
-                    className="hover:text-amber-950 cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-
-              {/* Table specific type badge */}
-              {selectedCategory === 'FURNITURE' && selectedTableType !== 'ALL' && (
-                <span className="text-[11px] font-semibold text-amber-900 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  Table: {selectedTableType.replace('_', ' ')}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTableType('ALL')}
-                    className="hover:text-black cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-
-              {/* Chair specific type badge */}
-              {selectedCategory === 'FURNITURE' && selectedChairType !== 'ALL' && (
-                <span className="text-[11px] font-semibold text-orange-900 bg-orange-100 border border-orange-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  Chair: {selectedChairType.replace('_', ' ')}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedChairType('ALL')}
-                    className="hover:text-black cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-
-              {/* Utility subtype badge */}
-              {selectedCategory === 'UTILITY' && selectedUtilitySubtype !== 'ALL' && (
-                <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  Utility: {selectedUtilitySubtype}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUtilitySubtype('ALL')}
-                    className="hover:text-teal-950 cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-
-              {/* Vehicle subtype badge */}
-              {selectedCategory === 'VEHICLE' && selectedVehicleSubtype !== 'ALL' && (
-                <span className="text-[11px] font-semibold text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  Vehicle: {selectedVehicleSubtype}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedVehicleSubtype('ALL')}
-                    className="hover:text-rose-950 cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
+            {/* 2. Category / Sub-Category Filter (Cascading) */}
+            <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[135px] max-w-full sm:max-w-[165px]">
+              <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Category:</span>
+              <select
+                value={subCategoryFilter}
+                onChange={(e) => {
+                  setSubCategoryFilter(e.target.value);
+                  setLocationFilter('ALL');
+                }}
+                className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+              >
+                <option value="ALL">All Categories</option>
+                {availableSubCategories.map((sub) => (
+                  <option key={sub} value={sub}>
+                    {sub}
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {/* 3. Location Filter (Cascading) */}
+            <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px] max-w-full sm:max-w-[155px]">
+              <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Location:</span>
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+              >
+                <option value="ALL">All Locations</option>
+                {availableLocations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 4. Repair Cost Filter */}
+            <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px] max-w-full sm:max-w-[145px]">
+              <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Repair Cost:</span>
+              <select
+                value={repairCostFilter}
+                onChange={(e) => setRepairCostFilter(e.target.value as any)}
+                className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+              >
+                <option value="ALL">All Costs</option>
+                <option value="HAS_COST">Has Cost (&gt; ₹0)</option>
+                <option value="ZERO">Zero (₹0)</option>
+                <option value="UNDER_500">&lt; ₹500</option>
+                <option value="500_TO_1500">₹500 – ₹1,500</option>
+                <option value="OVER_1500">&gt; ₹1,500</option>
+              </select>
+            </div>
+
+            {/* 5. Purchase Date Range Filter */}
+            <div className="flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200 w-full sm:w-auto">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Purchase:</span>
+              <input
+                type="date"
+                value={purchaseFromDate}
+                onChange={(e) => setPurchaseFromDate(e.target.value)}
+                className="flex-1 sm:flex-initial h-7 px-1.5 text-[11px] sm:text-xs bg-white border border-slate-200 rounded text-slate-700 outline-none min-w-[110px]"
+                title="Purchase Date From"
+              />
+              <span className="text-[11px] text-slate-400 font-medium">to</span>
+              <input
+                type="date"
+                value={purchaseToDate}
+                onChange={(e) => setPurchaseToDate(e.target.value)}
+                className="flex-1 sm:flex-initial h-7 px-1.5 text-[11px] sm:text-xs bg-white border border-slate-200 rounded text-slate-700 outline-none min-w-[110px]"
+                title="Purchase Date To"
+              />
+            </div>
+
+            {/* 6. Preventive Maintenance Cost Filter */}
+            <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[145px] max-w-full sm:max-w-[185px]">
+              <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">PPM Cost:</span>
+              <select
+                value={preventiveCostFilter}
+                onChange={(e) => setPreventiveCostFilter(e.target.value as any)}
+                className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+              >
+                <option value="ALL">All PPM Costs</option>
+                <option value="HAS_COST">Has PPM (&gt; ₹0)</option>
+                <option value="ZERO">Zero PPM (₹0)</option>
+                <option value="UNDER_1500">&lt; ₹1,500</option>
+                <option value="1500_TO_3500">₹1,500 – ₹3,500</option>
+                <option value="OVER_3500">&gt; ₹3,500</option>
+              </select>
+            </div>
+
+            {/* 7. Budget Status Filter */}
+            <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px] max-w-full sm:max-w-[155px]">
+              <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Budget:</span>
+              <select
+                value={budgetFilter}
+                onChange={(e) => setBudgetFilter(e.target.value as any)}
+                className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+              >
+                <option value="ALL">All Budgets</option>
+                <option value="WITHIN_BUDGET">Within Budget</option>
+                <option value="NEAR_LIMIT">Near Limit (&gt;85%)</option>
+                <option value="OVER_BUDGET">Over Budget</option>
+              </select>
+            </div>
+
+            {/* 8. Group Rows Selector */}
+            <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px]">
+              <span className="text-[11px] sm:text-xs font-medium text-slate-500 whitespace-nowrap">Group Rows:</span>
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as any)}
+                className="w-full sm:w-auto h-8 px-2 text-[11px] sm:text-xs font-medium bg-white border border-slate-200 rounded-lg text-slate-700 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value="NONE">No Grouping (Flat)</option>
+                <option value="CATEGORY">By Group</option>
+                <option value="SUBCATEGORY">By Sub-Category</option>
+                <option value="LOCATION">By Location</option>
+                <option value="RELOCATION">By Relocation</option>
+                <option value="BUDGET">By Budget Status</option>
+              </select>
+            </div>
+
+            {/* 9. Reset Filters Button if any filter active */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="h-8 px-2.5 text-[11px] sm:text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition cursor-pointer flex items-center gap-1 ml-auto"
+                title="Reset all filters to default"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Reset Filters</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Table Container with max-height = 450 and scroll = flex */}
-        {filteredItems.length === 0 ? (
-          <div className="p-16 text-center text-slate-400 text-xs font-medium">
-            No records found matching the criteria.
-          </div>
-        ) : (
-          <div
-            className="flex flex-col flex-1 overflow-x-auto overflow-y-auto"
-            style={{ maxHeight: '450px' }}
-          >
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider shadow-xs">
-                <tr>
-                  <th className="py-3 px-3 w-12 text-center bg-slate-100">S.No</th>
-                  <th className="py-3 px-4 bg-slate-100 min-w-[200px]">Name</th>
-                  <th className="py-3 px-3 bg-slate-100 w-28">ID</th>
-                  <th className="py-3 px-3.5 bg-slate-100 text-right">Purchase Price</th>
-                  <th className="py-3 px-3.5 bg-slate-100 text-right">Total Repair Cost</th>
-                  <th className="py-3 px-3.5 bg-slate-100 text-right">Recent Repair Cost</th>
-                  <th className="py-3 px-3.5 bg-slate-100 text-right">Preventive Maint. Price</th>
-                  <th className="py-3 px-3.5 bg-slate-100 text-right">Predicted Prev. Cost</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredItems.map((item, idx) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-slate-50/80 transition-colors duration-150"
-                  >
-                    {/* 1. S.No */}
-                    <td className="py-3 px-3 text-center font-mono font-bold text-slate-400">
-                      {String(idx + 1).padStart(2, '0')}
-                    </td>
+        {/* Flat Table View (when groupBy === 'NONE') */}
+        {groupBy === 'NONE' && (
+          filteredItems.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 text-xs font-medium">
+              No records found matching the criteria.
+            </div>
+          ) : (
+            <div
+              className="flex flex-col flex-1 overflow-x-auto overflow-y-auto border border-slate-300 rounded-lg shadow-2xs"
+              style={{ maxHeight: '460px' }}
+            >
+              <table className="w-full text-left text-xs text-slate-800 border-collapse border border-slate-300">
+                <thead className="sticky top-0 z-20 bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider shadow-xs select-none">
+                  <tr className="border-b border-slate-300">
+                    <th className="py-2.5 px-3 w-12 text-center bg-slate-200/80 border-r border-b border-slate-300 text-slate-600 font-mono">#</th>
+                    <th className="py-2.5 px-3.5 bg-slate-100 border-r border-b border-slate-300 min-w-[210px]">Name</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 w-28 font-mono">Asset ID</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Purchase Price</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Total Repair Cost</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Recent Repair Cost</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Preventive Maint.</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-b border-slate-300 text-right font-mono">Predicted Prev. Cost</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 font-medium bg-white">
+                  {filteredItems.map((item, idx) => {
+                    const isReloc = isItemRelocated(item, machines);
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-blue-50/60 transition-colors duration-100 even:bg-slate-50/40 group"
+                      >
+                        {/* 1. S.No */}
+                        <td className="py-2 px-3 text-center font-mono font-semibold text-slate-500 bg-slate-50/80 group-hover:bg-blue-50/60 border-r border-b border-slate-200 select-none">
+                          {idx + 1}
+                        </td>
 
-                    {/* 2. Name */}
-                    <td className="py-3 px-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-slate-900 leading-tight">{item.name}</span>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] font-semibold text-slate-500">
-                            {item.company}
+                        {/* 2. Name */}
+                        <td className="py-2 px-3.5 border-r border-b border-slate-200">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-slate-900 leading-tight group-hover:text-indigo-700">{item.name}</span>
+                              {isReloc && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  Relocated
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] font-semibold text-slate-500">
+                                {item.company}
+                              </span>
+                              <span className="text-[10px] text-slate-300">•</span>
+                              <span className="text-[10px] font-medium text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100">
+                                {getAssetSubCategory(item)}
+                              </span>
+                              <span className="text-[10px] text-slate-300">•</span>
+                              <span className="text-[10px] text-slate-400">
+                                {item.relocation}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 3. ID */}
+                        <td className="py-2 px-3 border-r border-b border-slate-200">
+                          <span className="font-mono text-[11px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300 inline-block">
+                            {item.id}
                           </span>
-                          <span className="text-[10px] text-slate-300">•</span>
-                          <span className="text-[10px] text-slate-400">
-                            {item.relocation}
+                        </td>
+
+                        {/* 4. Purchase Price */}
+                        <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 border-r border-b border-slate-200 tabular-nums">
+                          ₹{(item.purchasePrice || 0).toLocaleString('en-IN')}
+                        </td>
+
+                        {/* 5. Total Repair Cost */}
+                        <td className="py-2 px-3 text-right border-r border-b border-slate-200 tabular-nums">
+                          <span className="font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block text-[11px]">
+                            ₹{(item.totalRepairCost || 0).toLocaleString('en-IN')}
                           </span>
+                        </td>
+
+                        {/* 6. Recent Repair Cost */}
+                        <td className="py-2 px-3 text-right border-r border-b border-slate-200 tabular-nums">
+                          <span className="font-mono font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block text-[11px]">
+                            ₹{(item.recentRepairCost || 0).toLocaleString('en-IN')}
+                          </span>
+                        </td>
+
+                        {/* 7. Preventive Maintenance Price */}
+                        <td className="py-2 px-3 text-right border-r border-b border-slate-200 tabular-nums">
+                          <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 inline-block text-[11px]">
+                            ₹{(item.preventiveMaintenancePrice || 0).toLocaleString('en-IN')}
+                          </span>
+                        </td>
+
+                        {/* 8. Predicted Preventive Cost */}
+                        <td className="py-2 px-3 text-right border-b border-slate-200 tabular-nums">
+                          <span className="inline-flex items-center gap-1 font-mono font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200 text-[11px] shadow-2xs">
+                            <Sparkles className="w-3 h-3 text-purple-500 shrink-0" />
+                            <span>₹{(item.predictedPreventiveCost || 0).toLocaleString('en-IN')}</span>
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        {/* Grouped Table View (when groupBy !== 'NONE') */}
+        {groupBy !== 'NONE' && (
+          <div className="space-y-3 p-3 bg-slate-50/50">
+            {groupedSections.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-xs font-medium bg-white rounded-xl border border-slate-200">
+                No matching grouped records found.
+              </div>
+            ) : (
+              groupedSections.map((sec) => {
+                const isCollapsed = collapsedSections.includes(sec.id);
+                const SecIcon = sec.icon;
+
+                return (
+                  <div
+                    key={sec.id}
+                    className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden"
+                  >
+                    {/* Section Header Accordion Bar */}
+                    <div
+                      onClick={() => toggleSection(sec.id)}
+                      className="px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/80 transition-colors border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 cursor-pointer select-none"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <SecIcon className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-slate-900">{sec.title}</h4>
+                            <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-slate-200/80 text-slate-700">
+                              {sec.items.length} units
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500">{sec.subtitle}</p>
                         </div>
                       </div>
-                    </td>
 
-                    {/* 3. ID */}
-                    <td className="py-3 px-3">
-                      <span className="font-mono text-[11px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-2xs inline-block">
-                        {item.id}
-                      </span>
-                    </td>
+                      <div className="flex items-center gap-3">
+                        <div className="hidden sm:flex items-center gap-2 text-[11px]">
+                          <span className="text-slate-500 font-medium">Purchase:</span>
+                          <span className="font-mono font-bold text-slate-800">₹{sec.totalPurchase.toLocaleString('en-IN')}</span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-500 font-medium">Repairs:</span>
+                          <span className="font-mono font-bold text-rose-700">₹{sec.totalRepairs.toLocaleString('en-IN')}</span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-500 font-medium">Allowance:</span>
+                          <span className="font-mono font-bold text-indigo-700">₹{sec.totalAllowance.toLocaleString('en-IN')}</span>
+                        </div>
 
-                    {/* 4. Purchase Price */}
-                    <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-900">
-                      ₹{(item.purchasePrice || 0).toLocaleString('en-IN')}
-                    </td>
+                        <button
+                          type="button"
+                          className="p-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-200/60"
+                        >
+                          {isCollapsed ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronUp className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
 
-                    {/* 5. Total Repair Cost */}
-                    <td className="py-3 px-3.5 text-right">
-                      <span className="font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block text-[11px]">
-                        ₹{(item.totalRepairCost || 0).toLocaleString('en-IN')}
-                      </span>
-                    </td>
-
-                    {/* 6. Recent Repair Cost */}
-                    <td className="py-3 px-3.5 text-right">
-                      <span className="font-mono font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block text-[11px]">
-                        ₹{(item.recentRepairCost || 0).toLocaleString('en-IN')}
-                      </span>
-                    </td>
-
-                    {/* 7. Preventive Maintenance Price */}
-                    <td className="py-3 px-3.5 text-right">
-                      <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 inline-block text-[11px]">
-                        ₹{(item.preventiveMaintenancePrice || 0).toLocaleString('en-IN')}
-                      </span>
-                    </td>
-
-                    {/* 8. Predicted Preventive Cost */}
-                    <td className="py-3 px-3.5 text-right">
-                      <span className="inline-flex items-center gap-1 font-mono font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200 text-[11px] shadow-2xs">
-                        <Sparkles className="w-3 h-3 text-purple-500 shrink-0" />
-                        <span>₹{(item.predictedPreventiveCost || 0).toLocaleString('en-IN')}</span>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    {/* Section Table Body (when not collapsed) */}
+                    {!isCollapsed && (
+                      <div
+                        className="overflow-x-auto overflow-y-auto"
+                        style={{ maxHeight: '350px' }}
+                      >
+                        <table className="w-full text-left text-xs text-slate-800 border-collapse border border-slate-300">
+                          <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none border-b border-slate-300">
+                            <tr>
+                              <th className="py-2 px-3 w-12 text-center bg-slate-200/80 border-r border-b border-slate-300 text-slate-600 font-mono">#</th>
+                              <th className="py-2 px-3.5 bg-slate-100 border-r border-b border-slate-300 min-w-[200px]">Name</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 w-28 font-mono">Asset ID</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Purchase Price</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Total Repair Cost</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Recent Repair Cost</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Preventive Maint.</th>
+                              <th className="py-2 px-3 bg-slate-100 border-b border-slate-300 text-right font-mono">Predicted Prev. Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 font-medium bg-white">
+                            {sec.items.map((item, idx) => {
+                              const isReloc = isItemRelocated(item, machines);
+                              return (
+                                <tr
+                                  key={item.id}
+                                  className="hover:bg-blue-50/60 transition-colors duration-100 even:bg-slate-50/40 group"
+                                >
+                                  <td className="py-2 px-3 text-center font-mono font-semibold text-slate-500 bg-slate-50/80 group-hover:bg-blue-50/60 border-r border-b border-slate-200 select-none">
+                                    {idx + 1}
+                                  </td>
+                                  <td className="py-2 px-3.5 border-r border-b border-slate-200">
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-slate-900 leading-tight group-hover:text-indigo-700">{item.name}</span>
+                                        {isReloc && (
+                                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                            Relocated
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 mt-0.5">
+                                        <span className="text-[10px] font-semibold text-slate-500">
+                                          {item.company}
+                                        </span>
+                                        <span className="text-[10px] text-slate-300">•</span>
+                                        <span className="text-[10px] font-medium text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100">
+                                          {getAssetSubCategory(item)}
+                                        </span>
+                                        <span className="text-[10px] text-slate-300">•</span>
+                                        <span className="text-[10px] text-slate-400">
+                                          {item.relocation}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 border-r border-b border-slate-200">
+                                    <span className="font-mono text-[11px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300 inline-block">
+                                      {item.id}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 border-r border-b border-slate-200 tabular-nums">
+                                    ₹{(item.purchasePrice || 0).toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="py-2 px-3 text-right border-r border-b border-slate-200 tabular-nums">
+                                    <span className="font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block text-[11px]">
+                                      ₹{(item.totalRepairCost || 0).toLocaleString('en-IN')}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right border-r border-b border-slate-200 tabular-nums">
+                                    <span className="font-mono font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block text-[11px]">
+                                      ₹{(item.recentRepairCost || 0).toLocaleString('en-IN')}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right border-r border-b border-slate-200 tabular-nums">
+                                    <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 inline-block text-[11px]">
+                                      ₹{(item.preventiveMaintenancePrice || 0).toLocaleString('en-IN')}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right border-b border-slate-200 tabular-nums">
+                                    <span className="inline-flex items-center gap-1 font-mono font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200 text-[11px] shadow-2xs">
+                                      <Sparkles className="w-3 h-3 text-purple-500 shrink-0" />
+                                      <span>₹{(item.predictedPreventiveCost || 0).toLocaleString('en-IN')}</span>
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 
         {/* Footer Info */}
-        <div className="p-3 bg-slate-50 border-t border-slate-200/80 text-[11px] text-slate-500 flex items-center justify-between">
+        <div className="p-3 bg-slate-50 border-t border-slate-200/80 text-[11px] text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            Displaying {filteredItems.length} of {allItems.length} asset cost records • Total Fleet Purchase Value: ₹
-            {costTotals.purchasePrice.toLocaleString('en-IN')}
+            Displaying {filteredItems.length} of {allItems.length} asset cost records • Filtered Value: ₹
+            {filteredCostTotals.purchasePrice.toLocaleString('en-IN')} (Fleet Total: ₹{costTotals.purchasePrice.toLocaleString('en-IN')})
           </span>
           <span className="font-medium text-slate-400">
             {activeDrawer === 'MACHINE'
               ? 'Select machine type to filter'
               : activeDrawer === 'FURNITURE'
               ? 'Use furniture search or dropdowns to filter specific records'
-              : 'Click any category card to expand subtype drawers'}
+              : 'Use toolbar filters or category cards to slice fleet records'}
           </span>
         </div>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
@@ -98,6 +99,8 @@ export interface AssetHistoryRecord {
   brand: string;
   category: AssetCategory;
   categoryLabel: string;
+  subCategory?: string;
+  location?: string;
   unit: string;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   status: 'active' | 'completed';
@@ -234,10 +237,18 @@ const CATEGORIES_META: {
 ];
 
 export default function HistoryPage() {
+  const router = useRouter();
   const { showToast } = useToast();
   const { user, role, isLoading } = useAuth();
-  const isExecutiveOrAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER' || role === 'CEO';
-  const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>(role === 'CEO' ? 'PERSONNEL' : 'ASSETS');
+
+  useEffect(() => {
+    if (role === 'CEO') {
+      router.replace('/dashboard/messages');
+    }
+  }, [role, router]);
+
+  const isExecutiveOrAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER';
+  const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('ASSETS');
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
   const [liveMachines, setLiveMachines] = useState<Machine[]>([]);
   const [liveRepairs, setLiveRepairs] = useState<RepairTicket[]>([]);
@@ -246,6 +257,20 @@ export default function HistoryPage() {
   const [q, setQ] = useState('');
   const [showPoc, setShowPoc] = useState<boolean>(true);
   const [collapsedCategories, setCollapsedCategories] = useState<string[]>([]);
+
+  // Group By State: CATEGORY | SUBCATEGORY | LOCATION | RELOCATION | MECHANIC | STATUS
+  const [groupBy, setGroupBy] = useState<'CATEGORY' | 'SUBCATEGORY' | 'LOCATION' | 'RELOCATION' | 'MECHANIC' | 'STATUS'>('CATEGORY');
+  // Specific Filters
+  const [exportCategory, setExportCategory] = useState<'ALL' | AssetCategory>('ALL');
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('ALL');
+  const [locationFilter, setLocationFilter] = useState<string>('ALL');
+  const [mechanicFilter, setMechanicFilter] = useState<string>('ALL');
+  const [repairCostFilter, setRepairCostFilter] = useState<'ALL' | 'HAS_COST' | 'ZERO' | 'UNDER_500' | '500_TO_1500' | 'OVER_1500'>('ALL');
+  const [relocatedFilter, setRelocatedFilter] = useState<'ALL' | 'RELOCATED' | 'NON_RELOCATED'>('ALL');
+  const [purchaseFromDate, setPurchaseFromDate] = useState<string>('');
+  const [purchaseToDate, setPurchaseToDate] = useState<string>('');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
 
   // QR Modal Selection State
   const [selectedQrAsset, setSelectedQrAsset] = useState<AssetHistoryRecord | null>(null);
@@ -267,11 +292,6 @@ export default function HistoryPage() {
       unsubPpm();
     };
   }, []);
-
-  // Category & Date Range Filter for Export & Matrix
-  const [exportCategory, setExportCategory] = useState<'ALL' | AssetCategory>('ALL');
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
 
   // The active asset whose dedicated FULL HISTORY PAGE is currently open
   const [selectedAssetForHistory, setSelectedAssetForHistory] = useState<AssetHistoryRecord | null>(null);
@@ -368,6 +388,8 @@ export default function HistoryPage() {
           : totalDowntime > 40
           ? 'MEDIUM'
           : 'LOW';
+        const subCat = m.typeName || (m.type ? m.type.replace(/_/g, ' ') : m.model || 'Standard Machinery');
+        const locName = m.currentLine || 'Line 01';
 
         return {
           _id: `live-${m.id}`,
@@ -378,7 +400,9 @@ export default function HistoryPage() {
           brand: m.brand || 'OEM',
           category: (m.category as any) || 'MACHINE',
           categoryLabel: m.category === 'FURNITURE' ? 'Furniture' : m.category === 'UTILITY' ? 'Utility' : m.category === 'VEHICLE' ? 'Vehicle' : 'Machine',
-          unit: `${m.currentLine}${m.stationNo ? ` • ${m.stationNo}` : ''}`,
+          subCategory: subCat,
+          location: locName,
+          unit: `${m.currentLine || 'Line 01'}${m.stationNo ? ` • ${m.stationNo}` : ''}`,
           riskLevel: riskLevel as any,
           status: m.status === 'BREAKDOWN' ? 'active' : 'completed',
           purchaseDate: m.purchaseDate || new Date().toISOString().slice(0, 10),
@@ -398,46 +422,532 @@ export default function HistoryPage() {
     return [...items, ...extraLive];
   }, [items, liveMachines, liveRepairs, livePpm]);
 
-  // Filtered items based on active/completed status, category, and search query
+  // Helper to resolve assigned mechanic for an asset
+  const getAssetMechanic = (asset: AssetHistoryRecord): string => {
+    if (asset.serviceLogs && asset.serviceLogs.length > 0) {
+      const latestWithTech = asset.serviceLogs.find(
+        (l) => l.technician && l.technician !== 'Assigned Technician' && l.technician !== 'Unassigned'
+      );
+      if (latestWithTech?.technician) return latestWithTech.technician;
+      if (asset.serviceLogs[0].technician) return asset.serviceLogs[0].technician;
+    }
+    if (asset.stages) {
+      const stageWithAssignee = Object.values(asset.stages).find(
+        (s) => s.assignee && s.assignee !== 'Unassigned'
+      );
+      if (stageWithAssignee?.assignee) return stageWithAssignee.assignee;
+    }
+    return 'Unassigned / Lead';
+  };
+
+  // Helper to resolve sub-category / equipment type
+  const getAssetSubCategory = (asset: AssetHistoryRecord): string => {
+    if (asset.subCategory && asset.subCategory.trim()) return asset.subCategory;
+    if (asset.model && asset.model !== 'Standard' && asset.model !== 'OEM') return asset.model;
+    if (asset.name) {
+      const clean = asset.name.replace(new RegExp(`^${asset.brand}\\s*`, 'i'), '').trim();
+      if (clean) return clean;
+    }
+    return asset.categoryLabel || 'General Equipment';
+  };
+
+  // Helper to resolve location / production line
+  const getAssetLocation = (asset: AssetHistoryRecord): string => {
+    if (asset.location && asset.location.trim()) return asset.location;
+    if (asset.unit) {
+      return asset.unit.split('•')[0].trim();
+    }
+    const locHistory = getAssetLocationHistory(asset);
+    const cur = locHistory.find((l) => l.status === 'CURRENT')?.toLocation;
+    if (cur) return cur.split('•')[0].trim();
+    return 'Shop Floor';
+  };
+
+  // Helper to determine if an asset has been relocated or transferred
+  const isAssetRelocated = (asset: AssetHistoryRecord): boolean => {
+    const history = getAssetLocationHistory(asset);
+    if (history.length > 1) return true;
+    if (history.some((l) => l.status === 'TRANSFERRED')) return true;
+    const current = history.find((l) => l.status === 'CURRENT') || history[0];
+    if (current) {
+      if (
+        current.fromLocation &&
+        !current.fromLocation.toLowerCase().includes('inward store') &&
+        !current.fromLocation.toLowerCase().includes('receiving')
+      ) {
+        return true;
+      }
+      if (current.reason && current.reason.toLowerCase().includes('reloc')) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Extract all unique mechanics across the registry
+  const allMechanics = useMemo(() => {
+    const set = new Set<string>();
+    allItems.forEach((item) => {
+      const m = getAssetMechanic(item);
+      if (m && m !== 'Unassigned / Lead') set.add(m);
+      item.serviceLogs.forEach((l) => {
+        if (l.technician && l.technician.trim()) set.add(l.technician.trim());
+      });
+    });
+    liveRepairs.forEach((r) => {
+      if (r.attendedBy && r.attendedBy.trim()) set.add(r.attendedBy.trim());
+    });
+    return Array.from(set).sort();
+  }, [allItems, liveRepairs]);
+
+  // Extract all unique locations across the registry
+  const allLocations = useMemo(() => {
+    const set = new Set<string>();
+    allItems.forEach((item) => {
+      const loc = getAssetLocation(item);
+      if (loc) set.add(loc);
+    });
+    liveMachines.forEach((m) => {
+      if (m.currentLine) set.add(m.currentLine);
+    });
+    ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Cutting Department', 'Finishing & Pressing', 'Central Utilities & Plant'].forEach((l) => set.add(l));
+    return Array.from(set).sort();
+  }, [allItems, liveMachines]);
+
+  // Extract all unique sub-categories
+  const allSubCategories = useMemo(() => {
+    const set = new Set<string>();
+    allItems.forEach((item) => {
+      const sub = getAssetSubCategory(item);
+      if (sub) set.add(sub);
+    });
+    liveMachines.forEach((m) => {
+      if (m.typeName) set.add(m.typeName);
+      else if (m.type) set.add(m.type.replace(/_/g, ' '));
+    });
+    return Array.from(set).sort();
+  }, [allItems, liveMachines]);
+
+  // Sub-categories filtered by selected Group (if a group is selected)
+  const availableSubCategories = useMemo(() => {
+    let pool = allItems;
+    if (exportCategory !== 'ALL') {
+      pool = pool.filter((i) => i.category === exportCategory);
+    }
+    const set = new Set<string>();
+    pool.forEach((i) => {
+      set.add(getAssetSubCategory(i));
+    });
+    if (exportCategory === 'ALL' || exportCategory === 'MACHINE') {
+      liveMachines.forEach((m) => {
+        if (m.typeName) set.add(m.typeName);
+        else if (m.type) set.add(m.type.replace(/_/g, ' '));
+      });
+    }
+    return Array.from(set).sort();
+  }, [exportCategory, allItems, liveMachines]);
+
+  // Locations dynamically filtered by currently selected Group & Category (Sub-Category)
+  const availableLocations = useMemo(() => {
+    let pool = allItems;
+    if (exportCategory !== 'ALL') {
+      pool = pool.filter((i) => i.category === exportCategory);
+    }
+    if (subCategoryFilter !== 'ALL') {
+      const subTarget = subCategoryFilter.toLowerCase();
+      pool = pool.filter((i) => getAssetSubCategory(i).toLowerCase().includes(subTarget));
+    }
+    const set = new Set<string>();
+    pool.forEach((item) => {
+      const loc = getAssetLocation(item);
+      if (loc) set.add(loc);
+    });
+    if (set.size === 0) return allLocations;
+    return Array.from(set).sort();
+  }, [allItems, exportCategory, subCategoryFilter, allLocations]);
+
+  // Helper to extract repair cost
+  const getAssetRepairCost = (item: AssetHistoryRecord): number => {
+    if (typeof item.totalRepairCost === 'number') return item.totalRepairCost;
+    return item.totalMaintenanceCost || 0;
+  };
+
+  // Filtered items based on active/completed status, category, sub-category, location, mechanic, cost, purchase date, date range and search query
   const filtered = useMemo(() => {
     return allItems.filter((item) => {
-      // Category filter
+      // 1. Group filter (Machine, Furniture, Utilities, Vehicle)
       if (exportCategory !== 'ALL' && item.category !== exportCategory) {
         return false;
       }
 
-      // Status filter
+      // 2. Category / Sub-Category filter
+      if (subCategoryFilter !== 'ALL') {
+        const sub = getAssetSubCategory(item).toLowerCase();
+        if (!sub.includes(subCategoryFilter.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // 3. Location filter
+      if (locationFilter !== 'ALL') {
+        const loc = getAssetLocation(item).toLowerCase();
+        if (!loc.includes(locationFilter.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // 4. Status filter
       if (statusFilter !== 'all' && item.status !== statusFilter) {
         return false;
       }
 
-      // Search query
+      // 5. Mechanic filter
+      if (mechanicFilter !== 'ALL') {
+        const primaryMech = getAssetMechanic(item).toLowerCase();
+        const target = mechanicFilter.toLowerCase();
+        const hasLogByMech = item.serviceLogs.some((l) => l.technician?.toLowerCase() === target);
+        if (!primaryMech.includes(target) && !hasLogByMech) {
+          return false;
+        }
+      }
+
+      // 6. Repair Cost filter
+      if (repairCostFilter !== 'ALL') {
+        const cost = getAssetRepairCost(item);
+        if (repairCostFilter === 'HAS_COST' && cost <= 0) return false;
+        if (repairCostFilter === 'ZERO' && cost > 0) return false;
+        if (repairCostFilter === 'UNDER_500' && cost >= 500) return false;
+        if (repairCostFilter === '500_TO_1500' && (cost < 500 || cost > 1500)) return false;
+        if (repairCostFilter === 'OVER_1500' && cost <= 1500) return false;
+      }
+
+      // 7. Purchase Date filter
+      if (purchaseFromDate && (!item.purchaseDate || item.purchaseDate < purchaseFromDate)) {
+        return false;
+      }
+      if (purchaseToDate && (!item.purchaseDate || item.purchaseDate > purchaseToDate)) {
+        return false;
+      }
+
+      // 8. Relocation filter (Relocated vs Static)
+      if (relocatedFilter !== 'ALL') {
+        const relocated = isAssetRelocated(item);
+        if (relocatedFilter === 'RELOCATED' && !relocated) return false;
+        if (relocatedFilter === 'NON_RELOCATED' && relocated) return false;
+      }
+
+      // 9. General Activity Date range filter (from - to)
+      if (fromDate || toDate) {
+        const hasLogInRange = item.serviceLogs.some((log) => {
+          if (fromDate && log.date < fromDate) return false;
+          if (toDate && log.date > toDate) return false;
+          return true;
+        });
+
+        const hasPpmInRange = item.ppmChecklist.some((ppm) => {
+          if (!ppm.lastChecked) return false;
+          if (fromDate && ppm.lastChecked < fromDate) return false;
+          if (toDate && ppm.lastChecked > toDate) return false;
+          return true;
+        });
+
+        const hasMoveInRange = (item.locationHistory || []).some((loc) => {
+          if (!loc.date) return false;
+          if (fromDate && loc.date < fromDate) return false;
+          if (toDate && loc.date > toDate) return false;
+          return true;
+        });
+
+        const purchaseInRange = (() => {
+          if (!item.purchaseDate) return false;
+          if (fromDate && item.purchaseDate < fromDate) return false;
+          if (toDate && item.purchaseDate > toDate) return false;
+          return true;
+        })();
+
+        if (!hasLogInRange && !hasPpmInRange && !hasMoveInRange && !purchaseInRange) {
+          return false;
+        }
+      }
+
+      // 9. Search query
       if (q.trim()) {
         const query = q.toLowerCase().trim();
         const matchesId = item.assetId.toLowerCase().includes(query);
         const matchesName = item.name.toLowerCase().includes(query);
         const matchesBrand = item.brand.toLowerCase().includes(query);
         const matchesModel = item.model.toLowerCase().includes(query);
+        const matchesSub = getAssetSubCategory(item).toLowerCase().includes(query);
+        const matchesLoc = getAssetLocation(item).toLowerCase().includes(query);
         const matchesUnit = item.unit.toLowerCase().includes(query);
         const matchesSerial = item.serialNo.toLowerCase().includes(query);
+        const matchesMech = getAssetMechanic(item).toLowerCase().includes(query);
         const loc = getAssetLocationHistory(item);
         const curLoc = loc.find((l) => l.status === 'CURRENT')?.toLocation || '';
         const prevLoc = loc.find((l) => l.status === 'CURRENT')?.fromLocation || '';
-        const matchesLoc = curLoc.toLowerCase().includes(query) || prevLoc.toLowerCase().includes(query);
-        if (!matchesId && !matchesName && !matchesBrand && !matchesModel && !matchesUnit && !matchesSerial && !matchesLoc) {
+        const matchesLocHist = curLoc.toLowerCase().includes(query) || prevLoc.toLowerCase().includes(query);
+        if (
+          !matchesId &&
+          !matchesName &&
+          !matchesBrand &&
+          !matchesModel &&
+          !matchesSub &&
+          !matchesLoc &&
+          !matchesUnit &&
+          !matchesSerial &&
+          !matchesLocHist &&
+          !matchesMech
+        ) {
           return false;
         }
       }
 
       return true;
     });
-  }, [allItems, exportCategory, statusFilter, q]);
+  }, [allItems, exportCategory, subCategoryFilter, locationFilter, statusFilter, mechanicFilter, repairCostFilter, relocatedFilter, purchaseFromDate, purchaseToDate, fromDate, toDate, q]);
 
   // Display categories (filtered by category selector if specific category chosen)
   const activeCategoriesMeta = useMemo(() => {
     if (exportCategory === 'ALL') return CATEGORIES_META;
     return CATEGORIES_META.filter((c) => c.id === exportCategory);
   }, [exportCategory]);
+
+  // Dynamically group sections based on Group selector (By Category, By Sub-Category, By Location, By Mechanic, By Status)
+  const groupedSections = useMemo(() => {
+    if (groupBy === 'CATEGORY') {
+      return activeCategoriesMeta
+        .map((cat) => {
+          const catItems = filtered.filter((i) => i.category === cat.id);
+          return {
+            id: cat.id,
+            title: cat.title,
+            subtitle: cat.subtitle,
+            icon: cat.icon,
+            items: catItems,
+            theme: cat.theme,
+          };
+        })
+        .filter((s) => s.items.length > 0 || exportCategory === s.id || exportCategory === 'ALL');
+    }
+
+    if (groupBy === 'SUBCATEGORY') {
+      const subMap = new Map<string, AssetHistoryRecord[]>();
+      filtered.forEach((item) => {
+        const sub = getAssetSubCategory(item);
+        if (!subMap.has(sub)) subMap.set(sub, []);
+        subMap.get(sub)!.push(item);
+      });
+
+      const subThemes = [
+        {
+          bg: 'bg-indigo-50/50',
+          border: 'border-indigo-200',
+          badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+          text: 'text-indigo-700',
+          accent: 'bg-indigo-600',
+          headerBg: 'bg-gradient-to-r from-indigo-50/80 via-white to-slate-50',
+        },
+        {
+          bg: 'bg-teal-50/50',
+          border: 'border-teal-200',
+          badgeBg: 'bg-teal-50 text-teal-800 border-teal-200',
+          text: 'text-teal-800',
+          accent: 'bg-teal-600',
+          headerBg: 'bg-gradient-to-r from-teal-50/80 via-white to-slate-50',
+        },
+        {
+          bg: 'bg-amber-50/50',
+          border: 'border-amber-200',
+          badgeBg: 'bg-amber-50 text-amber-800 border-amber-200',
+          text: 'text-amber-800',
+          accent: 'bg-amber-600',
+          headerBg: 'bg-gradient-to-r from-amber-50/80 via-white to-slate-50',
+        },
+        {
+          bg: 'bg-purple-50/50',
+          border: 'border-purple-200',
+          badgeBg: 'bg-purple-50 text-purple-800 border-purple-200',
+          text: 'text-purple-800',
+          accent: 'bg-purple-600',
+          headerBg: 'bg-gradient-to-r from-purple-50/80 via-white to-slate-50',
+        },
+      ];
+
+      return Array.from(subMap.entries()).map(([subName, sItems], idx) => {
+        const theme = subThemes[idx % subThemes.length];
+        return {
+          id: `sub-${subName}`,
+          title: `Sub-Category: ${subName}`,
+          subtitle: `Equipment and machinery classified under ${subName} (${sItems.length} units)`,
+          icon: Cpu,
+          items: sItems,
+          theme,
+        };
+      });
+    }
+
+    if (groupBy === 'LOCATION') {
+      const lineMap = new Map<string, AssetHistoryRecord[]>();
+      filtered.forEach((item) => {
+        const loc = getAssetLocation(item);
+        if (!lineMap.has(loc)) lineMap.set(loc, []);
+        lineMap.get(loc)!.push(item);
+      });
+
+      return Array.from(lineMap.entries()).map(([lineName, lItems]) => {
+        return {
+          id: `loc-${lineName}`,
+          title: `Location: ${lineName}`,
+          subtitle: `Machinery and installations stationed in ${lineName} (${lItems.length} units)`,
+          icon: MapPin,
+          items: lItems,
+          theme: {
+            bg: 'bg-slate-50/50',
+            border: 'border-slate-200',
+            badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
+            text: 'text-slate-800',
+            accent: 'bg-slate-700',
+            headerBg: 'bg-gradient-to-r from-slate-100/80 via-white to-slate-50',
+          },
+        };
+      });
+    }
+
+    if (groupBy === 'MECHANIC') {
+      const mechMap = new Map<string, AssetHistoryRecord[]>();
+      filtered.forEach((item) => {
+        const mech = getAssetMechanic(item);
+        if (!mechMap.has(mech)) mechMap.set(mech, []);
+        mechMap.get(mech)!.push(item);
+      });
+
+      const mechThemes = [
+        {
+          bg: 'bg-indigo-50/50',
+          border: 'border-indigo-200',
+          badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+          text: 'text-indigo-700',
+          accent: 'bg-indigo-600',
+          headerBg: 'bg-gradient-to-r from-indigo-50/80 via-white to-slate-50',
+        },
+        {
+          bg: 'bg-emerald-50/50',
+          border: 'border-emerald-200',
+          badgeBg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          text: 'text-emerald-800',
+          accent: 'bg-emerald-600',
+          headerBg: 'bg-gradient-to-r from-emerald-50/80 via-white to-slate-50',
+        },
+        {
+          bg: 'bg-amber-50/50',
+          border: 'border-amber-200',
+          badgeBg: 'bg-amber-50 text-amber-800 border-amber-200',
+          text: 'text-amber-800',
+          accent: 'bg-amber-600',
+          headerBg: 'bg-gradient-to-r from-amber-50/80 via-white to-slate-50',
+        },
+        {
+          bg: 'bg-purple-50/50',
+          border: 'border-purple-200',
+          badgeBg: 'bg-purple-50 text-purple-800 border-purple-200',
+          text: 'text-purple-800',
+          accent: 'bg-purple-600',
+          headerBg: 'bg-gradient-to-r from-purple-50/80 via-white to-slate-50',
+        },
+      ];
+
+      return Array.from(mechMap.entries()).map(([mechName, mItems], idx) => {
+        const theme = mechThemes[idx % mechThemes.length];
+        return {
+          id: `mech-${mechName}`,
+          title: `Technician: ${mechName}`,
+          subtitle: `Equipment and service work orders attended by ${mechName} (${mItems.length} units)`,
+          icon: User,
+          items: mItems,
+          theme,
+        };
+      });
+    }
+
+    if (groupBy === 'RELOCATION') {
+      const relocatedItems = filtered.filter((i) => isAssetRelocated(i));
+      const nonRelocatedItems = filtered.filter((i) => !isAssetRelocated(i));
+
+      return [
+        {
+          id: 'reloc-transferred',
+          title: 'Relocated & Transferred Fleet',
+          subtitle: `Equipment moved between lines, stations, or departments (${relocatedItems.length} units)`,
+          icon: ArrowRightLeft,
+          items: relocatedItems,
+          theme: {
+            bg: 'bg-indigo-50/50',
+            border: 'border-indigo-200',
+            badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+            text: 'text-indigo-700',
+            accent: 'bg-indigo-600',
+            headerBg: 'bg-gradient-to-r from-indigo-50/80 via-white to-slate-50',
+          },
+        },
+        {
+          id: 'reloc-static',
+          title: 'Stationary / Initial Commissioning Fleet',
+          subtitle: `Equipment remaining at original placement station (${nonRelocatedItems.length} units)`,
+          icon: MapPin,
+          items: nonRelocatedItems,
+          theme: {
+            bg: 'bg-slate-50/50',
+            border: 'border-slate-200',
+            badgeBg: 'bg-slate-100 text-slate-700 border-slate-300',
+            text: 'text-slate-800',
+            accent: 'bg-slate-700',
+            headerBg: 'bg-gradient-to-r from-slate-100/80 via-white to-slate-50',
+          },
+        },
+      ].filter((s) => s.items.length > 0);
+    }
+
+    // Default: STATUS / RISK
+    const statusMap = new Map<string, AssetHistoryRecord[]>();
+    filtered.forEach((item) => {
+      const st = item.riskLevel || 'LOW';
+      if (!statusMap.has(st)) statusMap.set(st, []);
+      statusMap.get(st)!.push(item);
+    });
+
+    return Array.from(statusMap.entries()).map(([statusName, sItems]) => {
+      const isCritical = statusName === 'CRITICAL' || statusName === 'HIGH';
+      return {
+        id: `status-${statusName}`,
+        title: `Priority Risk: ${statusName}`,
+        subtitle: `${sItems.length} assets categorized under ${statusName} maintenance risk`,
+        icon: AlertTriangle,
+        items: sItems,
+        theme: {
+          bg: isCritical ? 'bg-rose-50/50' : 'bg-blue-50/50',
+          border: isCritical ? 'border-rose-200' : 'border-blue-200',
+          badgeBg: isCritical ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-blue-50 text-blue-800 border-blue-200',
+          text: isCritical ? 'text-rose-800' : 'text-blue-800',
+          accent: isCritical ? 'bg-rose-600' : 'bg-blue-600',
+          headerBg: isCritical
+            ? 'bg-gradient-to-r from-rose-50/80 via-white to-slate-50'
+            : 'bg-gradient-to-r from-blue-50/80 via-white to-slate-50',
+        },
+      };
+    });
+  }, [groupBy, filtered, activeCategoriesMeta, exportCategory]);
+
+  const allCollapsed =
+    groupedSections.length > 0 &&
+    groupedSections.every((s) => collapsedCategories.includes(s.id));
+
+  const toggleCollapseAll = () => {
+    if (allCollapsed) {
+      setCollapsedCategories([]);
+    } else {
+      setCollapsedCategories(groupedSections.map((s) => s.id));
+    }
+  };
 
   // Date formatting helper
   const shortDate = (dateStr?: string) => {
@@ -906,25 +1416,25 @@ export default function HistoryPage() {
                 No service or maintenance events logged for this asset.
               </div>
             ) : (
-              <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+              <div className="overflow-x-auto border border-slate-300 rounded-lg shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse border border-slate-300">
+                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                     <tr>
-                      <th className="py-3 px-3.5 whitespace-nowrap">Ticket ID &amp; Date</th>
-                      <th className="py-3 px-3 whitespace-nowrap">Category</th>
-                      <th className="py-3 px-3 min-w-[220px]">Issue Reported</th>
-                      <th className="py-3 px-3 min-w-[240px]">Resolution &amp; Action Taken</th>
-                      <th className="py-3 px-3 whitespace-nowrap">Attended By</th>
-                      <th className="py-3 px-3 min-w-[150px]">Parts Replaced</th>
-                      <th className="py-3 px-3 text-right whitespace-nowrap">Downtime</th>
-                      <th className="py-3 px-3 text-right whitespace-nowrap">Cost</th>
-                      <th className="py-3 px-3 text-center whitespace-nowrap">Status</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">Ticket ID &amp; Date</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">Category</th>
+                      <th className="py-2.5 px-3 min-w-[200px] bg-slate-100 border-r border-b border-slate-300">Issue Reported</th>
+                      <th className="py-2.5 px-3 min-w-[220px] bg-slate-100 border-r border-b border-slate-300">Resolution &amp; Action Taken</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">Attended By</th>
+                      <th className="py-2.5 px-3 min-w-[140px] bg-slate-100 border-r border-b border-slate-300">Parts Replaced</th>
+                      <th className="py-2.5 px-3 text-right whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">Downtime</th>
+                      <th className="py-2.5 px-3 text-right whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">Cost</th>
+                      <th className="py-2.5 px-3 text-center whitespace-nowrap bg-slate-100 border-b border-slate-300">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-normal">
+                  <tbody className="divide-y divide-slate-200 font-normal bg-white">
                     {a.serviceLogs.map((log, idx) => (
-                      <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="py-3 px-3.5 whitespace-nowrap align-top">
+                      <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition-colors">
+                        <td className="py-2 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                           <div className="font-mono font-bold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 inline-block mb-1">
                             {log.ticketId}
                           </div>
@@ -934,18 +1444,18 @@ export default function HistoryPage() {
                           </div>
                         </td>
 
-                        <td className="py-3 px-3 whitespace-nowrap align-top">
+                        <td className="py-2 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                           <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
                             {log.faultCategory}
                           </span>
                         </td>
 
-                        <td className="py-3 px-3 align-top text-slate-800 leading-relaxed text-xs">
+                        <td className="py-2 px-3 align-top text-slate-800 leading-relaxed text-xs border-r border-b border-slate-200">
                           {log.faultDetails}
                         </td>
 
-                        <td className="py-3 px-3 align-top">
-                          <div className="bg-emerald-50/70 p-2.5 rounded-lg border border-emerald-200/80 text-emerald-950 text-xs leading-relaxed font-medium">
+                        <td className="py-2 px-3 align-top border-r border-b border-slate-200">
+                          <div className="bg-emerald-50/70 p-2 rounded border border-emerald-200/80 text-emerald-950 text-xs leading-relaxed font-medium">
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800 block mb-1">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 inline" /> Action Taken
                             </span>
@@ -953,16 +1463,16 @@ export default function HistoryPage() {
                           </div>
                         </td>
 
-                        <td className="py-3 px-3 whitespace-nowrap align-top">
+                        <td className="py-2 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                           <div className="inline-flex items-center gap-1.5 text-slate-700 font-semibold text-xs">
                             <User className="w-3.5 h-3.5 text-slate-400" />
                             <span>{log.technician}</span>
                           </div>
                         </td>
 
-                        <td className="py-3 px-3 align-top">
+                        <td className="py-2 px-3 align-top border-r border-b border-slate-200">
                           {log.partsReplaced ? (
-                            <span className="inline-flex items-center gap-1.5 text-blue-800 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 font-medium text-[11px]">
+                            <span className="inline-flex items-center gap-1.5 text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-medium text-[11px]">
                               <Package className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                               <span>{log.partsReplaced}</span>
                             </span>
@@ -971,7 +1481,7 @@ export default function HistoryPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3 text-right whitespace-nowrap align-top">
+                        <td className="py-2 px-3 text-right whitespace-nowrap align-top border-r border-b border-slate-200 font-mono tabular-nums">
                           {log.downtimeMinutes > 0 ? (
                             <span className="font-mono font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 text-xs">
                               ⏱ {log.downtimeMinutes}m
@@ -981,13 +1491,13 @@ export default function HistoryPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3 text-right whitespace-nowrap align-top">
+                        <td className="py-2 px-3 text-right whitespace-nowrap align-top border-r border-b border-slate-200 font-mono tabular-nums">
                           <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-xs">
                             ₹{log.costIncurred.toLocaleString('en-IN')}
                           </span>
                         </td>
 
-                        <td className="py-3 px-3 text-center whitespace-nowrap align-top">
+                        <td className="py-2 px-3 text-center whitespace-nowrap align-top border-b border-slate-200">
                           {log.status === 'RESOLVED' ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Resolved
@@ -1002,18 +1512,18 @@ export default function HistoryPage() {
                     ))}
                   </tbody>
                   {a.serviceLogs.length > 1 && (
-                    <tfoot className="bg-slate-50/90 font-semibold text-slate-700 text-xs border-t border-slate-200">
+                    <tfoot className="bg-slate-50 font-semibold text-slate-700 text-xs border-t border-slate-300">
                       <tr>
-                        <td colSpan={6} className="py-2.5 px-3.5 text-right text-[11px] uppercase tracking-wider text-slate-500 font-bold">
+                        <td colSpan={6} className="py-2.5 px-3 text-right text-[11px] uppercase tracking-wider text-slate-500 font-bold border-r border-slate-300">
                           Total Summary ({a.serviceLogs.length} Events):
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 whitespace-nowrap border-r border-slate-300 tabular-nums">
                           ⏱ {a.serviceLogs.reduce((acc, l) => acc + l.downtimeMinutes, 0)}m
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 whitespace-nowrap border-r border-slate-300 tabular-nums">
                           ₹{a.serviceLogs.reduce((acc, l) => acc + l.costIncurred, 0).toLocaleString('en-IN')}
                         </td>
-                        <td className="py-2.5 px-3"></td>
+                        <td className="py-2.5 px-3 border-b border-slate-300"></td>
                       </tr>
                     </tfoot>
                   )}
@@ -1107,24 +1617,24 @@ export default function HistoryPage() {
               </p>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+            <div className="overflow-x-auto border border-slate-300 rounded-lg shadow-2xs">
+              <table className="w-full text-left text-xs border-collapse border border-slate-300">
+                <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                   <tr>
-                    <th className="py-2.5 px-3">Checkpoint Description</th>
-                    <th className="py-2.5 px-3">Frequency</th>
-                    <th className="py-2.5 px-3">Last Checked</th>
-                    <th className="py-2.5 px-3 text-center">Status</th>
-                    <th className="py-2.5 px-3">Technician Notes</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Checkpoint Description</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Frequency</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 font-mono">Last Checked</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-100 border-r border-b border-slate-300">Status</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-b border-slate-300">Technician Notes</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
+                <tbody className="divide-y divide-slate-200 font-medium bg-white">
                   {a.ppmChecklist.map((ppm, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-3 px-3 font-semibold text-slate-800">{ppm.checkpoint}</td>
-                      <td className="py-3 px-3 text-slate-500">{ppm.frequency}</td>
-                      <td className="py-3 px-3 font-mono text-slate-700">{ppm.lastChecked}</td>
-                      <td className="py-3 px-3 text-center">
+                    <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition-colors">
+                      <td className="py-2 px-3 font-semibold text-slate-800 border-r border-b border-slate-200">{ppm.checkpoint}</td>
+                      <td className="py-2 px-3 text-slate-600 border-r border-b border-slate-200">{ppm.frequency}</td>
+                      <td className="py-2 px-3 font-mono text-slate-700 border-r border-b border-slate-200 tabular-nums">{ppm.lastChecked}</td>
+                      <td className="py-2 px-3 text-center border-r border-b border-slate-200">
                         <span
                           className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
                             ppm.status === 'PASSED'
@@ -1135,7 +1645,7 @@ export default function HistoryPage() {
                           {ppm.status === 'PASSED' ? 'Passed ✓' : 'Attention'}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-slate-600 italic text-[11px]">{ppm.notes}</td>
+                      <td className="py-2 px-3 text-slate-600 italic text-[11px] border-b border-slate-200">{ppm.notes}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1203,23 +1713,23 @@ export default function HistoryPage() {
             </div>
 
             {/* Location History Table */}
-            <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+            <div className="overflow-x-auto border border-slate-300 rounded-lg shadow-2xs">
+              <table className="w-full text-left text-xs border-collapse border border-slate-300">
+                <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                   <tr>
-                    <th className="py-3 px-3.5 whitespace-nowrap">Transfer ID &amp; Date</th>
-                    <th className="py-3 px-3 whitespace-nowrap">From Location (Origin)</th>
-                    <th className="py-3 px-3 whitespace-nowrap">To Location (Destination)</th>
-                    <th className="py-3 px-3 min-w-[220px]">Reason / Justification</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Authorized / Moved By</th>
-                    <th className="py-3 px-3 min-w-[180px]">Technical Notes</th>
-                    <th className="py-3 px-3 text-center whitespace-nowrap">Status</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">Transfer ID &amp; Date</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">From Location (Origin)</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">To Location (Destination)</th>
+                    <th className="py-2.5 px-3 min-w-[200px] bg-slate-100 border-r border-b border-slate-300">Reason / Justification</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">Authorized / Moved By</th>
+                    <th className="py-2.5 px-3 min-w-[160px] bg-slate-100 border-r border-b border-slate-300">Technical Notes</th>
+                    <th className="py-2.5 px-3 text-center whitespace-nowrap bg-slate-100 border-b border-slate-300">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-normal">
+                <tbody className="divide-y divide-slate-200 font-normal bg-white">
                   {locationHistory.map((loc, idx) => (
-                    <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
-                      <td className="py-3 px-3.5 whitespace-nowrap align-top">
+                    <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition-colors">
+                      <td className="py-2 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                         <div className="font-mono font-bold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 inline-block mb-1">
                           {loc.transferId}
                         </div>
@@ -1229,33 +1739,33 @@ export default function HistoryPage() {
                         </div>
                       </td>
 
-                      <td className="py-3 px-3 whitespace-nowrap align-top font-medium text-slate-700">
+                      <td className="py-2 px-3 whitespace-nowrap align-top font-medium text-slate-700 border-r border-b border-slate-200">
                         {loc.fromLocation}
                       </td>
 
-                      <td className="py-3 px-3 whitespace-nowrap align-top font-bold text-indigo-900">
+                      <td className="py-2 px-3 whitespace-nowrap align-top font-bold text-indigo-900 border-r border-b border-slate-200">
                         <span className="inline-flex items-center gap-1">
                           <span className="text-indigo-500">➜</span>
                           <span>{loc.toLocation}</span>
                         </span>
                       </td>
 
-                      <td className="py-3 px-3 align-top text-slate-800 leading-relaxed text-xs">
+                      <td className="py-2 px-3 align-top text-slate-800 leading-relaxed text-xs border-r border-b border-slate-200">
                         {loc.reason}
                       </td>
 
-                      <td className="py-3 px-3 whitespace-nowrap align-top">
+                      <td className="py-2 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
                         <div className="inline-flex items-center gap-1.5 text-slate-700 font-semibold text-xs">
                           <User className="w-3.5 h-3.5 text-slate-400" />
                           <span>{loc.movedBy}</span>
                         </div>
                       </td>
 
-                      <td className="py-3 px-3 align-top text-slate-600 text-[11px]">
+                      <td className="py-2 px-3 align-top text-slate-600 text-[11px] border-r border-b border-slate-200">
                         {loc.notes || '—'}
                       </td>
 
-                      <td className="py-3 px-3 text-center whitespace-nowrap align-top">
+                      <td className="py-2 px-3 text-center whitespace-nowrap align-top border-b border-slate-200">
                         {loc.status === 'CURRENT' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -1283,10 +1793,10 @@ export default function HistoryPage() {
   // =========================================================================
   return (
     <div className="space-y-4 pt-0">
-      {/* 1. Page Header & Status Legend */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+      {/* 1. Page Header & Personnel Quick Link */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shadow-2xs">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs">
             <Activity className="w-4 h-4" />
           </div>
           <div>
@@ -1294,111 +1804,36 @@ export default function HistoryPage() {
               Asset Time &amp; Action: Maintenance History Matrix
             </h1>
             <p className="text-[11px] text-slate-500">
-              Touch any asset name to view its full lifetime service and breakdown history
+              Select or group by category, mechanic, or date range to inspect service histories
             </p>
           </div>
         </div>
 
-        {/* Export & Filter Controls (Category-wise and From-To Date Range) */}
-        <div className="flex flex-wrap items-center gap-2 bg-slate-50/90 p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 shadow-2xs">
-          {/* Category Dropdown */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Category:</span>
-            <select
-              value={exportCategory}
-              onChange={(e) => setExportCategory(e.target.value as any)}
-              className="h-8 px-2.5 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-2xs"
-            >
-              <option value="ALL">All Categories</option>
-              <option value="MACHINE">Machine</option>
-              <option value="FURNITURE">Furniture</option>
-              <option value="UTILITY">Utility</option>
-              <option value="VEHICLE">Vehicle</option>
-            </select>
-          </div>
-
-          <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
-
-          {/* From Date */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">From:</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="h-8 px-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
-            />
-          </div>
-
-          {/* To Date */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">To:</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="h-8 px-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
-            />
-          </div>
-
-          {/* Reset Filters */}
-          {(fromDate || toDate || exportCategory !== 'ALL') && (
-            <button
-              type="button"
-              onClick={() => {
-                setFromDate('');
-                setToDate('');
-                setExportCategory('ALL');
-              }}
-              title="Reset Filters"
-              className="h-8 px-2 text-[11px] font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition cursor-pointer"
-            >
-              Reset
-            </button>
-          )}
-
-          {/* Download Export Button */}
-          <button
-            type="button"
-            onClick={handleExportFilteredData}
-            className="h-8 px-3 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-xs shadow-indigo-600/30 ml-auto sm:ml-0"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download Data</span>
-          </button>
-
-          <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
-
-          {/* Personnel Work Logs button for Admin */}
-          <button
-            type="button"
-            onClick={() => setAdminTab('PERSONNEL')}
-            className="h-8 px-2.5 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-            title="Inspect Personnel Work History Logs"
-          >
-            <User className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Personnel Logs</span>
-          </button>
-        </div>
+        {/* Personnel Work Logs button for Admin / CEO */}
+        <button
+          type="button"
+          onClick={() => setAdminTab('PERSONNEL')}
+          className="h-8 px-3 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs self-start sm:self-auto"
+          title="Inspect Personnel Work History Logs"
+        >
+          <User className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Personnel Logs</span>
+        </button>
       </div>
 
-      {/* 2. Global Toolbar with Filters, Search & View Controls */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Row counter */}
-          <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-            {filtered.length} total rows
-          </span>
-
-          {/* Search Input */}
-          <div className="relative w-52 sm:w-72">
+      {/* 2. Unified Responsive Filter & Grouping Toolbar */}
+      <div className="bg-white rounded-xl border border-slate-200 p-2.5 sm:p-3 shadow-2xs space-y-2.5">
+        {/* Row 1: Search & Quick Bar (Row count, Collapse, In-charge, Export) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          {/* Search Bar - full width on mobile, max-w-sm on sm+ */}
+          <div className="relative w-full sm:w-64 md:w-72">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
             <input
               type="text"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Find asset, ID, line, brand…"
-              className="w-full h-8 pl-8 pr-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+              placeholder="Find asset, ID, brand, mechanic…"
+              className="w-full h-8 pl-8 pr-6 text-xs bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg text-slate-800 focus:ring-1 focus:ring-indigo-500 outline-none transition"
             />
             {q && (
               <button
@@ -1410,35 +1845,238 @@ export default function HistoryPage() {
               </button>
             )}
           </div>
+
+          {/* Quick Actions (Count, Expand, In-charge, Export) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-between sm:justify-end w-full sm:w-auto">
+            {/* Row counter badge */}
+            <span className="text-[11px] sm:text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 sm:py-1.5 rounded-lg border border-slate-200 select-none whitespace-nowrap">
+              {filtered.length} rows
+            </span>
+
+            {/* Collapse / Expand */}
+            <button
+              type="button"
+              onClick={toggleCollapseAll}
+              className="h-8 px-2 sm:px-2.5 text-[11px] sm:text-xs font-semibold bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap"
+              title={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}
+            >
+              {allCollapsed ? (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Expand All</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Collapse All</span>
+                </>
+              )}
+            </button>
+
+            {/* View in-charge Checkbox */}
+            <label className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-medium text-slate-700 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200">
+              <input
+                type="checkbox"
+                checked={showPoc}
+                onChange={(e) => setShowPoc(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+              <span className="whitespace-nowrap">In-charge</span>
+            </label>
+
+            {/* Export Button */}
+            <button
+              type="button"
+              onClick={handleExportFilteredData}
+              className="h-8 px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg text-slate-800 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs transition whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              <span>Export</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* View In-Charge Switch */}
-          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-            <span className="text-[11px]">View in-charge</span>
-            <input
-              type="checkbox"
-              checked={showPoc}
-              onChange={(e) => setShowPoc(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600 relative"></div>
-          </label>
+        {/* Row 2: Responsive Filter Bar (Clean responsive grid/flex across all devices) */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+          {/* 1. Group: [ All Groups | Machine | Furniture | Utilities | Vehicle ] */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px]">
+            <span className="text-[11px] sm:text-xs font-semibold text-slate-700 whitespace-nowrap">Group:</span>
+            <select
+              value={exportCategory}
+              onChange={(e) => {
+                setExportCategory(e.target.value as any);
+                setSubCategoryFilter('ALL');
+                setLocationFilter('ALL');
+              }}
+              className="w-full sm:w-auto h-8 px-2 text-[11px] sm:text-xs font-bold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+            >
+              <option value="ALL">All Groups</option>
+              <option value="MACHINE">Machine</option>
+              <option value="FURNITURE">Furniture</option>
+              <option value="UTILITY">Utilities</option>
+              <option value="VEHICLE">Vehicle</option>
+            </select>
+          </div>
 
-          {/* Export button */}
-          <button
-            type="button"
-            onClick={handleExportFilteredData}
-            className="h-8 px-2.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            title="Download export according to category and date filters"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Download CSV</span>
-          </button>
+          {/* 2. Category: [ All Categories | Sub-categories based on selected Group ] */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[135px] max-w-full sm:max-w-[165px]">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Category:</span>
+            <select
+              value={subCategoryFilter}
+              onChange={(e) => {
+                setSubCategoryFilter(e.target.value);
+                setLocationFilter('ALL');
+              }}
+              className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+            >
+              <option value="ALL">All Categories</option>
+              {availableSubCategories.map((sub) => (
+                <option key={sub} value={sub}>
+                  {sub}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 3. Location: [ All Locations | Filtered to location by their location data ] */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px] max-w-full sm:max-w-[155px]">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Location:</span>
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+            >
+              <option value="ALL">All Locations</option>
+              {availableLocations.map((loc) => (
+                <option key={loc} value={loc}>
+                  {loc}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 4. Mechanic Filter */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px] max-w-full sm:max-w-[150px]">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Mechanic:</span>
+            <select
+              value={mechanicFilter}
+              onChange={(e) => setMechanicFilter(e.target.value)}
+              className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+            >
+              <option value="ALL">All Mechanics</option>
+              {allMechanics.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 5. Repair Cost Filter */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px] max-w-full sm:max-w-[145px]">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Repair Cost:</span>
+            <select
+              value={repairCostFilter}
+              onChange={(e) => setRepairCostFilter(e.target.value as any)}
+              className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+            >
+              <option value="ALL">All Costs</option>
+              <option value="HAS_COST">Has Cost (&gt; ₹0)</option>
+              <option value="ZERO">Zero (₹0)</option>
+              <option value="UNDER_500">&lt; ₹500</option>
+              <option value="500_TO_1500">₹500 – ₹1,500</option>
+              <option value="OVER_1500">&gt; ₹1,500</option>
+            </select>
+          </div>
+
+          {/* 6. Purchase Date Filter */}
+          <div className="flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200 w-full sm:w-auto">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Purchase:</span>
+            <input
+              type="date"
+              value={purchaseFromDate}
+              onChange={(e) => setPurchaseFromDate(e.target.value)}
+              className="flex-1 sm:flex-initial h-7 px-1.5 text-[11px] sm:text-xs bg-white border border-slate-200 rounded text-slate-700 outline-none min-w-[110px]"
+              title="Purchase Date From"
+            />
+            <span className="text-[11px] text-slate-400 font-medium">to</span>
+            <input
+              type="date"
+              value={purchaseToDate}
+              onChange={(e) => setPurchaseToDate(e.target.value)}
+              className="flex-1 sm:flex-initial h-7 px-1.5 text-[11px] sm:text-xs bg-white border border-slate-200 rounded text-slate-700 outline-none min-w-[110px]"
+              title="Purchase Date To"
+            />
+          </div>
+
+          {/* 7. Relocated Asset Filter */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[130px] max-w-full sm:max-w-[160px]">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-600 whitespace-nowrap">Relocated:</span>
+            <select
+              value={relocatedFilter}
+              onChange={(e) => setRelocatedFilter(e.target.value as any)}
+              className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
+            >
+              <option value="ALL">All Assets</option>
+              <option value="RELOCATED">Relocated Only</option>
+              <option value="NON_RELOCATED">Never Relocated</option>
+            </select>
+          </div>
+
+          {/* Table Grouping Selector */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial min-w-[125px]">
+            <span className="text-[11px] sm:text-xs font-medium text-slate-500 whitespace-nowrap">Group Rows:</span>
+            <select
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as any)}
+              className="w-full sm:w-auto h-8 px-2 text-[11px] sm:text-xs font-medium bg-white border border-slate-200 rounded-lg text-slate-700 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value="CATEGORY">By Group</option>
+              <option value="SUBCATEGORY">By Sub-Category</option>
+              <option value="LOCATION">By Location</option>
+              <option value="RELOCATION">By Relocation</option>
+              <option value="MECHANIC">By Mechanic</option>
+              <option value="STATUS">By Risk Status</option>
+            </select>
+          </div>
+
+          {/* Reset Filters Button if any filter active */}
+          {(exportCategory !== 'ALL' ||
+            subCategoryFilter !== 'ALL' ||
+            locationFilter !== 'ALL' ||
+            mechanicFilter !== 'ALL' ||
+            repairCostFilter !== 'ALL' ||
+            relocatedFilter !== 'ALL' ||
+            purchaseFromDate ||
+            purchaseToDate ||
+            fromDate ||
+            toDate ||
+            q) && (
+            <button
+              type="button"
+              onClick={() => {
+                setExportCategory('ALL');
+                setSubCategoryFilter('ALL');
+                setLocationFilter('ALL');
+                setMechanicFilter('ALL');
+                setRepairCostFilter('ALL');
+                setRelocatedFilter('ALL');
+                setPurchaseFromDate('');
+                setPurchaseToDate('');
+                setFromDate('');
+                setToDate('');
+                setQ('');
+              }}
+              className="h-8 px-2.5 text-[11px] sm:text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg transition cursor-pointer whitespace-nowrap ml-auto sm:ml-0"
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 3. Dedicated Scroll Template for Every Category */}
+      {/* 3. Dedicated Matrix Tables Grouped According to Selection */}
       {allItems.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs flex flex-col items-center justify-center max-w-lg mx-auto my-6">
           <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 mb-4 shadow-2xs">
@@ -1458,289 +2096,314 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {activeCategoriesMeta.map((cat) => {
-          const catItems = filtered.filter((i) => i.category === cat.id);
-          const Icon = cat.icon;
-          const isCollapsed = collapsedCategories.includes(cat.id);
-          const totalCatDowntime = catItems.reduce((acc, c) => acc + c.downtimeMins, 0);
-          const criticalCount = catItems.filter((i) => i.riskLevel === 'CRITICAL' || i.riskLevel === 'HIGH').length;
+          {groupedSections.map((section) => {
+            const sectionItems = section.items;
+            const Icon = section.icon;
+            const isCollapsed = collapsedCategories.includes(section.id);
+            const totalSectionDowntime = sectionItems.reduce((acc, c) => acc + c.downtimeMins, 0);
+            const criticalCount = sectionItems.filter((i) => i.riskLevel === 'CRITICAL' || i.riskLevel === 'HIGH').length;
 
-          return (
-            <section
-              key={cat.id}
-              className="bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col overflow-hidden"
-            >
-              {/* Category Card Header */}
-              <div
-                className={`px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${cat.theme.headerBg}`}
+            return (
+              <section
+                key={section.id}
+                className="bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col overflow-hidden"
               >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center border shadow-2xs ${cat.theme.badgeBg}`}
-                  >
-                    <Icon className="w-4 h-4" />
+                {/* Section Header */}
+                <div
+                  className={`px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${section.theme.headerBg}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center border shadow-2xs ${section.theme.badgeBg}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                          {section.title}
+                        </h2>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
+                          {sectionItems.length} units
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {section.subtitle}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                        {cat.title}
-                      </h2>
-                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
-                        {catItems.length} units
+
+                  <div className="flex items-center gap-2.5">
+                    <div className="inline-flex items-center gap-2 text-[11px] text-slate-600 bg-white/80 px-2.5 py-1 rounded-lg border border-slate-200">
+                      <span>
+                        Downtime: <strong className="font-mono text-slate-900">{totalSectionDowntime}m</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        High/Critical Risk:{' '}
+                        <strong className={criticalCount > 0 ? 'text-rose-600 font-mono' : 'text-slate-900 font-mono'}>
+                          {criticalCount}
+                        </strong>
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      Asset ID, name, unit/station, breakdown risk, relocation tracking, lifecycle costs &amp; QR tags
-                    </p>
+
+                    {/* Collapse / Expand Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => toggleCategoryCollapse(section.id)}
+                      className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 cursor-pointer shadow-2xs inline-flex items-center gap-1 text-[11px] font-bold"
+                    >
+                      {isCollapsed ? (
+                        <>
+                          <span>Expand</span>
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </>
+                      ) : (
+                        <>
+                          <span>Collapse</span>
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5">
-                  <div className="inline-flex items-center gap-2 text-[11px] text-slate-600 bg-white/80 px-2.5 py-1 rounded-lg border border-slate-200">
-                    <span>
-                      Downtime: <strong className="font-mono text-slate-900">{totalCatDowntime}m</strong>
-                    </span>
-                    <span>•</span>
-                    <span>
-                      High/Critical Risk:{' '}
-                      <strong className={criticalCount > 0 ? 'text-rose-600 font-mono' : 'text-slate-900 font-mono'}>
-                        {criticalCount}
-                      </strong>
-                    </span>
-                  </div>
+                {/* Section Independent Scrollable Table */}
+                {!isCollapsed && (
+                  <div className="relative border border-slate-300 rounded-lg shadow-2xs overflow-hidden">
+                    {/* Mobile horizontal scroll hint */}
+                    <div className="md:hidden px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[10px] text-slate-500 select-none">
+                      <span className="flex items-center gap-1 font-medium">
+                        <span>👈</span> Swipe horizontally for full matrix columns <span>👉</span>
+                      </span>
+                      <span className="font-mono text-[9px] uppercase font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                        Scroll
+                      </span>
+                    </div>
 
-                  {/* Collapse / Expand Toggle Button */}
-                  <button
-                    type="button"
-                    onClick={() => toggleCategoryCollapse(cat.id)}
-                    className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 cursor-pointer shadow-2xs inline-flex items-center gap-1 text-[11px] font-bold"
-                  >
-                    {isCollapsed ? (
-                      <>
-                        <span>Expand</span>
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </>
-                    ) : (
-                      <>
-                        <span>Collapse</span>
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+                    <div
+                      className="relative overflow-x-auto overflow-y-auto scrollbar-thin touch-pan-x"
+                      style={{ maxHeight: '460px', WebkitOverflowScrolling: 'touch' }}
+                    >
+                      <table className="w-full text-left border-collapse border-b border-slate-300 text-xs">
+                        <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-xs">
+                          <tr>
+                            <th className="sticky left-0 z-40 bg-slate-200/90 px-2.5 py-2.5 text-center w-10 border-r border-b border-slate-300">
+                              <input type="checkbox" aria-label="Select all" className="rounded" />
+                            </th>
+                            <th className="sticky left-10 z-40 bg-slate-100 px-3 py-2.5 min-w-[110px] sm:min-w-[120px] border-r border-b border-slate-300 font-mono">
+                              Asset ID
+                            </th>
+                            <th className="md:sticky md:left-[160px] md:z-40 bg-slate-100 px-3.5 py-2.5 min-w-[170px] sm:min-w-[200px] border-r border-b border-slate-300 md:shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
+                              Name
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[120px] text-center bg-slate-100 border-r border-b border-slate-300">
+                              Unit / Station
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[110px] text-center bg-slate-100 border-r border-b border-slate-300">
+                              Breakdown Risk
+                            </th>
+                            {showPoc && (
+                              <th className="px-3 py-2.5 min-w-[140px] text-left bg-slate-100 border-r border-b border-slate-300">
+                                In-Charge / Mechanic
+                              </th>
+                            )}
+                            <th className="px-3.5 py-2.5 min-w-[150px] text-left bg-slate-100 border-r border-b border-slate-300">
+                              Current Relocation
+                            </th>
+                            <th className="px-3.5 py-2.5 min-w-[150px] text-left bg-slate-100 border-r border-b border-slate-300">
+                              Relocation From
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[110px] text-right bg-slate-100 border-r border-b border-slate-300 font-mono">
+                              Purchase Cost
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[110px] text-right bg-slate-100 border-r border-b border-slate-300 font-mono">
+                              Total PPM Cost
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[110px] text-right bg-slate-100 border-r border-b border-slate-300 font-mono">
+                              Total Repair Cost
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[110px] text-center bg-slate-100 border-r border-b border-slate-300 font-mono">
+                              Repair Time
+                            </th>
+                            <th className="px-3 py-2.5 min-w-[100px] text-center bg-slate-100 border-b border-slate-300">
+                              QR of Asset
+                            </th>
+                          </tr>
+                        </thead>
 
-              {/* Category Independent Scrollable Table Template */}
-              {!isCollapsed && (
-                <div
-                  className="relative overflow-x-auto overflow-y-auto scrollbar-thin"
-                  style={{ maxHeight: '450px' }}
-                >
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead className="sticky top-0 z-30 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider select-none shadow-2xs">
-                      <tr>
-                        <th className="sticky left-0 z-40 bg-slate-100 px-3 py-3 text-center w-10 border-r border-slate-200">
-                          <input type="checkbox" aria-label="Select all" className="rounded" />
-                        </th>
-                        <th className="sticky left-10 z-40 bg-slate-100 px-3.5 py-3 min-w-[130px] border-r border-slate-200">
-                          Asset ID
-                        </th>
-                        <th className="sticky left-[170px] z-40 bg-slate-100 px-3.5 py-3 min-w-[210px] border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
-                          Name
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[130px] text-center border-r border-slate-200">
-                          Unit / Station
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[120px] text-center border-r border-slate-200">
-                          Breakdown Risk
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
-                          Current Relocation
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[160px] text-left border-r border-slate-200">
-                          Relocation From
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
-                          Purchase Cost
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[115px] text-right border-r border-slate-200">
-                          Total PPM Cost
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[120px] text-right border-r border-slate-200">
-                          Total Repair Cost
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[125px] text-center border-r border-slate-200">
-                          Total Repair Time
-                        </th>
-                        <th className="px-3.5 py-3 min-w-[120px] text-center">
-                          QR of the Asset
-                        </th>
-                      </tr>
-                    </thead>
+                        <tbody className="divide-y divide-slate-200 font-medium bg-white">
+                          {sectionItems.map((o) => {
+                            const locHistory = getAssetLocationHistory(o);
+                            const currentEntry = locHistory.find((l) => l.status === 'CURRENT') || locHistory[0];
+                            const currentReloc = currentEntry ? currentEntry.toLocation : o.unit;
+                            const fromReloc = currentEntry ? currentEntry.fromLocation : 'Maintenance Workshop';
+                            const ppmCost = getAssetPpmCost(o);
+                            const repairCost = getAssetRepairCost(o);
+                            const assignedTech = getAssetMechanic(o);
 
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {catItems.map((o) => {
-                        const locHistory = getAssetLocationHistory(o);
-                        const currentEntry = locHistory.find((l) => l.status === 'CURRENT') || locHistory[0];
-                        const currentReloc = currentEntry ? currentEntry.toLocation : o.unit;
-                        const fromReloc = currentEntry ? currentEntry.fromLocation : 'Maintenance Workshop';
-                        const ppmCost = getAssetPpmCost(o);
-                        const repairCost = getAssetRepairCost(o);
-
-                        return (
-                          <tr
-                            key={o._id}
-                            className="hover:bg-slate-50/90 transition-colors duration-100 group"
-                          >
-                            {/* Checkbox */}
-                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 px-3 py-2.5 text-center border-r border-slate-200">
-                              <input
-                                type="checkbox"
-                                aria-label={`Select ${o.assetId}`}
-                                className="rounded"
-                              />
-                            </td>
-
-                            {/* Asset ID */}
-                            <td
-                              onClick={() => setSelectedAssetForHistory(o)}
-                              className="sticky left-10 z-10 bg-white group-hover:bg-indigo-50/40 px-3.5 py-2.5 border-r border-slate-200 cursor-pointer"
-                              title="Click to view complete history dossier"
-                            >
-                              <div className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
-                                {o.assetId}
-                              </div>
-                              <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                                {o.serialNo}
-                              </div>
-                            </td>
-
-                            {/* Name */}
-                            <td
-                              onClick={() => setSelectedAssetForHistory(o)}
-                              className="sticky left-[170px] z-10 bg-white group-hover:bg-indigo-50/60 px-3.5 py-2.5 border-r border-slate-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] cursor-pointer"
-                              title="Touch to open complete history dossier"
-                            >
-                              <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs flex items-center justify-between gap-1">
-                                <span className="truncate max-w-[170px]">{o.name}</span>
-                                <ExternalLink className="w-2.5 h-2.5 text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                              </div>
-                              <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                                {o.brand} • {o.model}
-                              </div>
-                            </td>
-
-                            {/* Unit / Station */}
-                            <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold">
-                                {o.unit}
-                              </span>
-                            </td>
-
-                            {/* Breakdown Risk */}
-                            <td className="px-3.5 py-2.5 text-center border-r border-slate-200 whitespace-nowrap">
-                              <span
-                                className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase border ${riskBadgeClass(
-                                  o.riskLevel
-                                )}`}
+                            return (
+                              <tr
+                                key={o._id}
+                                className="hover:bg-blue-50/60 even:bg-slate-50/40 transition-colors duration-100 group"
                               >
-                                {o.riskLevel} Risk
-                              </span>
-                            </td>
+                                {/* Checkbox */}
+                                <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50/60 px-2.5 py-2 text-center border-r border-b border-slate-200">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Select ${o.assetId}`}
+                                    className="rounded"
+                                  />
+                                </td>
 
-                            {/* Current Relocation */}
-                            <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                <span>{currentReloc}</span>
-                              </div>
-                              <div className="text-[10px] text-emerald-700 font-medium pl-5 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <span>Active Placement</span>
-                              </div>
-                            </td>
+                                {/* Asset ID */}
+                                <td
+                                  onClick={() => setSelectedAssetForHistory(o)}
+                                  className="sticky left-10 z-10 bg-white group-hover:bg-blue-50/60 px-3 py-2 border-r border-b border-slate-200 cursor-pointer"
+                                  title="Click to view complete history dossier"
+                                >
+                                  <div className="font-mono font-bold text-indigo-700 group-hover:underline text-xs">
+                                    {o.assetId}
+                                  </div>
+                                  <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                    {o.serialNo}
+                                  </div>
+                                </td>
 
-                            {/* Relocation From */}
-                            <td className="px-3.5 py-2.5 border-r border-slate-200 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                                <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                                <span>{fromReloc}</span>
-                              </div>
-                              <div className="text-[10px] text-slate-400 pl-5 truncate max-w-[150px]" title={currentEntry?.reason}>
-                                {currentEntry?.reason || 'Previous Placement'}
-                              </div>
-                            </td>
+                                {/* Name */}
+                                <td
+                                  onClick={() => setSelectedAssetForHistory(o)}
+                                  className="md:sticky md:left-[160px] md:z-10 bg-white group-hover:bg-blue-50/60 px-3.5 py-2 border-r border-b border-slate-200 md:shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] cursor-pointer"
+                                  title="Touch to open complete history dossier"
+                                >
+                                  <div className="font-bold text-slate-900 group-hover:text-indigo-600 text-xs flex items-center justify-between gap-1">
+                                    <span className="truncate max-w-[160px]">{o.name}</span>
+                                    <ExternalLink className="w-2.5 h-2.5 text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                    {o.brand} • {o.model}
+                                  </div>
+                                </td>
 
-                            {/* Purchase Cost */}
-                            <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
-                              <div>₹{o.purchasePrice.toLocaleString('en-IN')}</div>
-                              <div className="text-[10px] font-sans font-normal text-slate-400">Acquisition</div>
-                            </td>
+                              {/* Unit / Station */}
+                              <td className="px-3 py-2 text-center border-r border-b border-slate-200 whitespace-nowrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-semibold">
+                                  {o.unit}
+                                </span>
+                              </td>
 
-                            {/* Total PPM Cost */}
-                            <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-indigo-700 border-r border-slate-200 whitespace-nowrap">
-                              <div className="bg-indigo-50/70 text-indigo-700 px-2 py-0.5 rounded inline-block">
-                                ₹{ppmCost.toLocaleString('en-IN')}
-                              </div>
-                              <div className="text-[10px] font-sans font-normal text-indigo-500/80">Preventive</div>
-                            </td>
+                              {/* Breakdown Risk */}
+                              <td className="px-3 py-2 text-center border-r border-b border-slate-200 whitespace-nowrap">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${riskBadgeClass(
+                                    o.riskLevel
+                                  )}`}
+                                >
+                                  {o.riskLevel}
+                                </span>
+                              </td>
 
-                            {/* Total Repair Cost */}
-                            <td className="px-3.5 py-2.5 text-right font-mono text-xs font-bold text-rose-700 border-r border-slate-200 whitespace-nowrap">
-                              <div className="bg-rose-50/70 text-rose-700 px-2 py-0.5 rounded inline-block">
-                                ₹{repairCost.toLocaleString('en-IN')}
-                              </div>
-                              <div className="text-[10px] font-sans font-normal text-rose-500/80">
-                                {o.serviceLogs.length} ticket{o.serviceLogs.length > 1 ? 's' : ''}
-                              </div>
-                            </td>
-
-                            {/* Total Repair Time */}
-                            <td className="px-3.5 py-2.5 text-center font-mono text-xs font-bold text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                              <div className="inline-flex items-center gap-1 text-slate-800">
-                                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                                <span>{o.downtimeMins}m</span>
-                              </div>
-                              {o.downtimeMins >= 60 && (
-                                <div className="text-[10px] font-sans font-normal text-slate-400">
-                                  ({Math.floor(o.downtimeMins / 60)}h {o.downtimeMins % 60}m)
-                                </div>
+                              {/* In-Charge / Mechanic (Visible when View in-charge is checked) */}
+                              {showPoc && (
+                                <td className="px-3 py-2 border-r border-b border-slate-200 whitespace-nowrap">
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="w-5 h-5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                      {assignedTech.charAt(0)}
+                                    </div>
+                                    <div>
+                                      <span className="font-semibold text-slate-800 text-xs block truncate max-w-[120px]" title={assignedTech}>
+                                        {assignedTech}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 block font-mono">Assigned Tech</span>
+                                    </div>
+                                  </div>
+                                </td>
                               )}
-                            </td>
 
-                            {/* QR of the Asset */}
-                            <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedQrAsset(o)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer shadow-2xs group-hover:border-indigo-300"
-                                title="View & Print Asset QR Code"
-                              >
-                                <QrCode className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>View QR</span>
-                              </button>
+                              {/* Current Relocation */}
+                              <td className="px-3.5 py-2 border-r border-b border-slate-200 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                                  <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span>{currentReloc}</span>
+                                </div>
+                                <div className="text-[10px] text-emerald-700 font-medium pl-4.5 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  <span>Active</span>
+                                </div>
+                              </td>
+
+                              {/* Relocation From */}
+                              <td className="px-3.5 py-2 border-r border-b border-slate-200 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                  <ArrowRightLeft className="w-3 h-3 text-indigo-500 shrink-0" />
+                                  <span>{fromReloc}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 pl-4.5 truncate max-w-[140px]" title={currentEntry?.reason}>
+                                  {currentEntry?.reason || 'Initial Commissioning'}
+                                </div>
+                              </td>
+
+                              {/* Purchase Cost */}
+                              <td className="px-3 py-2 text-right font-mono text-xs font-bold text-slate-900 border-r border-b border-slate-200 whitespace-nowrap tabular-nums">
+                                ₹{o.purchasePrice.toLocaleString('en-IN')}
+                              </td>
+
+                              {/* Total PPM Cost */}
+                              <td className="px-3 py-2 text-right font-mono text-xs font-bold text-indigo-700 border-r border-b border-slate-200 whitespace-nowrap tabular-nums">
+                                <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200/80 inline-block">
+                                  ₹{ppmCost.toLocaleString('en-IN')}
+                                </span>
+                              </td>
+
+                              {/* Total Repair Cost */}
+                              <td className="px-3 py-2 text-right font-mono text-xs font-bold text-rose-700 border-r border-b border-slate-200 whitespace-nowrap tabular-nums">
+                                <span className="bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded border border-rose-200/80 inline-block">
+                                  ₹{repairCost.toLocaleString('en-IN')}
+                                </span>
+                              </td>
+
+                              {/* Total Repair Time */}
+                              <td className="px-3 py-2 text-center font-mono text-xs font-bold text-slate-800 border-r border-b border-slate-200 whitespace-nowrap tabular-nums">
+                                <span className="inline-flex items-center gap-1 text-slate-800">
+                                  <Clock className="w-3 h-3 text-amber-500" />
+                                  <span>{o.downtimeMins}m</span>
+                                </span>
+                              </td>
+
+                              {/* QR of the Asset */}
+                              <td className="px-3 py-2 text-center whitespace-nowrap border-b border-slate-200">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedQrAsset(o)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer shadow-2xs"
+                                  title="View & Print Asset QR Code"
+                                >
+                                  <QrCode className="w-3 h-3 text-indigo-600" />
+                                  <span>QR</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                        {sectionItems.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={showPoc ? 13 : 12}
+                              className="p-12 text-center text-slate-400 text-xs font-medium border-b border-slate-200"
+                            >
+                              No records in {section.title} matching your current filters.
                             </td>
                           </tr>
-                        );
-                      })}
-
-                      {catItems.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={12}
-                            className="p-12 text-center text-slate-400 text-xs font-medium"
-                          >
-                            No records in {cat.title} matching your current filters.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
-            </section>
-          );
-        })}
+              </section>
+            );
+          })}
         </div>
       )}
 

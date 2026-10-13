@@ -1048,68 +1048,68 @@ export function WidgetDrilldownDrawer({
           </div>
 
           {/* 3. Detailed Records Table */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs max-h-[500px] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-lg border border-slate-300 shadow-2xs max-h-[500px] flex flex-col overflow-hidden">
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 z-10 shadow-2xs">
-                  <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+                <thead className="sticky top-0 bg-slate-100 border-b border-slate-300 z-10 shadow-2xs select-none">
+                  <tr className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     {drawerData.tableHeaders.map((head, idx) => (
                       <th
                         key={idx}
-                        className={`p-3 sm:px-4 ${idx === drawerData.tableHeaders.length - 1 ? 'text-right' : ''}`}
+                        className={`py-2 px-3 bg-slate-100 border-r border-b border-slate-300 ${idx === drawerData.tableHeaders.length - 1 ? 'text-right border-r-0' : ''}`}
                       >
                         {head}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {drawerData.rows.length === 0 ? (
                     <tr>
-                      <td colSpan={drawerData.tableHeaders.length} className="p-8 text-center text-slate-400">
+                      <td colSpan={drawerData.tableHeaders.length} className="p-8 text-center text-slate-400 border-b border-slate-200">
                         No matching records found for this drill-down.
                       </td>
                     </tr>
                   ) : (
                     drawerData.rows.map((row) => (
-                      <tr key={row.id} className="hover:bg-slate-50/80 transition group">
+                      <tr key={row.id} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition group">
                         <td
                           onClick={() => {
                             onClose();
                             router.push(row.actionUrl);
                           }}
-                          className="p-3 sm:px-4 font-bold text-indigo-600 font-mono cursor-pointer hover:underline"
+                          className="py-1.5 px-3 border-r border-b border-slate-200 font-bold text-indigo-600 font-mono cursor-pointer hover:underline"
                           title="Click to view details in Calendar"
                         >
                           {row.col1}
                         </td>
-                        <td className="p-3 sm:px-4 font-medium text-slate-800">
+                        <td className="py-1.5 px-3 border-r border-b border-slate-200 font-medium text-slate-800">
                           {row.col2}
                         </td>
-                        <td className="p-3 sm:px-4 text-slate-600 truncate max-w-[200px]">
+                        <td className="py-1.5 px-3 border-r border-b border-slate-200 text-slate-600 truncate max-w-[200px]">
                           {row.col3}
                         </td>
                         {row.badge1 && (
-                          <td className="p-3 sm:px-4">
-                            <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${row.badge1.bg}`}>
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${row.badge1.bg}`}>
                               {row.badge1.text}
                             </span>
                           </td>
                         )}
                         {row.badge2 && (
-                          <td className="p-3 sm:px-4">
-                            <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${row.badge2.bg}`}>
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${row.badge2.bg}`}>
                               {row.badge2.text}
                             </span>
                           </td>
                         )}
-                        <td className="p-3 sm:px-4 text-right">
+                        <td className="py-1.5 px-3 border-b border-slate-200 text-right">
                           <button
                             onClick={() => {
                               onClose();
                               router.push(row.actionUrl);
                             }}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-800 transition cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 hover:text-indigo-800 transition cursor-pointer"
                           >
                             <span>{row.actionText}</span>
                             <ArrowRight className="w-3 h-3" />

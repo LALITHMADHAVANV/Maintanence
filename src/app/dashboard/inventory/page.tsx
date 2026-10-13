@@ -419,7 +419,7 @@ export default function InventoryPage() {
         oldPartReturned: oldPartReturned,
         storekeeper: user?.name
           ? `${user.name} (${user.title || 'Storekeeper'})`
-          : 'M. Arumugam (Stores In-Charge)',
+          : 'Store In-Charge',
         remarks: issueRemarks.trim() || undefined,
       };
 
@@ -1177,39 +1177,41 @@ export default function InventoryPage() {
                     No specialized calibration tools currently logged out.
                   </div>
                 ) : (
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                  <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs text-slate-600">
-                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                      <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
+                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
                           <tr>
-                            <th className="py-2.5 px-3">Tool Name</th>
-                            <th className="py-2.5 px-3">Tool ID &amp; S/N</th>
-                            <th className="py-2.5 px-3">Category</th>
-                            <th className="py-2.5 px-3">Location</th>
-                            <th className="py-2.5 px-3">Return Due</th>
-                            <th className="py-2.5 px-3">Condition</th>
-                            <th className="py-2.5 px-3">Purpose</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool Name</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool ID &amp; S/N</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Category</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Location</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Return Due</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Condition</th>
+                            <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Purpose</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
-                          {currentMechanicData.checkedOutTools.map((tool) => (
-                            <tr key={tool.id} className="hover:bg-slate-50">
-                              <td className="py-2.5 px-3 font-bold text-slate-900">{tool.toolName}</td>
-                              <td className="py-2.5 px-3 font-mono text-[11px]">
+                        <tbody>
+                          {currentMechanicData.checkedOutTools.map((tool, idx) => (
+                            <tr key={tool.id} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-bold text-slate-900">{tool.toolName}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-[11px]">
                                 <span className="font-bold text-indigo-700">{tool.id}</span>
                                 <span className="text-slate-400 block">S/N: {tool.serialNo}</span>
                               </td>
-                              <td className="py-2.5 px-3 text-[11px] text-slate-600">
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-600">
                                 {tool.category.replace('_', ' ')}
                               </td>
-                              <td className="py-2.5 px-3 text-[11px] text-slate-700 font-medium">{tool.location}</td>
-                              <td className="py-2.5 px-3 font-mono text-amber-700 font-semibold text-[11px]">{tool.returnDue}</td>
-                              <td className="py-2.5 px-3">
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-700 font-medium">{tool.location}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-amber-700 font-semibold text-[11px]">{tool.returnDue}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200">
                                 <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                                   {tool.condition.replace('_', ' ')}
                                 </span>
                               </td>
-                              <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate" title={tool.purpose}>
+                              <td className="py-1.5 px-3 border-b border-slate-200 text-slate-500 text-[11px] max-w-xs truncate" title={tool.purpose}>
                                 {tool.purpose}
                               </td>
                             </tr>
@@ -1233,30 +1235,32 @@ export default function InventoryPage() {
                     No spare parts currently drawn from crib.
                   </div>
                 ) : (
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                  <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs text-slate-600">
-                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+                      <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
+                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
                           <tr>
-                            <th className="py-2.5 px-3">Part Description</th>
-                            <th className="py-2.5 px-3">Part SKU</th>
-                            <th className="py-2.5 px-3">Quantity</th>
-                            <th className="py-2.5 px-3">Target Machine</th>
-                            <th className="py-2.5 px-3">Floor Line</th>
-                            <th className="py-2.5 px-3">Drawn At</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part Description</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part SKU</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Quantity</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Target Machine</th>
+                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Floor Line</th>
+                            <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Drawn At</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
+                        <tbody>
                           {currentMechanicData.activePartsDrawn.map((part, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50">
-                              <td className="py-2.5 px-3 font-semibold text-slate-900">{part.partName}</td>
-                              <td className="py-2.5 px-3 font-mono text-indigo-700 text-[11px] font-bold">{part.sku}</td>
-                              <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                            <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-semibold text-slate-900">{part.partName}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-indigo-700 text-[11px] font-bold">{part.sku}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-900">
                                 {part.quantity} {part.unit}
                               </td>
-                              <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{part.forMachineId}</td>
-                              <td className="py-2.5 px-3 text-emerald-700 font-medium">{part.line}</td>
-                              <td className="py-2.5 px-3 font-mono text-slate-500 text-[11px]">{part.drawnAt}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-800">{part.forMachineId}</td>
+                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-emerald-700 font-medium">{part.line}</td>
+                              <td className="py-1.5 px-3 border-b border-slate-200 font-mono text-slate-500 text-[11px]">{part.drawnAt}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1377,19 +1381,19 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="w-full text-left text-xs text-slate-600">
-                  <thead className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+              <div className="overflow-x-auto rounded-lg border border-slate-300 shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse border border-slate-300">
+                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                     <tr>
-                      <th className="py-2.5 px-3">Part SKU &amp; Specs</th>
-                      <th className="py-2.5 px-3">Shelf Location</th>
-                      <th className="py-2.5 px-3 min-w-[170px]">Live Stock Health</th>
-                      <th className="py-2.5 px-3">Scrap Return Policy</th>
-                      <th className="py-2.5 px-3">Unit Cost</th>
-                      <th className="py-2.5 px-3 text-right">Floor Actions</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Part SKU &amp; Specs</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Shelf Location</th>
+                      <th className="py-2.5 px-3 min-w-[170px] bg-slate-100 border-r border-b border-slate-300">Live Stock Health</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Scrap Return Policy</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 font-mono">Unit Cost</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-300">Floor Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
+                  <tbody className="divide-y divide-slate-200 font-medium bg-white">
                     {filteredParts.map((part) => {
                       const isLow = part.stock <= part.minStock;
                       const isCritical = part.stock <= Math.floor(part.minStock * 0.5);
@@ -1407,9 +1411,9 @@ export default function InventoryPage() {
                           part.unitCost > 400);
 
                       return (
-                        <tr key={part.partId} className="hover:bg-slate-50/80 transition">
+                        <tr key={part.partId} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
                           {/* Part SKU & Specs */}
-                          <td className="py-3 px-3">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200">
                             <div className="font-mono font-bold text-slate-900 flex items-center gap-1.5">
                               <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/70 text-[11px]">
                                 {part.sku}
@@ -1435,7 +1439,7 @@ export default function InventoryPage() {
                           </td>
 
                           {/* Shelf Location */}
-                          <td className="py-3 px-3">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200">
                             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-800 border border-slate-200 font-mono text-[11px] font-semibold whitespace-nowrap">
                               <MapPin className="w-3 h-3 text-indigo-600 shrink-0" />
                               <span>{shelf}</span>
@@ -1443,7 +1447,7 @@ export default function InventoryPage() {
                           </td>
 
                           {/* Live Stock Health Progress Bar */}
-                          <td className="py-3 px-3">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200">
                             <div className="space-y-1.5">
                               <div className="flex items-center justify-between text-[11px]">
                                 <span className="font-bold font-mono text-slate-900">
@@ -1497,7 +1501,7 @@ export default function InventoryPage() {
                           </td>
 
                           {/* Scrap Return Policy */}
-                          <td className="py-3 px-3">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200">
                             {returnRequired ? (
                               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold whitespace-nowrap">
                                 <RefreshCw className="w-3 h-3 text-rose-600 shrink-0" />
@@ -1512,7 +1516,7 @@ export default function InventoryPage() {
                           </td>
 
                           {/* Unit Cost */}
-                          <td className="py-3 px-3">
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200">
                             <span className="font-mono font-bold text-slate-900 text-xs">
                               ₹{part.unitCost.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
                             </span>
@@ -1522,7 +1526,7 @@ export default function InventoryPage() {
                           </td>
 
                           {/* Actions */}
-                          <td className="py-3 px-3 text-right">
+                          <td className="py-2.5 px-3 text-right border-b border-slate-200">
                             <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               <button
                                 type="button"
@@ -1992,31 +1996,33 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Itemized Table of parts */}
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px]">
+                        <div className="overflow-x-auto rounded-lg border border-slate-300 shadow-2xs">
+                          <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+                            <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
                               <tr>
-                                <th className="py-2 px-3">Part Description</th>
-                                <th className="py-2 px-3">SKU</th>
-                                <th className="py-2 px-3">Quantity</th>
-                                <th className="py-2 px-3">Unit Cost (₹)</th>
-                                <th className="py-2 px-3 text-right">Subtotal (₹)</th>
+                                <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
+                                <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part Description</th>
+                                <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">SKU</th>
+                                <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Quantity</th>
+                                <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Unit Cost (₹)</th>
+                                <th className="py-2 px-3 bg-slate-100 border-b border-slate-300 text-right">Subtotal (₹)</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium">
+                            <tbody>
                               {req.items.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50">
-                                  <td className="py-2 px-3 font-semibold text-slate-800">
+                                <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                                  <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
+                                  <td className="py-1.5 px-3 border-r border-b border-slate-200 font-semibold text-slate-800">
                                     {item.partName}
                                   </td>
-                                  <td className="py-2 px-3 font-mono text-slate-500">{item.sku}</td>
-                                  <td className="py-2 px-3 font-bold text-slate-900">
+                                  <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-slate-500">{item.sku}</td>
+                                  <td className="py-1.5 px-3 border-r border-b border-slate-200 font-bold font-mono text-slate-900">
                                     {item.quantity} {item.unit}
                                   </td>
-                                  <td className="py-2 px-3 font-mono text-slate-600">
+                                  <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-slate-600">
                                     ₹{item.unitCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                   </td>
-                                  <td className="py-2 px-3 font-mono font-bold text-slate-800 text-right">
+                                  <td className="py-1.5 px-3 border-b border-slate-200 font-mono font-bold text-slate-800 text-right">
                                     ₹{item.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                   </td>
                                 </tr>
@@ -2889,29 +2895,29 @@ export default function InventoryPage() {
               </div>
 
               {/* Issued Item Details */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-200">
+              <div className="border border-slate-300 rounded-lg overflow-hidden shadow-2xs">
+                <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
                     <tr>
-                      <th className="py-2 px-3">Part Description</th>
-                      <th className="py-2 px-3">SKU</th>
-                      <th className="py-2 px-3">Location</th>
-                      <th className="py-2 px-3 text-right">Qty</th>
+                      <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part Description</th>
+                      <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">SKU</th>
+                      <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Location</th>
+                      <th className="py-2 px-3 bg-slate-100 border-b border-slate-300 text-right">Qty</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    <tr>
-                      <td className="py-2.5 px-3">
+                  <tbody>
+                    <tr className="hover:bg-blue-50/60 transition">
+                      <td className="py-2 px-3 border-r border-b border-slate-200">
                         <div className="font-bold text-slate-900">{gatePassData.part.name}</div>
                         <div className="text-[10px] text-slate-500">{gatePassData.part.compat}</div>
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-indigo-700 text-[11px]">
+                      <td className="py-2 px-3 border-r border-b border-slate-200 font-mono font-bold text-indigo-700 text-[11px]">
                         {gatePassData.part.sku}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
+                      <td className="py-2 px-3 border-r border-b border-slate-200 font-mono text-[11px] text-slate-700">
                         {gatePassData.part.shelfLocation || 'Rack A-01'}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900 text-sm">
+                      <td className="py-2 px-3 border-b border-slate-200 text-right font-mono font-black text-slate-900 text-sm">
                         {gatePassData.qty} {gatePassData.part.unit}
                       </td>
                     </tr>
@@ -2971,7 +2977,7 @@ export default function InventoryPage() {
                     Storekeeper Authorization
                   </span>
                   <span className="text-[9px] text-slate-400 font-mono">
-                    M. Arumugam / Store In-Charge
+                    {user?.name || 'Store In-Charge'}
                   </span>
                 </div>
                 <div className="text-center">

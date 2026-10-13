@@ -288,45 +288,47 @@ export function MechanicCustodyModal({
                   No spare parts currently drawn.
                 </div>
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                <div className="bg-white rounded-lg border border-slate-300 shadow-2xs overflow-hidden">
+                  <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+                    <thead className="sticky top-0 bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                       <tr>
-                        <th className="py-3 px-4">Part SKU &amp; Name</th>
-                        <th className="py-3 px-4">Qty in Custody</th>
-                        <th className="py-3 px-4">Drawn At</th>
-                        <th className="py-3 px-4">Target Machine</th>
-                        <th className="py-3 px-4">Floor Line</th>
-                        <th className="py-3 px-4 text-right">Floor Action</th>
+                        <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
+                        <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part SKU &amp; Name</th>
+                        <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Qty in Custody</th>
+                        <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Drawn At</th>
+                        <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Target Machine</th>
+                        <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Floor Line</th>
+                        <th className="py-2 px-3 bg-slate-100 border-b border-slate-300 text-right">Floor Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
+                    <tbody>
                       {mechanic.activePartsDrawn.map((part, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-3 px-4">
+                        <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200">
                             <div className="font-bold text-slate-900">{part.partName}</div>
                             <div className="text-[10px] font-mono text-indigo-700">{part.sku}</div>
                           </td>
-                          <td className="py-3 px-4">
-                            <span className="text-sm font-bold font-mono text-slate-900">
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200">
+                            <span className="text-xs font-bold font-mono text-slate-900">
                               {part.quantity}
                             </span>
                             <span className="text-slate-500 text-[10px]"> {part.unit}</span>
                           </td>
-                          <td className="py-3 px-4 text-[11px] font-mono text-slate-600">
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] font-mono text-slate-600">
                             {part.drawnAt}
                           </td>
-                          <td className="py-3 px-4 font-mono font-bold text-indigo-700">
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-indigo-700">
                             {part.forMachineId}
                           </td>
-                          <td className="py-3 px-4 text-emerald-700 font-semibold">
+                          <td className="py-1.5 px-3 border-r border-b border-slate-200 text-emerald-700 font-semibold">
                             {part.line}
                           </td>
-                          <td className="py-3 px-4 text-right">
+                          <td className="py-1.5 px-3 border-b border-slate-200 text-right">
                             <button
                               type="button"
                               onClick={() => handleConsumePart(part)}
-                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-xs font-semibold transition cursor-pointer"
                             >
                               Fitted to M/C
                             </button>

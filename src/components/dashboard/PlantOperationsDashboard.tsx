@@ -1041,26 +1041,28 @@ export function PlantOperationsDashboard({
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto mt-2">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="sticky top-0 bg-white/95 backdrop-blur-xs z-10 border-b border-slate-200 shadow-2xs">
-                <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-2.5 px-2.5">Machine ID</th>
-                  <th className="py-2.5 px-2.5">Type & Model</th>
-                  <th className="py-2.5 px-2.5">Line</th>
-                  <th className="py-2.5 px-2.5">Status</th>
-                  <th className="py-2.5 px-2.5 text-right">Action</th>
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto mt-2 border border-slate-300 rounded-lg shadow-2xs">
+            <table className="w-full text-left border-collapse border border-slate-300 text-xs">
+              <thead className="sticky top-0 bg-slate-100 z-10 border-b border-slate-300 shadow-2xs select-none">
+                <tr className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
+                  <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300">Machine ID</th>
+                  <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300">Type & Model</th>
+                  <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300">Line</th>
+                  <th className="py-2 px-2.5 bg-slate-100 border-r border-b border-slate-300">Status</th>
+                  <th className="py-2 px-2.5 bg-slate-100 border-b border-slate-300 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {machines.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-2.5 px-2.5 font-mono font-bold text-slate-900">{m.id}</td>
-                    <td className="py-2.5 px-2.5 text-slate-700 font-medium truncate max-w-[180px]">{m.type}</td>
-                    <td className="py-2.5 px-2.5 text-slate-500">{m.currentLine || 'Line 01'}</td>
-                    <td className="py-2.5 px-2.5">
+              <tbody>
+                {machines.map((m, idx) => (
+                  <tr key={m.id} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                    <td className="py-1.5 px-2.5 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
+                    <td className="py-1.5 px-2.5 border-r border-b border-slate-200 font-mono font-bold text-slate-900">{m.id}</td>
+                    <td className="py-1.5 px-2.5 border-r border-b border-slate-200 text-slate-700 font-medium truncate max-w-[180px]">{m.type}</td>
+                    <td className="py-1.5 px-2.5 border-r border-b border-slate-200 text-slate-600">{m.currentLine || 'Line 01'}</td>
+                    <td className="py-1.5 px-2.5 border-r border-b border-slate-200">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                           m.status === 'ACTIVE'
                             ? 'bg-emerald-100 text-emerald-800'
                             : m.status === 'BREAKDOWN'
@@ -1073,10 +1075,10 @@ export function PlantOperationsDashboard({
                         {m.status}
                       </span>
                     </td>
-                    <td className="py-2.5 px-2.5 text-right">
+                    <td className="py-1.5 px-2.5 border-b border-slate-200 text-right">
                       <button
                         onClick={() => router.push(`/scan/${m.id}`)}
-                        className="px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                        className="px-2 py-0.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 rounded transition cursor-pointer"
                       >
                         Inspect
                       </button>
@@ -1085,7 +1087,7 @@ export function PlantOperationsDashboard({
                 ))}
                 {machines.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-400 text-xs font-medium">
+                    <td colSpan={6} className="py-8 text-center text-slate-400 text-xs font-medium border-b border-slate-200">
                       No machinery registered yet. Click &apos;View All Assets&apos; or register new machines.
                     </td>
                   </tr>

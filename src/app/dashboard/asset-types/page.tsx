@@ -1926,37 +1926,37 @@ export default function AssetsPage() {
           </div>
         ) : (
           <div
-            className="flex flex-col flex-1 overflow-x-auto overflow-y-auto"
-            style={{ maxHeight: '450px' }}
+            className="flex flex-col flex-1 overflow-x-auto overflow-y-auto border border-slate-300 rounded-lg shadow-2xs"
+            style={{ maxHeight: '460px' }}
           >
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider shadow-xs">
-                <tr>
-                  <th className="py-3 px-4 w-16 bg-slate-100 text-center">S.No</th>
-                  <th className="py-3 px-4 bg-slate-100">Name</th>
-                  <th className="py-3 px-4 bg-slate-100 w-32">ID</th>
-                  <th className="py-3 px-4 bg-slate-100">Company</th>
-                  <th className="py-3 px-4 bg-slate-100">Purchase Date</th>
-                  <th className="py-3 px-4 bg-slate-100">Age</th>
-                  <th className="py-3 px-4 bg-slate-100">Relocation (Occupied Location)</th>
-                  <th className="py-3 px-4 bg-slate-100 text-center w-24">Action</th>
+            <table className="w-full text-left text-xs text-slate-800 border-collapse border border-slate-300">
+              <thead className="sticky top-0 z-20 bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider shadow-xs select-none">
+                <tr className="border-b border-slate-300">
+                  <th className="py-2.5 px-3 w-12 bg-slate-200/80 border-r border-b border-slate-300 text-center font-mono text-slate-600">#</th>
+                  <th className="py-2.5 px-3.5 bg-slate-100 border-r border-b border-slate-300 min-w-[200px]">Asset Name</th>
+                  <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 w-32 font-mono">Asset ID</th>
+                  <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Company / Brand</th>
+                  <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 font-mono">Purchase Date</th>
+                  <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Equipment Age</th>
+                  <th className="py-2.5 px-3.5 bg-slate-100 border-r border-b border-slate-300">Current Relocation</th>
+                  <th className="py-2.5 px-3 bg-slate-100 border-b border-slate-300 text-center w-20">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
+              <tbody className="divide-y divide-slate-200 font-medium bg-white">
                 {filteredItems.map((item, idx) => (
                   <tr
                     key={item.id}
-                    className="hover:bg-slate-50/80 transition-colors duration-150"
+                    className="hover:bg-blue-50/60 transition-colors duration-100 even:bg-slate-50/40 group"
                   >
                     {/* 1. S.No */}
-                    <td className="py-3 px-4 font-mono font-bold text-slate-400 text-center">
-                      {String(idx + 1).padStart(2, '0')}
+                    <td className="py-2 px-3 font-mono font-semibold text-slate-500 bg-slate-50/80 group-hover:bg-blue-50/60 text-center border-r border-b border-slate-200 select-none">
+                      {idx + 1}
                     </td>
 
                     {/* 2. Name */}
-                    <td className="py-3 px-4">
+                    <td className="py-2 px-3.5 border-r border-b border-slate-200">
                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-900 leading-tight">{item.name}</span>
+                        <span className="font-bold text-slate-900 leading-tight group-hover:text-indigo-700">{item.name}</span>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[10px] font-semibold text-slate-500">
                             {item.categoryLabel}
@@ -1966,14 +1966,14 @@ export default function AssetsPage() {
                     </td>
 
                     {/* 3. ID */}
-                    <td className="py-3 px-4">
-                      <span className="font-mono text-[11px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-2xs inline-block">
+                    <td className="py-2 px-3 border-r border-b border-slate-200">
+                      <span className="font-mono text-[11px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300 inline-block">
                         {item.id}
                       </span>
                     </td>
 
                     {/* 4. Company */}
-                    <td className="py-3 px-4">
+                    <td className="py-2 px-3 border-r border-b border-slate-200">
                       <div className="flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="font-semibold text-slate-800">{item.company}</span>
@@ -1981,15 +1981,15 @@ export default function AssetsPage() {
                     </td>
 
                     {/* 5. Purchase Date */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5 font-mono text-slate-600">
+                    <td className="py-2 px-3 border-r border-b border-slate-200">
+                      <div className="flex items-center gap-1.5 font-mono text-slate-700 text-xs tabular-nums">
                         <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{item.purchaseDate}</span>
                       </div>
                     </td>
 
                     {/* 6. Age */}
-                    <td className="py-3 px-4">
+                    <td className="py-2 px-3 border-r border-b border-slate-200">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono font-semibold text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
                         <Clock className="w-3 h-3 text-slate-400" />
                         {item.age}
@@ -1997,22 +1997,22 @@ export default function AssetsPage() {
                     </td>
 
                     {/* 7. Relocation (Occupied Location) */}
-                    <td className="py-3 px-4">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50/60 border border-indigo-100 text-indigo-900 font-semibold text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <td className="py-2 px-3.5 border-r border-b border-slate-200">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-indigo-50/70 border border-indigo-200/80 text-indigo-900 font-semibold text-xs">
+                        <MapPin className="w-3 h-3 text-indigo-600 shrink-0" />
                         <span>{item.relocation}</span>
                       </div>
                     </td>
 
                     {/* 8. Action (Delete) */}
-                    <td className="py-3 px-4 text-center">
+                    <td className="py-2 px-3 text-center border-b border-slate-200">
                       <button
                         type="button"
                         onClick={() => setAssetToDelete({ id: item.id, name: item.name })}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition border border-transparent hover:border-rose-200 cursor-pointer inline-flex items-center justify-center group"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition border border-transparent hover:border-rose-200 cursor-pointer inline-flex items-center justify-center group"
                         title={`Delete ${item.name}`}
                       >
-                        <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                        <Trash2 className="w-3.5 h-3.5 transition-transform group-hover:scale-110" />
                       </button>
                     </td>
                   </tr>
