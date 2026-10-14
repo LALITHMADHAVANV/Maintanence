@@ -33,6 +33,7 @@ export type DrillDownType =
   | 'at_risk'
   | 'overdue'
   | 'resolved'
+  | 'completed_tasks'
   | 'total_assets'
   | 'operational_assets'
   | 'breakdown_assets'
@@ -480,6 +481,118 @@ export function WidgetDrilldownDrawer({
           actionUrl: `/dashboard/calendar?ticketId=${r.id}`,
         })),
         bottomAction: { label: 'View Repairs History in Master Page →', url: '/dashboard/calendar' },
+      };
+    }
+
+    // 5B. COMPLETED TASKS DRILL-DOWN (ALL COMPLETED WORK ORDERS + PPM ROUTINES)
+    if (type === 'completed_tasks') {
+      const completedRepairs = repairs.filter((r) => r.status === 'COMPLETED');
+      const completedPpms = ppmSchedules.filter((p) => p.status === 'COMPLETED');
+      const totalCompletedCount = completedRepairs.length + completedPpms.length;
+
+      const totalDowntimeSaved = completedRepairs.reduce((sum, r) => sum + (r.downtimeMinutes || 0), 0);
+      const totalRepairSpend = completedRepairs.reduce((sum, r) => sum + (r.repairCost || 0), 0);
+
+      type UnifiedTask = {
+        id: string;
+        kind: 'REPAIR' | 'PPM';
+        machineId: string;
+        line: string;
+        taskTitle: string;
+        technician: string;
+        durationMinutes: number;
+        cost: number;
+        completedAt: string;
+        actionTaken: string;
+        hasProof: boolean;
+      };
+
+      const unifiedList: UnifiedTask[] = [
+        ...completedRepairs.map((r) => ({
+          id: r.id,
+          kind: 'REPAIR' as const,
+          machineId: r.machineId,
+          line: r.line,
+          taskTitle: r.faultCategory,
+          technician: r.attendedBy || 'Technician',
+          durationMinutes: r.downtimeMinutes || 0,
+          cost: r.repairCost || 0,
+          completedAt: r.resolvedAt || r.completedAt || r.reportedAt,
+          actionTaken: r.actionTaken || 'Repair completed and tested',
+          hasProof: !!r.completionProofImage,
+        })),
+        ...completedPpms.map((p) => ({
+          id: p.id,
+          kind: 'PPM' as const,
+          machineId: p.machineId,
+          line: machines.find((m) => m.id === p.machineId)?.currentLine || 'Floor Line',
+          taskTitle: p.task,
+          technician: p.assignedTo || 'Technician',
+          durationMinutes: p.actualDurationMinutes || 25,
+          cost: 450,
+          completedAt: p.completedAt || p.lastServiced,
+          actionTaken: p.technicianNotes || 'PPM inspection & lubrication completed',
+          hasProof: !!p.completionProofImage,
+        })),
+      ].sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+      let filteredTasks = unifiedList;
+      if (activeFilter === 'repairs') {
+        filteredTasks = unifiedList.filter((t) => t.kind === 'REPAIR');
+      } else if (activeFilter === 'ppm') {
+        filteredTasks = unifiedList.filter((t) => t.kind === 'PPM');
+      }
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        filteredTasks = filteredTasks.filter(
+          (t) =>
+            t.id.toLowerCase().includes(q) ||
+            t.machineId.toLowerCase().includes(q) ||
+            t.line.toLowerCase().includes(q) ||
+            t.taskTitle.toLowerCase().includes(q) ||
+            t.technician.toLowerCase().includes(q) ||
+            t.actionTaken.toLowerCase().includes(q)
+        );
+      }
+
+      return {
+        categoryTitle: 'TASKS COMPLETED KPI BREAKDOWN',
+        mainTitle: title || `Completed Tasks & Overhauls (${totalCompletedCount})`,
+        kpiCards: [
+          { label: 'Total Completed', value: totalCompletedCount, color: 'text-emerald-600' },
+          { label: 'Repairs Fixed', value: completedRepairs.length, color: 'text-teal-600' },
+          { label: 'PPM Done', value: completedPpms.length, color: 'text-indigo-600' },
+          {
+            label: 'Total Spend',
+            value: totalRepairSpend > 0 ? `₹${totalRepairSpend.toLocaleString()}` : `${totalDowntimeSaved}m DT`,
+            color: 'text-amber-600',
+          },
+        ],
+        filterPills: [
+          { id: 'all', label: `All Tasks (${totalCompletedCount})` },
+          { id: 'repairs', label: `Repairs (${completedRepairs.length})` },
+          { id: 'ppm', label: `Preventive PPM (${completedPpms.length})` },
+        ],
+        tableHeaders: ['TASK ID', 'ASSET & LINE', 'TECHNICIAN', 'ACTION & RESOLUTION', 'TIME & COST', 'STATUS', 'ACTIONS'],
+        rows: filteredTasks.map((t) => ({
+          id: t.id,
+          col1: t.id,
+          col2: `${t.machineId} • ${t.line}`,
+          col3: t.technician,
+          col4: t.actionTaken,
+          badge1: {
+            text: `${t.durationMinutes}m${t.cost > 0 ? ` • ₹${t.cost}` : ''}`,
+            bg: 'bg-slate-100 text-slate-800 font-semibold',
+          },
+          badge2: {
+            text: t.kind === 'REPAIR' ? 'REPAIR FIXED' : 'PPM DONE',
+            bg: t.kind === 'REPAIR' ? 'bg-teal-100 text-teal-800 font-bold' : 'bg-indigo-100 text-indigo-800 font-bold',
+          },
+          actionText: 'View Proof',
+          actionUrl: `/dashboard/calendar?ticketId=${t.id}`,
+        })),
+        bottomAction: { label: 'View Full Task History in Calendar Master →', url: '/dashboard/calendar' },
       };
     }
 

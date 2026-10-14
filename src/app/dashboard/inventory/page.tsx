@@ -62,6 +62,7 @@ import {
   createRequisition,
   approveRequisition,
   rejectRequisition,
+  sendAppNotification,
 } from '@/lib/services/cmmsService';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
 import { MechanicCustodyModal } from '@/components/mechanic/MechanicCustodyModal';
@@ -99,7 +100,18 @@ export default function InventoryPage() {
   const [issueTargetMachine, setIssueTargetMachine] = useState<string>('');
   const [oldPartReturned, setOldPartReturned] = useState<boolean>(true);
   const [issueRemarks, setIssueRemarks] = useState<string>('');
+  const [issueReceivedByPerson, setIssueReceivedByPerson] = useState<string>('');
+  const [issueReceiverEmpId, setIssueReceiverEmpId] = useState<string>('');
   const [isSubmittingIssue, setIsSubmittingIssue] = useState<boolean>(false);
+
+  // Sync default receiver details when mechanic changes
+  useEffect(() => {
+    const m = FACTORY_MECHANICS_ROSTER.find((mech) => mech.id === selectedIssueMechanicId);
+    if (m) {
+      setIssueReceivedByPerson(m.name);
+      setIssueReceiverEmpId(m.id);
+    }
+  }, [selectedIssueMechanicId]);
 
   // Printable Gate Pass Slip state
   interface GatePassPayload {
@@ -115,6 +127,8 @@ export default function InventoryPage() {
     oldPartReturned: boolean;
     storekeeper: string;
     remarks?: string;
+    receivedByPerson?: string;
+    receiverEmpId?: string;
   }
   const [isGatePassOpen, setIsGatePassOpen] = useState(false);
   const [gatePassData, setGatePassData] = useState<GatePassPayload | null>(null);
@@ -405,6 +419,8 @@ export default function InventoryPage() {
         FACTORY_MECHANICS_ROSTER.find((m) => m.id === selectedIssueMechanicId) ||
         FACTORY_MECHANICS_ROSTER[0];
       const slipNumber = `GPS-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+      const actualReceiver = issueReceivedByPerson.trim() || mech.name;
+      const actualEmpId = issueReceiverEmpId.trim() || mech.id;
 
       const passPayload: GatePassPayload = {
         slipNo: slipNumber,
@@ -421,13 +437,36 @@ export default function InventoryPage() {
           ? `${user.name} (${user.title || 'Storekeeper'})`
           : 'Store In-Charge',
         remarks: issueRemarks.trim() || undefined,
+        receivedByPerson: actualReceiver,
+        receiverEmpId: actualEmpId,
       };
 
       setGatePassData(passPayload);
+
+      // POINT 7: Send instant notification to the responsible mechanic with receiving person proof
+      sendAppNotification({
+        type: 'SPARE_ISSUE_RECEIPT',
+        title: `Spare Parts Issued — ${activeIssuePart.name}`,
+        message: `${issueQty} ${activeIssuePart.unit} handed over to ${actualReceiver} (${actualEmpId}) for ${issueTargetLine}${issueTargetMachine ? ` • Machine ${issueTargetMachine}` : ''}. Please confirm receipt.`,
+        targetRole: 'MECHANIC',
+        targetUserId: mech.name,
+        senderName: user?.name || 'Store In-Charge',
+        meta: {
+          slipNo: slipNumber,
+          partId: activeIssuePart.partId,
+          partName: activeIssuePart.name,
+          qty: issueQty,
+          receivedByPerson: actualReceiver,
+          receiverEmpId: actualEmpId,
+          mechanicName: mech.name,
+          mechanicId: mech.id,
+        },
+      });
+
       setIsIssueModalOpen(false);
       setIsGatePassOpen(true);
       showToast(
-        `Issued ${issueQty} ${activeIssuePart.unit} to ${mech.name}. Gate pass generated!`,
+        `Issued ${issueQty} ${activeIssuePart.unit} to ${actualReceiver}. Acknowledgment request dispatched to ${mech.name}!`,
         'success'
       );
     } catch (err) {
@@ -446,8 +485,33 @@ export default function InventoryPage() {
         targetPart.vendor ||
           (targetPart.category === 'Needles' ? 'Organ Needle Co.' : 'Genuine Machine Spares')
       );
+      // POINT 8: Auto-calculate replenishment quantity and broadcast notification
+      const suggestedQty = Math.max(25, (targetPart.minStock * 2) - (targetPart.stock || 0));
+      setRestockQty(suggestedQty);
+
+      sendAppNotification({
+        type: 'RESTOCK_ALERT',
+        title: `Restock Quantity Auto-Calculated: ${targetPart.name}`,
+        message: `System auto-filled ${suggestedQty} ${targetPart.unit} for ${targetPart.name} (${targetPart.sku}) based on safety buffer (Min: ${targetPart.minStock}, Stock: ${targetPart.stock}).`,
+        targetRole: 'ALL',
+        senderName: user?.name || 'Store In-Charge',
+        meta: {
+          partId: targetPart.partId,
+          partName: targetPart.name,
+          sku: targetPart.sku,
+          suggestedQty,
+          minStock: targetPart.minStock,
+          currentStock: targetPart.stock,
+        },
+      });
+
+      showToast(
+        `⚡ Auto-filled ${suggestedQty} ${targetPart.unit} replenishment for ${targetPart.name}! Notification dispatched to Admin & Maintenance.`,
+        'info'
+      );
+    } else {
+      setRestockQty(50);
     }
-    setRestockQty(50);
     setGrnChallanNo(`DC-GRN-2026-${Math.floor(1000 + Math.random() * 9000)}`);
     setGrnQcPassed(true);
     setGrnNotes('');
@@ -462,6 +526,15 @@ export default function InventoryPage() {
 
     const poRef = grnChallanNo || restockPO || `GRN-${Date.now().toString().slice(-6)}`;
     await restockPart(restockPartId, restockQty, poRef);
+
+    sendAppNotification({
+      type: 'RESTOCK_ALERT',
+      title: `Inventory Restocked: ${target.name}`,
+      message: `Successfully received and shelved +${restockQty} ${target.unit} under ${poRef}. Bin: ${target.shelfLocation || 'Tool Crib'}.`,
+      targetRole: 'ALL',
+      senderName: user?.name || 'Store In-Charge',
+    });
+
     showToast(
       `Received ${restockQty} ${target.unit} for ${target.sku} under Challan ${poRef}!`,
       'success'
@@ -2667,7 +2740,7 @@ export default function InventoryPage() {
               {/* Mechanic Roster Select */}
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Issuing To (Mechanic / Electrician) *
+                  Responsible Technician (Quota Charged) *
                 </label>
                 <select
                   value={selectedIssueMechanicId}
@@ -2680,6 +2753,50 @@ export default function InventoryPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Physical Recipient Proof & Custody (POINT 7) */}
+              <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Physical Recipient (Proof of Handover)</span>
+                  </label>
+                  <span className="text-[10px] text-indigo-600 font-semibold font-mono">Proof of Custody</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                      Person Receiving Spares *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={issueReceivedByPerson}
+                      onChange={(e) => setIssueReceivedByPerson(e.target.value)}
+                      placeholder="e.g. Ramesh Kumar or Sanjay (Helper)"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                      Employee ID / Token No *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={issueReceiverEmpId}
+                      onChange={(e) => setIssueReceiverEmpId(e.target.value)}
+                      placeholder="e.g. MEC-01 or EMP-9921"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-indigo-700/90 leading-tight">
+                  ⚡ An instant notification &amp; acknowledgment request will be dispatched to <strong>{FACTORY_MECHANICS_ROSTER.find((m) => m.id === selectedIssueMechanicId)?.name || 'the mechanic'}</strong> upon issuing.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -2880,6 +2997,11 @@ export default function InventoryPage() {
                   <span className="text-[11px] text-slate-600 font-mono">
                     ID: {gatePassData.mechanicId} &bull; {gatePassData.mechanicTrade}
                   </span>
+                  {gatePassData.receivedByPerson && (
+                    <div className="mt-1 text-[10px] text-indigo-900 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                      Physical Recipient: {gatePassData.receivedByPerson} {gatePassData.receiverEmpId ? `(${gatePassData.receiverEmpId})` : ''}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">
@@ -3044,9 +3166,27 @@ export default function InventoryPage() {
                 <select
                   value={restockPartId}
                   onChange={(e) => {
-                    setRestockPartId(e.target.value);
-                    const found = parts.find((p) => p.partId === e.target.value);
-                    if (found?.vendor) setGrnVendor(found.vendor);
+                    const newId = e.target.value;
+                    setRestockPartId(newId);
+                    const found = parts.find((p) => p.partId === newId);
+                    if (found) {
+                      if (found.vendor) setGrnVendor(found.vendor);
+                      const suggested = Math.max(25, (found.minStock * 2) - (found.stock || 0));
+                      setRestockQty(suggested);
+                      sendAppNotification({
+                        type: 'RESTOCK_ALERT',
+                        title: `Restock Quantity Auto-Calculated: ${found.name}`,
+                        message: `System auto-filled ${suggested} ${found.unit} for ${found.name} (${found.sku}) based on safety buffer (Min: ${found.minStock}, Stock: ${found.stock}).`,
+                        targetRole: 'ALL',
+                        senderName: user?.name || 'Store In-Charge',
+                        meta: {
+                          partId: found.partId,
+                          partName: found.name,
+                          suggestedQty: suggested,
+                        },
+                      });
+                      showToast(`⚡ Auto-filled ${suggested} ${found.unit} replenishment for ${found.name}! Notification dispatched.`, 'info');
+                    }
                   }}
                   required
                   className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800"

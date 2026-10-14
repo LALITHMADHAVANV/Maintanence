@@ -25,8 +25,10 @@ interface MaintenanceMilestonesAndTasksProps {
   userName?: string;
   role?: string;
   compact?: boolean;
+  hideAttendance?: boolean;
   defaultTab?: 'schedules' | 'month_grid';
   onOpenResolve?: (ticket: RepairTicket) => void;
+  onStartRepair?: (ticket: RepairTicket) => void;
   onCompletePPM?: (ppmId: string, machineId: string) => void;
   onStartPPM?: (ppm: PPMSchedule) => void;
   onInspectPPM?: (ppm: PPMSchedule) => void;
@@ -90,8 +92,10 @@ export function MaintenanceMilestonesAndTasks({
   userName = 'Technician',
   role = 'MECHANIC',
   compact = false,
+  hideAttendance = false,
   defaultTab,
   onOpenResolve,
+  onStartRepair,
   onCompletePPM,
   onStartPPM,
   onInspectPPM,
@@ -584,7 +588,19 @@ export function MaintenanceMilestonesAndTasks({
   }, [attendanceList]);
 
   return (
-    <div className={isSenior ? (compact ? "grid grid-cols-1 lg:grid-cols-3 gap-3.5 w-full items-stretch" : "grid grid-cols-1 lg:grid-cols-3 gap-5 w-full items-stretch") : "grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch"}>
+    <div
+      className={
+        isSenior
+          ? hideAttendance
+            ? compact
+              ? "grid grid-cols-1 lg:grid-cols-2 gap-3.5 w-full items-stretch"
+              : "grid grid-cols-1 lg:grid-cols-2 gap-5 w-full items-stretch"
+            : compact
+              ? "grid grid-cols-1 lg:grid-cols-3 gap-3.5 w-full items-stretch"
+              : "grid grid-cols-1 lg:grid-cols-3 gap-5 w-full items-stretch"
+          : "grid grid-cols-1 lg:grid-cols-12 gap-5 w-full items-stretch"
+      }
+    >
       {/* =================================================================== */}
       {/* LEFT CARD: DELIVERY SCHEDULE & MILESTONES (1 COL IF SENIOR, 7 COLS IF JUNIOR) */}
       {/* =================================================================== */}
@@ -1096,6 +1112,35 @@ export function MaintenanceMilestonesAndTasks({
                         <span>📷 Inspect &amp; Complete</span>
                       </button>
                     )
+                  ) : task.type === 'TICKET' && task.ticketObj ? (
+                    !task.ticketObj.startedAt && task.ticketObj.status !== 'IN_PROGRESS' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onStartRepair) onStartRepair(task.ticketObj!);
+                          else handleTaskClick(task);
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                        title="Click to accept work order and start live downtime tracking"
+                      >
+                        <span>⚡ Start Work</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onOpenResolve) onOpenResolve(task.ticketObj!);
+                          else handleTaskClick(task);
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                        title="Click to resolve work order and submit downtime proof & costs"
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Resolve</span>
+                      </button>
+                    )
                   ) : (
                     <span
                       className={`inline-block ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1 text-xs'} rounded-full font-bold border ${task.dueBadgeStyle}`}
@@ -1113,7 +1158,7 @@ export function MaintenanceMilestonesAndTasks({
       {/* =================================================================== */}
       {/* CARD 3: ATTENDANCE TODAY (FOR SENIORS)                             */}
       {/* =================================================================== */}
-      {isSenior && (
+      {isSenior && !hideAttendance && (
         <div className={`lg:col-span-1 bg-white ${compact ? 'rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs h-[385px] min-h-[375px] max-h-[395px]' : 'rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px]'} flex flex-col justify-between`}>
           {/* Header Strip */}
           <div className={`flex items-center justify-between ${compact ? 'pb-2' : 'pb-3'} border-b border-slate-100 shrink-0 gap-2`}>

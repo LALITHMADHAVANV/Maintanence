@@ -8,6 +8,7 @@ import {
   FloorLine,
   PartRequisition,
   RequisitionStatus,
+  AppNotification,
 } from '@/types/cmms';
 
 // Local storage keys for offline/immediate UI responsiveness
@@ -17,6 +18,7 @@ const STORAGE_KEYS = {
   REPAIRS: 'textech_repairs',
   PPM: 'textech_ppm',
   REQUISITIONS: 'textech_requisitions',
+  NOTIFICATIONS: 'textech_notifications',
   SEEDED: 'textech_seeded',
 };
 
@@ -28,6 +30,7 @@ const listeners = {
   repairs: new Set<Listener<RepairTicket[]>>(),
   ppm: new Set<Listener<PPMSchedule[]>>(),
   requisitions: new Set<Listener<PartRequisition[]>>(),
+  notifications: new Set<Listener<AppNotification[]>>(),
 };
 
 function getLocal<T>(key: string, defaultVal: T): T {
@@ -454,12 +457,54 @@ export async function createBreakdownTicket(
   return ticketId;
 }
 
+export async function startRepairTicket(ticketId: string, attendedBy?: string): Promise<void> {
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
+  const startedAt = new Date().toISOString();
+  const updatedRepairs = currentRepairs.map((t) =>
+    t.id === ticketId
+      ? {
+          ...t,
+          status: 'IN_PROGRESS' as const,
+          startedAt: t.startedAt || startedAt,
+          attendedBy: attendedBy || t.attendedBy,
+        }
+      : t
+  );
+  setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
+  notifyLocal('repairs', updatedRepairs);
+
+  try {
+    await fetch('/api/repairs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ticketId,
+        updates: {
+          status: 'IN_PROGRESS',
+          startedAt,
+          attendedBy: attendedBy || undefined,
+        },
+      }),
+    });
+  } catch (e) {
+    console.error('MongoDB startRepairTicket error:', e);
+  }
+}
+
 export async function resolveRepairTicket(
   ticketId: string,
   downtimeMinutes: number,
   actionTaken: string,
   attendedBy: string,
-  partsUsedInputs: Array<{ partId: string; quantity: number }>
+  partsUsedInputs: Array<{ partId: string; quantity: number }> = [],
+  details?: {
+    repairCost?: number;
+    laborCost?: number;
+    partsCost?: number;
+    issuesIdentified?: string;
+    proofImage?: string;
+    completedAt?: string;
+  }
 ): Promise<void> {
   const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
@@ -480,17 +525,35 @@ export async function resolveRepairTicket(
       };
     });
 
+  // Calculate default parts cost if not passed
+  const calculatedPartsCost = resolvedPartsUsed.reduce((sum, pu) => {
+    const part = currentParts.find((p) => p.partId === pu.partId);
+    return sum + (part ? part.unitCost * pu.quantity : pu.quantity * 250);
+  }, 0);
+  const calculatedLaborCost = Math.round(((downtimeMinutes || 30) / 60) * 350);
+  const finalRepairCost = typeof details?.repairCost === 'number' && details.repairCost >= 0
+    ? details.repairCost
+    : calculatedPartsCost + calculatedLaborCost;
+
+  const nowIso = details?.completedAt || new Date().toISOString();
+
   // 1. Update repairs document
   const updatedRepairs = currentRepairs.map((t) =>
     t.id === ticketId
       ? {
           ...t,
           status: 'COMPLETED' as const,
-          resolvedAt: new Date().toISOString(),
+          resolvedAt: nowIso,
+          completedAt: nowIso,
           downtimeMinutes,
           actionTaken,
           attendedBy,
           partsUsed: resolvedPartsUsed,
+          repairCost: finalRepairCost,
+          laborCost: details?.laborCost ?? calculatedLaborCost,
+          partsCost: details?.partsCost ?? calculatedPartsCost,
+          issuesIdentified: details?.issuesIdentified || t.faultDetails || '',
+          completionProofImage: details?.proofImage || t.completionProofImage,
         }
       : t
   );
@@ -531,11 +594,15 @@ export async function resolveRepairTicket(
         id: ticketId,
         updates: {
           status: 'COMPLETED',
-          resolvedAt: new Date().toISOString(),
+          resolvedAt: nowIso,
+          completedAt: nowIso,
           downtimeMinutes,
           actionTaken,
           attendedBy,
           partsUsed: resolvedPartsUsed,
+          repairCost: finalRepairCost,
+          issuesIdentified: details?.issuesIdentified,
+          completionProofImage: details?.proofImage,
         },
       }),
     });
@@ -571,6 +638,55 @@ export async function resolveRepairTicket(
   } catch (err) {
     console.error('MongoDB resolveRepairTicket error:', err);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS SERVICE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function subscribeNotifications(callback: (notifications: AppNotification[]) => void): () => void {
+  initLocalSeedData();
+  const current = getLocal<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, [
+    {
+      id: 'NOTIF-INIT-01',
+      type: 'GENERAL',
+      title: 'Factory CMMS Online',
+      message: 'System operational with real-time sync across maintenance & store terminals.',
+      senderName: 'System Core',
+      createdAt: new Date().toISOString(),
+      acknowledged: true,
+    },
+  ]);
+  callback(current);
+  listeners.notifications.add(callback);
+  return () => {
+    listeners.notifications.delete(callback);
+  };
+}
+
+export function sendAppNotification(
+  notif: Omit<AppNotification, 'id' | 'createdAt' | 'acknowledged'>
+): AppNotification {
+  const newNotif: AppNotification = {
+    ...notif,
+    id: `NOTIF-${Date.now().toString().slice(-6)}`,
+    createdAt: new Date().toISOString(),
+    acknowledged: false,
+  };
+  const current = getLocal<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, []);
+  const updated = [newNotif, ...current].slice(0, 50);
+  setLocal(STORAGE_KEYS.NOTIFICATIONS, updated);
+  notifyLocal('notifications', updated);
+  return newNotif;
+}
+
+export function acknowledgeAppNotification(id: string): void {
+  const current = getLocal<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, []);
+  const updated = current.map((n) =>
+    n.id === id ? { ...n, acknowledged: true, acknowledgedAt: new Date().toISOString() } : n
+  );
+  setLocal(STORAGE_KEYS.NOTIFICATIONS, updated);
+  notifyLocal('notifications', updated);
 }
 
 export async function assignRepairTicket(

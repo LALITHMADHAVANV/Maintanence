@@ -717,9 +717,9 @@ export function PlantOperationsDashboard({
 
         {/* On Schedule (PPM + Assigned) */}
         <div
-          onClick={() => openDrillDown('on_schedule', 'PPM Schedules & Compliance')}
+          onClick={() => openDrillDown('completed_tasks', 'Completed Maintenance Tasks (PPM Routines)', { filterDefault: 'ppm' })}
           className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-emerald-400 hover:shadow-sm transition cursor-pointer group"
-          title="Click to view PPM Schedules drill-down"
+          title="Click to view completed PPM tasks in detailed pop up"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-emerald-600 transition">On Schedule</span>
@@ -771,9 +771,9 @@ export function PlantOperationsDashboard({
 
         {/* Resolved Today / Total Resolved */}
         <div
-          onClick={() => openDrillDown('resolved', 'Resolved Work Orders & Repairs')}
+          onClick={() => openDrillDown('completed_tasks', 'Completed Breakdown & Repair Work Orders', { filterDefault: 'repairs' })}
           className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-teal-400 hover:shadow-sm transition cursor-pointer group"
-          title="Click to view Resolved work orders drill-down"
+          title="Click to view completed repair tasks in detailed pop up"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-teal-600 transition">Resolved</span>
@@ -1280,9 +1280,9 @@ export function PlantOperationsDashboard({
         </div>
 
         <div
-          onClick={() => openDrillDown('on_schedule', 'Preventive Maintenance (PPM) Compliance')}
+          onClick={() => openDrillDown('completed_tasks', 'Preventive Maintenance (PPM) Compliance & Completed Tasks', { filterDefault: 'ppm' })}
           className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs text-center hover:border-emerald-400 hover:shadow-sm transition cursor-pointer group"
-          title="Click to view PPM Compliance drill-down"
+          title="Click to view completed PPM overhauls and compliance log"
         >
           <div
             className="text-2xl font-black font-mono group-hover:scale-105 transition"

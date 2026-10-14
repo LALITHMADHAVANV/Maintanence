@@ -30,9 +30,10 @@ import {
   BadgeAlert,
   ShieldCheck,
   MapPin,
+  Zap,
 } from 'lucide-react';
 import { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition, RequisitionItem } from '@/types/cmms';
-import { adjustPartStock, restockPart, createRequisition } from '@/lib/services/cmmsService';
+import { adjustPartStock, restockPart, createRequisition, sendAppNotification } from '@/lib/services/cmmsService';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -52,6 +53,10 @@ interface StoreIssueRecord {
   oldPartReturned: boolean;
   remarks?: string;
   storekeeper: string;
+  receivedByPerson?: string;
+  receiverEmpId?: string;
+  receiverPhone?: string;
+  notificationSent?: boolean;
 }
 
 interface DraftIndentItem {
@@ -194,14 +199,118 @@ export function StoreDashboard({
   const handleQuickRestock = async (partId: string, partName: string, amount: number = 25) => {
     try {
       await restockPart(partId, amount);
-      showToast(`Restocked +${amount} units of ${partName}!`, 'success');
+      sendAppNotification({
+        type: 'RESTOCK_ALERT',
+        title: `Quick Restock Completed: ${partName}`,
+        message: `Fast restocked +${amount} units into crib stock. Notification dispatched to maintenance team.`,
+        targetRole: 'ALL',
+        senderName: user?.name || 'Store In-Charge',
+      });
+      showToast(`Restocked +${amount} units of ${partName}! Notification dispatched.`, 'success');
       onRefresh();
     } catch {
       showToast('Failed to restock part', 'error');
     }
   };
 
-  // ─── 3. ISSUE PART TO MECHANIC MODAL STATE ───────────────────────
+  // ─── RESTOCK MODAL STATE WITH AUTO-FILL & NOTIFICATION (POINT 8) ─
+  const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [restockPartId, setRestockPartId] = useState('');
+  const [restockQty, setRestockQty] = useState(25);
+  const [restockPoRef, setRestockPoRef] = useState('');
+  const [isSubmittingRestock, setIsSubmittingRestock] = useState(false);
+
+  const selectedPartForRestock = useMemo(() => {
+    return parts.find((p) => p.partId === restockPartId) || parts[0];
+  }, [parts, restockPartId]);
+
+  const handleOpenRestockModal = (part?: SparePart) => {
+    const target = part || parts[0];
+    if (target) {
+      setRestockPartId(target.partId);
+      const suggestedQty = Math.max(25, (target.minStock * 2) - (target.stock || 0));
+      setRestockQty(suggestedQty);
+      setRestockPoRef(`PO-REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+      setIsRestockModalOpen(true);
+
+      // POINT 8: Dispatch notification immediately when auto-filling restock qty
+      sendAppNotification({
+        type: 'RESTOCK_ALERT',
+        title: `Restock Quantity Auto-Calculated: ${target.name}`,
+        message: `System auto-filled ${suggestedQty} ${target.unit} for ${target.name} (${target.sku}) based on safety buffer (Min: ${target.minStock}, Stock: ${target.stock}).`,
+        targetRole: 'ALL',
+        senderName: user?.name || 'Store In-Charge',
+        meta: {
+          partId: target.partId,
+          partName: target.name,
+          sku: target.sku,
+          suggestedQty,
+          minStock: target.minStock,
+          currentStock: target.stock,
+        },
+      });
+
+      showToast(
+        `⚡ Auto-filled ${suggestedQty} ${target.unit} replenishment for ${target.name}! Notification dispatched to Admin & Maintenance.`,
+        'info'
+      );
+    }
+  };
+
+  const handleSelectRestockPart = (pId: string) => {
+    setRestockPartId(pId);
+    const target = parts.find((p) => p.partId === pId);
+    if (target) {
+      const suggestedQty = Math.max(25, (target.minStock * 2) - (target.stock || 0));
+      setRestockQty(suggestedQty);
+
+      sendAppNotification({
+        type: 'RESTOCK_ALERT',
+        title: `Restock Quantity Auto-Calculated: ${target.name}`,
+        message: `System auto-filled ${suggestedQty} ${target.unit} for ${target.name} (${target.sku}) based on safety buffer (Min: ${target.minStock}, Stock: ${target.stock}).`,
+        targetRole: 'ALL',
+        senderName: user?.name || 'Store In-Charge',
+        meta: {
+          partId: target.partId,
+          partName: target.name,
+          sku: target.sku,
+          suggestedQty,
+          minStock: target.minStock,
+          currentStock: target.stock,
+        },
+      });
+
+      showToast(
+        `⚡ Auto-filled ${suggestedQty} ${target.unit} replenishment for ${target.name}! Notification dispatched.`,
+        'info'
+      );
+    }
+  };
+
+  const handleConfirmRestockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPartForRestock || restockQty <= 0) return;
+    setIsSubmittingRestock(true);
+    try {
+      await restockPart(selectedPartForRestock.partId, restockQty, restockPoRef);
+      sendAppNotification({
+        type: 'RESTOCK_ALERT',
+        title: `Inventory Restocked: ${selectedPartForRestock.name}`,
+        message: `Successfully received and shelved +${restockQty} ${selectedPartForRestock.unit} under ${restockPoRef}. Bin: ${selectedPartForRestock.shelfLocation || 'Tool Crib'}.`,
+        targetRole: 'ALL',
+        senderName: user?.name || 'Store In-Charge',
+      });
+      showToast(`Restocked +${restockQty} ${selectedPartForRestock.unit} for ${selectedPartForRestock.name}!`, 'success');
+      setIsRestockModalOpen(false);
+      onRefresh();
+    } catch {
+      showToast('Failed to restock spare part', 'error');
+    } finally {
+      setIsSubmittingRestock(false);
+    }
+  };
+
+  // ─── 3. ISSUE PART TO MECHANIC MODAL STATE (POINT 7) ─────────────
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [issueMechanicId, setIssueMechanicId] = useState(
     FACTORY_MECHANICS_ROSTER[0]?.id || 'MEC-01'
@@ -212,6 +321,18 @@ export function StoreDashboard({
   const [issueMachineId, setIssueMachineId] = useState('');
   const [issueOldReturned, setIssueOldReturned] = useState(true);
   const [issueRemarks, setIssueRemarks] = useState('');
+  const [receivedByPerson, setReceivedByPerson] = useState('');
+  const [receiverEmpId, setReceiverEmpId] = useState('');
+  const [receiverPhone, setReceiverPhone] = useState('');
+
+  // Sync default receiver details when mechanic changes
+  useEffect(() => {
+    const m = FACTORY_MECHANICS_ROSTER.find((mech) => mech.id === issueMechanicId);
+    if (m) {
+      setReceivedByPerson(m.name);
+      setReceiverEmpId(m.id);
+    }
+  }, [issueMechanicId]);
 
   // Selected part in issue modal
   const selectedPartForIssue = useMemo(() => {
@@ -249,6 +370,9 @@ export function StoreDashboard({
         FACTORY_MECHANICS_ROSTER.find((m) => m.id === issueMechanicId) ||
         FACTORY_MECHANICS_ROSTER[0];
 
+      const actualReceiver = receivedByPerson.trim() || targetMech.name;
+      const actualEmpId = receiverEmpId.trim() || targetMech.id;
+
       const newRecord: StoreIssueRecord = {
         id: `SLIP-${Math.floor(1000 + Math.random() * 9000)}`,
         date: new Date().toISOString(),
@@ -264,13 +388,38 @@ export function StoreDashboard({
         oldPartReturned: issueOldReturned,
         remarks: issueRemarks.trim() || undefined,
         storekeeper: user?.name ? `${user.name} (Store In-Charge)` : 'Store In-Charge',
+        receivedByPerson: actualReceiver,
+        receiverEmpId: actualEmpId,
+        receiverPhone: receiverPhone.trim() || undefined,
+        notificationSent: true,
       };
 
       const updatedList = [newRecord, ...issueRecords];
       saveIssueRecords(updatedList);
 
+      // POINT 7: Dispatch acknowledgment notification to responsible mechanic
+      sendAppNotification({
+        type: 'SPARE_ISSUE_RECEIPT',
+        title: `Spare Parts Issued — ${selectedPartForIssue.name}`,
+        message: `${issueQty} ${selectedPartForIssue.unit} handed over to ${actualReceiver} (${actualEmpId}) for ${issueLine}${issueMachineId ? ` • Machine ${issueMachineId}` : ''}. Please confirm receipt.`,
+        targetRole: 'MECHANIC',
+        targetUserId: targetMech.name,
+        senderName: user?.name || 'Store In-Charge',
+        meta: {
+          slipId: newRecord.id,
+          partId: selectedPartForIssue.partId,
+          partName: selectedPartForIssue.name,
+          quantity: issueQty,
+          unit: selectedPartForIssue.unit,
+          receivedByPerson: actualReceiver,
+          receiverEmpId: actualEmpId,
+          mechanicName: targetMech.name,
+          mechanicId: targetMech.id,
+        },
+      });
+
       showToast(
-        `Issued ${issueQty} ${selectedPartForIssue.unit} to ${targetMech.name} (Slip #${newRecord.id})`,
+        `Issued ${issueQty} ${selectedPartForIssue.unit} to ${actualReceiver}. Acknowledgment notification dispatched to ${targetMech.name} (Slip #${newRecord.id})`,
         'success'
       );
 
@@ -806,6 +955,13 @@ export function StoreDashboard({
                           <User className="w-3.5 h-3.5 text-slate-400" />
                           <span>{r.mechanicName}</span>
                         </div>
+                        {r.receivedByPerson && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200" title="Physical recipient proof">
+                              Received by: <strong>{r.receivedByPerson}</strong> {r.receiverEmpId ? `(${r.receiverEmpId})` : ''}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 px-3 border-r border-slate-200 whitespace-nowrap">
                         <div className="flex items-center gap-1 text-[11px]">
@@ -893,12 +1049,21 @@ export function StoreDashboard({
             </button>
 
             <button
-              onClick={handleExportStockReport}
+              onClick={() => handleExportStockReport}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition cursor-pointer"
               title="Download Stock Sheet as CSV spreadsheet"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export CSV</span>
+            </button>
+
+            <button
+              onClick={() => handleOpenRestockModal()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs transition cursor-pointer"
+              title="Restock spare parts and replenish safety buffer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Restock Spares</span>
             </button>
           </div>
         </div>
@@ -1025,13 +1190,23 @@ export function StoreDashboard({
                         )}
                       </td>
                       <td className="py-2 px-3 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => handleQuickRestock(p.partId, p.name, 25)}
-                          className="px-2 py-1 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition shadow-2xs cursor-pointer"
-                          title="Restock +25 units"
-                        >
-                          +25 Add
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleOpenRestockModal(p)}
+                            className="px-2.5 py-1 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1"
+                            title="Restock part with auto-calculated replenishment"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Restock</span>
+                          </button>
+                          <button
+                            onClick={() => handleQuickRestock(p.partId, p.name, 25)}
+                            className="px-2 py-1 text-[10px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+                            title="Quick +25 units"
+                          >
+                            +25
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1087,7 +1262,7 @@ export function StoreDashboard({
               {/* Mechanic Selection */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
-                  Receiving Mechanic
+                  Responsible Mechanic (Charged To)
                 </label>
                 <select
                   value={issueMechanicId}
@@ -1100,6 +1275,63 @@ export function StoreDashboard({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Physical Recipient Proof & Verification (POINT 7) */}
+              <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Physical Recipient (Proof of Handover)</span>
+                  </label>
+                  <span className="text-[10px] text-indigo-600 font-semibold font-mono">Proof of Custody</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                      Person Receiving Spares *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={receivedByPerson}
+                      onChange={(e) => setReceivedByPerson(e.target.value)}
+                      placeholder="e.g. Ramesh Kumar or Sanjay (Helper)"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                      Employee ID / Token No *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={receiverEmpId}
+                      onChange={(e) => setReceiverEmpId(e.target.value)}
+                      placeholder="e.g. MEC-01 or EMP-9921"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                    Contact Phone / Line Extension (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={receiverPhone}
+                    onChange={(e) => setReceiverPhone(e.target.value)}
+                    placeholder="e.g. Ext 402 or +91 98401 23456"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <p className="text-[10px] text-indigo-700/90 leading-tight">
+                  ⚡ An instant notification &amp; acknowledgment request will be dispatched to <strong>{FACTORY_MECHANICS_ROSTER.find((m) => m.id === issueMechanicId)?.name || 'the mechanic'}</strong> for verification upon issuing.
+                </p>
               </div>
 
               {/* Spare Part Selection */}
@@ -1220,6 +1452,137 @@ export function StoreDashboard({
                 >
                   <Check className="w-4 h-4" />
                   <span>Issue &amp; Deduct Stock</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: RESTOCK CRIB SPARES WITH AUTO-FILL & NOTIFICATION (POINT 8) ─ */}
+      {isRestockModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                  <Boxes className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Restock Tool Crib Inventory
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Replenish stock buffer and dispatch notification to maintenance team
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRestockModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmRestockSubmit} className="space-y-3.5 text-xs">
+              {/* Part Selector */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
+                  Select Spare Part to Restock
+                </label>
+                <select
+                  value={restockPartId}
+                  onChange={(e) => handleSelectRestockPart(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  {parts.map((p) => (
+                    <option key={p.partId} value={p.partId}>
+                      {p.name} ({p.sku}) — Stock: {p.stock} {p.unit} (Min: {p.minStock})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Buffer & Shelf Status Card */}
+              {selectedPartForRestock && (
+                <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>{selectedPartForRestock.shelfLocation || 'Tool Crib • Bin A-01'}</span>
+                    </span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white border border-indigo-200 text-indigo-800">
+                      ₹{selectedPartForRestock.unitCost} / {selectedPartForRestock.unit}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-center text-[11px]">
+                    <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                      <span className="text-slate-500 block text-[10px]">Current In-Stock</span>
+                      <strong className="text-slate-900 font-mono text-sm">{selectedPartForRestock.stock} {selectedPartForRestock.unit}</strong>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                      <span className="text-slate-500 block text-[10px]">Safety Buffer Min</span>
+                      <strong className="text-amber-800 font-mono text-sm">{selectedPartForRestock.minStock} {selectedPartForRestock.unit}</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[10px] text-indigo-800 font-medium bg-indigo-100/60 p-1.5 rounded-lg">
+                    <Zap className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span>Auto-calculated replenishment quantity auto-filled and broadcast to floor supervisors.</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Quantity to Receive & PO Reference */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
+                    Replenishment Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    required
+                    value={restockQty}
+                    onChange={(e) => setRestockQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
+                    PO / Challan Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={restockPoRef}
+                    onChange={(e) => setRestockPoRef(e.target.value)}
+                    placeholder="e.g. PO-REC-2026-102"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsRestockModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingRestock}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{isSubmittingRestock ? 'Restocking...' : `Confirm Restock (+${restockQty})`}</span>
                 </button>
               </div>
             </form>

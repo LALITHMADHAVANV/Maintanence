@@ -24,6 +24,7 @@ import {
   Camera,
   Upload,
   Image as ImageIcon,
+  IndianRupee,
 } from 'lucide-react';
 import {
   Machine,
@@ -34,6 +35,7 @@ import {
 } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
 import {
+  startRepairTicket,
   resolveRepairTicket,
   startPPMTask,
   completePPMTask,
@@ -130,18 +132,89 @@ export function MechanicDeskDashboard({
     setDrillDownState((prev) => ({ ...prev, isOpen: false }));
   };
 
-  // Resolve Ticket Modal
+  // Resolve Ticket Modal State
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
   const [selectedTicketToResolve, setSelectedTicketToResolve] = useState<RepairTicket | null>(null);
   const [downtimeMinutes, setDowntimeMinutes] = useState(30);
   const [actionTaken, setActionTaken] = useState('');
+  const [issuesIdentified, setIssuesIdentified] = useState('');
+  const [repairCost, setRepairCost] = useState<number>(450);
+  const [laborCost, setLaborCost] = useState<number>(250);
+  const [partsCost, setPartsCost] = useState<number>(200);
+  const [repairProofImage, setRepairProofImage] = useState<string | null>(null);
+  const [selectedPartId, setSelectedPartId] = useState<string>('');
+  const [selectedPartQty, setSelectedPartQty] = useState<number>(1);
   const [isSubmittingResolve, setIsSubmittingResolve] = useState(false);
+
+  // ─── Accept & Start Repair Ticket ─────────────────────────────────
+  const handleStartRepair = async (ticket: RepairTicket) => {
+    try {
+      await startRepairTicket(ticket.id, userName);
+      showToast(`⚡ Work Order ${ticket.id} on ${ticket.machineId} ACCEPTED & STARTED! Live timer running for downtime tracking.`, 'success');
+      onRefresh();
+    } catch {
+      showToast('Failed to start repair ticket', 'error');
+    }
+  };
 
   const handleOpenResolve = (ticket: RepairTicket) => {
     setSelectedTicketToResolve(ticket);
-    setDowntimeMinutes(ticket.downtimeMinutes > 0 ? ticket.downtimeMinutes : 30);
-    setActionTaken('');
+    const startMs = ticket.startedAt ? new Date(ticket.startedAt).getTime() : new Date(ticket.reportedAt).getTime();
+    const elapsed = Math.max(5, Math.round((Date.now() - startMs) / 60000));
+    setDowntimeMinutes(elapsed);
+    setActionTaken(ticket.actionTaken || '');
+    setIssuesIdentified(ticket.issuesIdentified || ticket.faultDetails || '');
+    setRepairProofImage(ticket.completionProofImage || null);
+    const initialLabor = Math.round((elapsed / 60) * 350);
+    setLaborCost(initialLabor);
+    setPartsCost(0);
+    setRepairCost(initialLabor);
+    setSelectedPartId('');
+    setSelectedPartQty(1);
     setIsResolveModalOpen(true);
+  };
+
+  const handlePartSelect = (partId: string) => {
+    setSelectedPartId(partId);
+    const part = parts.find((p) => p.partId === partId);
+    const pCost = part ? (part.unitCost || 0) * selectedPartQty : 0;
+    setPartsCost(pCost);
+    setRepairCost(laborCost + pCost);
+  };
+
+  const handlePartQtyChange = (qty: number) => {
+    const validQty = Math.max(1, qty);
+    setSelectedPartQty(validQty);
+    const part = parts.find((p) => p.partId === selectedPartId);
+    const pCost = part ? (part.unitCost || 0) * validQty : 0;
+    setPartsCost(pCost);
+    setRepairCost(laborCost + pCost);
+  };
+
+  const handleLaborCostChange = (amount: number) => {
+    setLaborCost(amount);
+    setRepairCost(amount + partsCost);
+  };
+
+  const handlePartsCostChange = (amount: number) => {
+    setPartsCost(amount);
+    setRepairCost(laborCost + amount);
+  };
+
+  const handleRepairProofFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (JPG, PNG, WebP)', 'warning');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setRepairProofImage(result);
+      showToast('Photo proof of repair attached successfully!', 'success');
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleResolveSubmit = async (e: React.FormEvent) => {
@@ -151,19 +224,33 @@ export function MechanicDeskDashboard({
       showToast('Please describe the corrective action taken', 'warning');
       return;
     }
+    if (!issuesIdentified.trim()) {
+      showToast('Please specify the issues identified / root cause', 'warning');
+      return;
+    }
 
     setIsSubmittingResolve(true);
     try {
+      const partsInput = selectedPartId ? [{ partId: selectedPartId, quantity: selectedPartQty }] : [];
       await resolveRepairTicket(
         selectedTicketToResolve.id,
         downtimeMinutes,
         actionTaken.trim(),
         userName,
-        []
+        partsInput,
+        {
+          repairCost: Number(repairCost) || 0,
+          laborCost: Number(laborCost) || 0,
+          partsCost: Number(partsCost) || 0,
+          issuesIdentified: issuesIdentified.trim(),
+          proofImage: repairProofImage || undefined,
+          completedAt: new Date().toISOString(),
+        }
       );
-      showToast(`Work Order ${selectedTicketToResolve.id} marked COMPLETED!`, 'success');
+      showToast(`Work Order ${selectedTicketToResolve.id} marked COMPLETED with repair cost ₹${repairCost}!`, 'success');
       setIsResolveModalOpen(false);
       setSelectedTicketToResolve(null);
+      setRepairProofImage(null);
       onRefresh();
     } catch {
       showToast('Failed to resolve work order', 'error');
@@ -464,20 +551,37 @@ export function MechanicDeskDashboard({
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <button
                 onClick={() => router.push(`/scan/${activeJob.machineId}`)}
                 className="px-4 py-2.5 bg-white text-slate-700 font-semibold text-xs rounded-xl border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
               >
                 Asset Details
               </button>
-              <button
-                onClick={() => handleOpenResolve(activeJob)}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/25 transition cursor-pointer flex items-center gap-1.5"
-              >
-                <Check className="w-4 h-4" />
-                <span>Mark Repaired & Close</span>
-              </button>
+
+              {!activeJob.startedAt || activeJob.status !== 'IN_PROGRESS' ? (
+                <button
+                  onClick={() => handleStartRepair(activeJob)}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>Accept & Start Work</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-2 bg-blue-100 text-blue-800 rounded-xl text-xs font-mono font-bold border border-blue-200">
+                    <Clock className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                    <span>Live DT: {Math.max(1, Math.round((Date.now() - new Date(activeJob.startedAt).getTime()) / 60000))}m</span>
+                  </div>
+                  <button
+                    onClick={() => handleOpenResolve(activeJob)}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/25 transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Finish & Resolve Work Order</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -603,65 +707,300 @@ export function MechanicDeskDashboard({
         userName={userName}
         role={user?.role || 'MECHANIC'}
         onOpenResolve={handleOpenResolve}
+        onStartRepair={handleStartRepair}
         onCompletePPM={(ppmId, machineId) => handleCompletePPM(ppmId, machineId)}
         onStartPPM={(ppm) => handleStartPPM(ppm)}
         onInspectPPM={(ppm) => handleOpenInspectPPM(ppm)}
         onOpenCalendarDate={(dStr) => router.push(`/dashboard/calendar?date=${dStr}`)}
       />
 
-      {/* ─── MODAL: RESOLVE WORK ORDER ─────────────────────────────────── */}
+      {/* ─── MODAL: STRUCTURED REPAIR RESOLUTION & DOWNTIME SIGN-OFF ──── */}
       {isResolveModalOpen && selectedTicketToResolve && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[92vh] overflow-y-auto">
+            {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
                   <CheckCircle2 className="w-5 h-5" />
                 </span>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Resolve Work Order</h3>
-                  <p className="text-xs text-slate-500 font-mono">Ticket {selectedTicketToResolve.id}</p>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Resolve Work Order &amp; Downtime Sign-Off
+                  </h3>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-0.5">
+                    <span>Ticket #{selectedTicketToResolve.id}</span>
+                    <span>•</span>
+                    <span className="font-bold text-slate-700">{selectedTicketToResolve.machineId}</span>
+                    <span>•</span>
+                    <span>{selectedTicketToResolve.line || 'Line 01'}</span>
+                  </div>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsResolveModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleResolveSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Downtime / Repair Duration (Minutes)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="480"
-                  value={downtimeMinutes}
-                  onChange={(e) => setDowntimeMinutes(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
-                />
+            <form onSubmit={handleResolveSubmit} className="space-y-4 text-xs">
+              {/* Section 1: Timestamps & Downtime Tracking */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-indigo-950">
+                    <Timer className="w-4 h-4 text-indigo-600" />
+                    <span>Downtime Tracking (Start &amp; Stop Live Capture)</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800">
+                    {selectedTicketToResolve.startedAt
+                      ? `Started: ${new Date(selectedTicketToResolve.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : `Reported: ${new Date(selectedTicketToResolve.reportedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700">
+                      Elapsed Machine Downtime (Minutes)
+                    </label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="720"
+                        value={downtimeMinutes}
+                        onChange={(e) => {
+                          const val = Math.max(1, Number(e.target.value) || 1);
+                          setDowntimeMinutes(val);
+                          const calcLabor = Math.round((val / 60) * 350);
+                          setLaborCost(calcLabor);
+                          setRepairCost(calcLabor + partsCost);
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl font-mono font-bold text-indigo-950 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                      />
+                      <span className="text-slate-500 font-semibold shrink-0">mins</span>
+                    </div>
+                  </div>
+
+                  {/* Quick Select Preset Pills */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-slate-500 font-medium">Quick Presets:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[15, 30, 45, 60, 90].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => {
+                            setDowntimeMinutes(mins);
+                            const calcLabor = Math.round((mins / 60) * 350);
+                            setLaborCost(calcLabor);
+                            setRepairCost(calcLabor + partsCost);
+                          }}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-semibold border transition cursor-pointer ${
+                            downtimeMinutes === mins
+                              ? 'bg-indigo-600 text-white border-indigo-600'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'
+                          }`}
+                        >
+                          {mins}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-indigo-700/90 leading-tight">
+                  ⚡ Stamped stop time: <strong>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong> (Now). Accurate downtime feeds line efficiency and plant MTTR reports.
+                </p>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Action Taken & Fix Applied
+              {/* Section 2: Issues Identified / Root Cause Analysis */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Issues Identified / Root Cause</span>
+                  <span className="text-rose-500 font-normal">*</span>
                 </label>
                 <textarea
-                  rows={3}
-                  value={actionTaken}
-                  onChange={(e) => setActionTaken(e.target.value)}
-                  placeholder="e.g., Replaced looper needle, re-timed hook clearance, test sewn 10 samples..."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  rows={2}
+                  value={issuesIdentified}
+                  onChange={(e) => setIssuesIdentified(e.target.value)}
+                  placeholder="e.g., Thread trimmer solenoid coil burnt out / hook point blunted due to needle deflection..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2.5">
+              {/* Section 3: Action Taken & Corrective Fix */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Action Taken &amp; Corrective Fix</span>
+                  <span className="text-rose-500 font-normal">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={actionTaken}
+                  onChange={(e) => setActionTaken(e.target.value)}
+                  placeholder="e.g., Replaced rotary hook, recalibrated clearance to 0.4mm, adjusted looper timing, test-sewn 20 fabric panels..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
+
+              {/* Section 4: Spare Parts Consumed */}
+              <div className="space-y-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Spare Parts Consumed (Optional)</span>
+                  </label>
+                  {selectedPartId && (
+                    <button
+                      type="button"
+                      onClick={() => handlePartSelect('')}
+                      className="text-[10px] text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Clear Part
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <select
+                      value={selectedPartId}
+                      onChange={(e) => handlePartSelect(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="">-- No spare parts used (Labor only) --</option>
+                      {parts.map((p) => (
+                        <option key={p.partId} value={p.partId}>
+                          {p.name} ({p.sku}) — ₹{p.unitCost} (Stock: {p.stock})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={selectedPartQty}
+                      onChange={(e) => handlePartQtyChange(parseInt(e.target.value) || 1)}
+                      disabled={!selectedPartId}
+                      placeholder="Qty"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 5: Repair & Maintenance Cost Breakdown */}
+              <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-950">
+                    <IndianRupee className="w-4 h-4 text-emerald-600" />
+                    <span>Repair &amp; Maintenance Cost Breakdown (₹)</span>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-xl text-xs font-black font-mono bg-emerald-600 text-white shadow-2xs">
+                    Total: ₹{repairCost}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-white p-2 rounded-xl border border-emerald-100">
+                    <span className="text-[10px] text-slate-500 font-medium block">Labor Cost (₹)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={laborCost}
+                      onChange={(e) => handleLaborCostChange(Number(e.target.value) || 0)}
+                      className="w-full text-center mt-1 text-xs font-mono font-bold text-slate-900 border-b border-emerald-200 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="bg-white p-2 rounded-xl border border-emerald-100">
+                    <span className="text-[10px] text-slate-500 font-medium block">Parts Cost (₹)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={partsCost}
+                      onChange={(e) => handlePartsCostChange(Number(e.target.value) || 0)}
+                      className="w-full text-center mt-1 text-xs font-mono font-bold text-slate-900 border-b border-emerald-200 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="bg-emerald-100/70 p-2 rounded-xl border border-emerald-200 flex flex-col justify-center">
+                    <span className="text-[10px] text-emerald-800 font-bold block">Total Incurred</span>
+                    <span className="text-sm font-black font-mono text-emerald-950 mt-0.5">
+                      ₹{repairCost}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 6: Photo Proof of Completed Repair */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Repair Photo Proof (Optional / QA Audit)</span>
+                  </label>
+                  {repairProofImage && (
+                    <button
+                      type="button"
+                      onClick={() => setRepairProofImage(null)}
+                      className="text-[10px] text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Remove Photo
+                    </button>
+                  )}
+                </div>
+
+                {!repairProofImage ? (
+                  <label className="flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-slate-300 hover:border-indigo-400 bg-slate-50 hover:bg-indigo-50/30 rounded-2xl cursor-pointer transition">
+                    <Upload className="w-5 h-5 text-indigo-600 mb-1" />
+                    <span className="text-xs font-semibold text-slate-700">
+                      Snap or upload photo of fixed mechanism
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      JPG, PNG, WebP up to 5MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleRepairProofFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="p-2 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center gap-3">
+                    <img
+                      src={repairProofImage}
+                      alt="Repair Proof"
+                      className="w-14 h-14 rounded-xl object-cover border border-emerald-300 shadow-2xs"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-emerald-950 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Photo proof attached</span>
+                      </p>
+                      <p className="text-[10px] text-emerald-700">
+                        Will be stored into machine maintenance history log
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsResolveModalOpen(false)}
@@ -672,9 +1011,12 @@ export function MechanicDeskDashboard({
                 <button
                   type="submit"
                   disabled={isSubmittingResolve}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  {isSubmittingResolve ? 'Saving...' : 'Confirm Resolution'}
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>
+                    {isSubmittingResolve ? 'Saving Resolution...' : `Confirm Resolution (₹${repairCost})`}
+                  </span>
                 </button>
               </div>
             </form>

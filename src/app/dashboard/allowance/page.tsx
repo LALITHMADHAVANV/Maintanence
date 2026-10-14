@@ -97,6 +97,7 @@ interface AssetItem {
   age: string;
   relocation: string; // Now occupied location / line & station
   status: string;
+  cost?: number; // Real acquisition cost from Asset Registry
   monthlyAllowance?: number; // in ₹ INR
   spentAmount?: number; // in ₹ INR
   remainingBalance?: number; // in ₹ INR
@@ -737,7 +738,7 @@ function mapToMainCategory(cat?: AssetCategory): MainCategory {
 }
 
 // Deterministic helper to calculate maintenance allowances and lifecycle costs for assets
-function getAllowanceData(id: string, category: MainCategory): {
+function getAllowanceData(id: string, category: MainCategory, actualCost?: number): {
   monthlyAllowance: number;
   spentAmount: number;
   remainingBalance: number;
@@ -754,19 +755,28 @@ function getAllowanceData(id: string, category: MainCategory): {
   }
 
   let baseAllowance = 15000;
-  let purchasePrice = 75000;
+  // If actual acquisition cost is provided from Asset Registry, match it exactly!
+  let purchasePrice = typeof actualCost === 'number' && actualCost > 0 ? actualCost : 75000;
   if (category === 'MACHINE') {
     baseAllowance = 16000 + (seed % 10) * 1500; // ₹16,000 - ₹29,500
-    purchasePrice = 65000 + (seed % 15) * 8000; // ₹65,000 - ₹1,77,000
+    if (!(typeof actualCost === 'number' && actualCost > 0)) {
+      purchasePrice = 65000 + (seed % 15) * 8000; // ₹65,000 - ₹1,77,000
+    }
   } else if (category === 'FURNITURE') {
     baseAllowance = 3000 + (seed % 6) * 600; // ₹3,000 - ₹6,000
-    purchasePrice = 4500 + (seed % 10) * 1800; // ₹4,500 - ₹20,700
+    if (!(typeof actualCost === 'number' && actualCost > 0)) {
+      purchasePrice = 4500 + (seed % 10) * 1800; // ₹4,500 - ₹20,700
+    }
   } else if (category === 'UTILITY') {
     baseAllowance = 7000 + (seed % 8) * 1200; // ₹7,000 - ₹15,400
-    purchasePrice = 14000 + (seed % 12) * 4500; // ₹14,000 - ₹63,500
+    if (!(typeof actualCost === 'number' && actualCost > 0)) {
+      purchasePrice = 14000 + (seed % 12) * 4500; // ₹14,000 - ₹63,500
+    }
   } else if (category === 'VEHICLE') {
     baseAllowance = 24000 + (seed % 12) * 2000; // ₹24,000 - ₹46,000
-    purchasePrice = 180000 + (seed % 16) * 75000; // ₹1,80,000 - ₹13,05,000
+    if (!(typeof actualCost === 'number' && actualCost > 0)) {
+      purchasePrice = 180000 + (seed % 16) * 75000; // ₹1,80,000 - ₹13,05,000
+    }
   }
 
   const ratioVariant = seed % 10;
@@ -999,13 +1009,14 @@ export default function AllowancePage() {
         age: m.ageYears ? `${m.ageYears.toFixed(1)} yrs` : calculateAge(m.purchaseDate),
         relocation: occupied,
         status: m.status,
+        cost: m.cost,
       };
     });
 
     const combined = dbItems;
 
     return combined.map((item) => {
-      const allw = getAllowanceData(item.id, item.category);
+      const allw = getAllowanceData(item.id, item.category, item.cost);
 
       const periodAllowance = Math.round((allw.monthlyAllowance * periodMultiplier) / 50) * 50;
       const spentAmount = Math.round((allw.spentAmount * periodMultiplier) / 50) * 50;
@@ -1031,7 +1042,7 @@ export default function AllowancePage() {
         spentAmount,
         remainingBalance,
         allowanceStatus,
-        purchasePrice: allw.purchasePrice,
+        purchasePrice: typeof item.cost === 'number' && item.cost > 0 ? item.cost : allw.purchasePrice,
         totalRepairCost,
         recentRepairCost,
         preventiveMaintenancePrice,

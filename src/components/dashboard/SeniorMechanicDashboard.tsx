@@ -105,6 +105,13 @@ export function SeniorMechanicDashboard({
   const [newAssignee, setNewAssignee] = useState('');
   const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
 
+  // Form state for Second Problem on Same Machine
+  const [hasSecondProblem, setHasSecondProblem] = useState(false);
+  const [secondFaultCategory, setSecondFaultCategory] = useState('Motor Electrical Noise');
+  const [secondFaultDetails, setSecondFaultDetails] = useState('');
+  const [secondUrgency, setSecondUrgency] = useState<RepairUrgency>('WARNING');
+  const [secondAssignee, setSecondAssignee] = useState('');
+
   // Form state for Quick Assign
   const [assigneeName, setAssigneeName] = useState('');
   const [isSubmittingAssign, setIsSubmittingAssign] = useState(false);
@@ -259,11 +266,38 @@ export function SeniorMechanicDashboard({
         assignedBy: user?.name || 'Senior Mechanic',
       });
 
-      showToast(`Breakdown Work Order ${ticketId} created! Machine set to BREAKDOWN.`, 'success');
+      let secondTicketId = '';
+      if (hasSecondProblem) {
+        secondTicketId = await createBreakdownTicket({
+          machineId: newMachineId.trim(),
+          machineType,
+          line,
+          reportedAt: new Date().toISOString(),
+          reportedBy: user?.name || 'Senior Mechanic',
+          faultCategory: secondFaultCategory,
+          faultDetails: secondFaultDetails || `Secondary issue detected simultaneously on ${newMachineId.trim()}`,
+          urgency: secondUrgency,
+          attendedBy: secondAssignee || null,
+          assignedBy: user?.name || 'Senior Mechanic',
+        });
+      }
+
+      if (hasSecondProblem && secondTicketId) {
+        showToast(
+          `2 distinct tickets logged for ${newMachineId.trim()}: #${ticketId} (${newAssignee || 'Unassigned'}) & #${secondTicketId} (${secondAssignee || 'Unassigned'})!`,
+          'success'
+        );
+      } else {
+        showToast(`Breakdown Work Order ${ticketId} created! Machine set to BREAKDOWN.`, 'success');
+      }
+
       setIsNewTicketModalOpen(false);
       setNewMachineId('');
       setNewFaultDetails('');
       setNewAssignee('');
+      setHasSecondProblem(false);
+      setSecondFaultDetails('');
+      setSecondAssignee('');
       onRefresh();
     } catch {
       showToast('Failed to create ticket', 'error');
@@ -637,6 +671,7 @@ export function SeniorMechanicDashboard({
         userName={user?.name || (isElectrician ? 'Senior Electrician' : 'Senior Mechanic')}
         role={role || (isElectrician ? 'SENIOR_ELECTRICIAN' : 'SENIOR_MECHANIC')}
         compact={true}
+        hideAttendance={true}
         onOpenResolve={(t) => {
           setSelectedTicketForAssign(t);
           setIsAssignModalOpen(true);
@@ -827,15 +862,30 @@ export function SeniorMechanicDashboard({
                           <td className="py-2 px-3 text-right border-b border-slate-200">
                             <div className="flex items-center justify-end gap-1.5">
                               {!isCompleted && (
-                                <button
-                                  onClick={() => {
-                                    setSelectedTicketForAssign(t);
-                                    setIsAssignModalOpen(true);
-                                  }}
-                                  className="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer"
-                                >
-                                  {t.attendedBy ? 'Reassign' : 'Assign'}
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setNewMachineId(t.machineId);
+                                      setNewFaultCategory('Motor Electrical Noise');
+                                      setNewFaultDetails(`Second problem on ${t.machineId} alongside active ticket ${t.id} (${t.faultCategory})`);
+                                      setIsNewTicketModalOpen(true);
+                                    }}
+                                    title="Log another problem for this machine and assign to a different person"
+                                    className="px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Plus className="w-3 h-3 text-amber-600" />
+                                    <span>+2nd Issue</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedTicketForAssign(t);
+                                      setIsAssignModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer"
+                                  >
+                                    {t.attendedBy ? 'Reassign' : 'Assign'}
+                                  </button>
+                                </>
                               )}
                               <button
                                 onClick={() => {
@@ -874,9 +924,11 @@ export function SeniorMechanicDashboard({
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <Users className="w-4 h-4 text-indigo-600" />
-                  <span>Shift Technicians Duty Roster</span>
+                  <span>Floor Attendance & Shift Duty</span>
                 </h3>
-                <p className="text-[11px] text-slate-500">Live floor workload & tool custody</p>
+                <p className="text-[11px] text-slate-500">
+                  {roster.filter((m) => m.status === 'ON_DUTY').length} Present • {roster.filter((m) => repairs.some((r) => r.attendedBy === m.name && r.status !== 'COMPLETED')).length} on job • {roster.filter((m) => m.status === 'ON_DUTY' && !repairs.some((r) => r.attendedBy === m.name && r.status !== 'COMPLETED')).length} available
+                </p>
               </div>
 
               {/* Filter trade */}
@@ -908,15 +960,15 @@ export function SeniorMechanicDashboard({
               </div>
             </div>
 
-            {/* Mechanics list */}
+            {/* Mechanics list with combined attendance & duty info */}
             <div className="divide-y divide-slate-100 mt-2 space-y-1 flex-1 min-h-0 overflow-y-auto pr-1">
               {roster.map((m) => {
-                // Check if mechanic is actively attending any ticket
                 const activeTicket = repairs.find(
                   (r) => r.attendedBy === m.name && r.status !== 'COMPLETED'
                 );
-
                 const isBusy = !!activeTicket;
+                const isPresent = m.status === 'ON_DUTY';
+                const isLeave = m.status === 'ON_LEAVE';
 
                 return (
                   <div key={m.id} className="pt-3 pb-2 flex flex-col gap-1.5">
@@ -939,30 +991,59 @@ export function SeniorMechanicDashboard({
                         className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                           isBusy
                             ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : isPresent
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
                       >
-                        {isBusy ? 'On Job' : 'Available'}
+                        {isBusy ? 'On Job' : isPresent ? 'Present • Available' : 'On Leave'}
                       </span>
                     </div>
 
-                    <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-xl flex items-center justify-between">
-                      <div>
-                        {isBusy ? (
-                          <span className="font-semibold text-rose-800">
-                            Fixing: {activeTicket.machineId} ({activeTicket.line})
+                    <div className="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              isPresent
+                                ? isBusy
+                                  ? 'bg-amber-500 animate-pulse'
+                                  : 'bg-emerald-500'
+                                : isLeave
+                                ? 'bg-amber-400'
+                                : 'bg-slate-400'
+                            }`}
+                          />
+                          <span className="font-semibold text-slate-800">
+                            {isPresent
+                              ? isBusy
+                                ? `Present on floor • Active on ${activeTicket.machineId} (${activeTicket.line})`
+                                : 'Present on floor / No task assigned'
+                              : isLeave
+                              ? 'On Approved Leave • Off-duty'
+                              : 'Off Shift'}
                           </span>
-                        ) : (
-                          <span className="text-slate-500">{m.assignedLines}</span>
+                        </div>
+                        <a
+                          href={`tel:${m.phone}`}
+                          className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold text-[10px] shrink-0"
+                        >
+                          <Phone className="w-3 h-3" />
+                          Call
+                        </a>
+                      </div>
+                      <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                        <span>
+                          {isBusy
+                            ? `Fault: ${activeTicket.faultCategory}`
+                            : `Coverage: ${m.assignedLines} • Shift: ${m.shift}`}
+                        </span>
+                        {!isBusy && isPresent && (
+                          <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200/60">
+                            Ready for Task
+                          </span>
                         )}
                       </div>
-                      <a
-                        href={`tel:${m.phone}`}
-                        className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold text-[10px]"
-                      >
-                        <Phone className="w-3 h-3" />
-                        Call
-                      </a>
                     </div>
                   </div>
                 );
@@ -1253,6 +1334,91 @@ export function SeniorMechanicDashboard({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Secondary Simultaneous Problem Section */}
+              <div className="pt-2 border-t border-slate-200/80">
+                <button
+                  type="button"
+                  onClick={() => setHasSecondProblem(!hasSecondProblem)}
+                  className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-between border cursor-pointer ${
+                    hasSecondProblem
+                      ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-2xs'
+                      : 'bg-slate-50 hover:bg-slate-100 border-dashed border-slate-300 text-slate-700'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
+                      2
+                    </span>
+                    <span>
+                      {hasSecondProblem
+                        ? 'Simultaneous 2nd Problem Active'
+                        : '+ Same Machine 2nd Problem Detected? (e.g. Electrical + Mechanical)'}
+                    </span>
+                  </span>
+                  <span className="text-[10px] font-mono uppercase font-bold text-amber-700">
+                    {hasSecondProblem ? 'Remove 2nd Problem' : 'Add 2nd Problem'}
+                  </span>
+                </button>
+
+                {hasSecondProblem && (
+                  <div className="mt-3 p-3.5 bg-amber-50/50 border border-amber-200 rounded-2xl space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Problem #2 on this Machine</span>
+                      </span>
+                      <span className="text-[10px] text-amber-700 font-medium">Can be assigned to a different person</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700">Problem #2 Category</label>
+                      <select
+                        value={secondFaultCategory}
+                        onChange={(e) => setSecondFaultCategory(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="Motor Electrical Noise">Motor Overheating / Drive Fault (Electrical)</option>
+                        <option value="Needle Breakage">Frequent Needle Breakage (Mechanical)</option>
+                        <option value="Skipping Stitches">Skipping Stitches / Timing Slip (Mechanical)</option>
+                        <option value="Thread Breakage">Thread Snapping / Tension Fault</option>
+                        <option value="Oil Leakage / Seal Fail">Oil Leakage / Lubrication Failure</option>
+                        <option value="Pneumatic Valve Loss">Pneumatic Air Leak / Sensor Failure</option>
+                        <option value="Emergency Stop Tripped">Safety Interlock / Power Failure</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700">Problem #2 Observations</label>
+                      <input
+                        type="text"
+                        value={secondFaultDetails}
+                        onChange={(e) => setSecondFaultDetails(e.target.value)}
+                        placeholder="e.g. Servo motor smoking while looper is also jammed..."
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-700">
+                        Dispatch to Different Mechanic / Specialist
+                      </label>
+                      <select
+                        value={secondAssignee}
+                        onChange={(e) => setSecondAssignee(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 font-semibold"
+                      >
+                        <option value="">Leave Unassigned (Floor Queue)</option>
+                        {FACTORY_MECHANICS_ROSTER.map((m) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name} — {m.role} ({m.trade} • {m.assignedLines})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2.5">

@@ -190,10 +190,33 @@ export interface RepairTicket {
   status: RepairStatus;
   attendedBy: string | null;
   assignedBy?: string | null;
+  startedAt?: string | null;
   resolvedAt: string | null;
+  completedAt?: string | null;
   downtimeMinutes: number;
   actionTaken: string;
   partsUsed: RepairPartUsage[];
+  // Extended repair details & cost tracking
+  issuesIdentified?: string;
+  repairCost?: number; // Total actual spent amount in ₹ INR
+  laborCost?: number;
+  partsCost?: number;
+  completionProofImage?: string | null;
+  linkedTicketId?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'RESTOCK_ALERT' | 'SPARE_ISSUE_RECEIPT' | 'CRITICAL_BREAKDOWN' | 'GENERAL';
+  title: string;
+  message: string;
+  targetRole?: UserRole | 'ALL';
+  targetUserId?: string;
+  senderName: string;
+  createdAt: string;
+  acknowledged?: boolean;
+  acknowledgedAt?: string;
+  meta?: Record<string, any>;
 }
 
 export type PPMFrequency = 'Weekly' | 'Monthly' | '6-Month';

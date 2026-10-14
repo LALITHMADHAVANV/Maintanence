@@ -52,6 +52,7 @@ export default function MechanicRosterPage() {
   const [ppmSchedules, setPpmSchedules] = useState<PPMSchedule[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
   const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
+  const [hideUnassigned, setHideUnassigned] = useState<boolean>(false);
 
   const isSeniorMechanicOrAdmin =
     role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN' || role === 'ASSET_MANAGER';
@@ -277,7 +278,17 @@ export default function MechanicRosterPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition">
+            <input
+              type="checkbox"
+              checked={hideUnassigned}
+              onChange={(e) => setHideUnassigned(e.target.checked)}
+              className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+            />
+            <span>Show Assigned Only ({mechanicWorkData.filter((i) => i.totalJobs > 0).length})</span>
+          </label>
+
           <span className="text-xs font-semibold text-slate-500">
             {role === 'SENIOR_ELECTRICIAN' ? 'Filter Electrician:' : 'Filter Staff:'}
           </span>
@@ -398,18 +409,30 @@ export default function MechanicRosterPage() {
         </div>
       </div>
 
+      {/* Print-only sheet banner */}
+      <div className="hidden print:block p-4 bg-white border border-slate-300 rounded-xl mb-4 text-slate-900">
+        <h2 className="text-lg font-black uppercase tracking-wider text-indigo-900">
+          Daily Shift Work Allocation Sheet — {formattedDate}
+        </h2>
+        <p className="text-xs text-slate-600 mt-0.5">
+          Showing assigned technicians with active breakdown repairs and preventive overhauls. Unassigned / idle personnel boxes are excluded for print clarity.
+        </p>
+      </div>
+
       {/* Main Roster Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {mechanicWorkData
           .filter(
             (item) =>
-              selectedMechanicFilter === 'ALL' ||
-              item.mechanic.name === selectedMechanicFilter
+              (selectedMechanicFilter === 'ALL' || item.mechanic.name === selectedMechanicFilter) &&
+              (!hideUnassigned || item.totalJobs > 0)
           )
           .map(({ mechanic, tickets, ppms, totalJobs, completedCount }) => (
             <div
               key={mechanic.id}
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between"
+              className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between ${
+                totalJobs === 0 ? 'print:hidden' : ''
+              }`}
             >
               {/* Header */}
               <div className="p-5 bg-slate-50/90 border-b border-slate-200">
