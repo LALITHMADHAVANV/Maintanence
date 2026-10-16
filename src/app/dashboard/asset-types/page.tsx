@@ -39,6 +39,7 @@ import {
 import { Machine, AssetCategory } from '@/types/cmms';
 import { subscribeMachines, deleteMachine } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
+import { formatAssetLocation } from '@/lib/formatters';
 
 // Standard 4 categories requested
 type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
@@ -728,7 +729,7 @@ export default function AssetsPage() {
           ? 'Electrical Utilities'
           : 'Vehicle';
 
-      const occupied = `${m.currentLine} • ${m.stationNo || 'Station 01'}`;
+      const occupied = formatAssetLocation(m);
 
       let mSubtype: MachineSubtype | undefined;
       let fSubtype: FurnitureSubtype | undefined;
@@ -753,7 +754,7 @@ export default function AssetsPage() {
       return {
         id: m.id,
         name: m.name || m.typeName || m.model || 'Standard Asset Item',
-        company: m.brand || 'TexTech Equipment',
+        company: m.company || m.brand || 'Sahana Garments',
         category: cat,
         categoryLabel: catLabel,
         machineSubtype: mSubtype,

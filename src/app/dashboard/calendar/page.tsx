@@ -576,7 +576,7 @@ export default function CalendarPage() {
       const ticketId = await assignMechanicTask({
         machineId: targetMachineId,
         machineType: targetMachine?.typeName || targetMachine?.type || 'Sewing Machine',
-        line: targetMachine?.currentLine || 'Line 01',
+        line: targetMachine?.area || targetMachine?.currentLine || 'Line 01',
         taskTitle: taskText,
         faultDetails: `Direct dispatch from ${assignedByTitle}. Scheduled for ${selectedDate}.`,
         urgency: inlineUrgency,
@@ -1379,7 +1379,7 @@ export default function CalendarPage() {
                 >
                   {displayMachines.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.id} - {m.brand} {m.model} ({m.currentLine})
+                      {m.id} - {m.brand} {m.model} ({m.area || m.currentLine})
                     </option>
                   ))}
                 </select>
@@ -1567,7 +1567,7 @@ export default function CalendarPage() {
                     >
                       {displayMachines.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.id} - {m.brand} {m.model} ({m.currentLine})
+                          {m.id} - {m.brand} {m.model} ({m.area || m.currentLine})
                         </option>
                       ))}
                     </select>

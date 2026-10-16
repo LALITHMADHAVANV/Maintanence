@@ -176,12 +176,17 @@ export function Sidebar() {
       },
     ];
   } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
-    // 🔧 Senior Mechanic: Supervisor Dashboard, Calendar, Roster, Group Indent, History
+    // 🔧 Senior Mechanic: Supervisor Dashboard, Asset Log, Calendar, Roster, Group Indent, History
     navItems = [
       {
         label: 'Supervisor Dashboard',
         href: '/dashboard',
         icon: LayoutDashboard,
+      },
+      {
+        label: 'Asset Log',
+        href: '/dashboard/asset-log',
+        icon: ClipboardList,
       },
       {
         label: 'Mechanic Calendar',

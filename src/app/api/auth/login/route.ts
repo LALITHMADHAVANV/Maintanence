@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       const profile: UserProfile = {
         uid: dbUser.uid || String(dbUser._id),
         name: dbUser.name || 'Factory Staff',
-        email: dbUser.email || `${identifier}@textech.com`,
+        email: dbUser.email || `${identifier}@sahana.com`,
         role,
         title: dbUser.title || resolveUserTitle(role),
         phone: dbUser.phone || '',
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
       const profile: UserProfile = {
         uid: `${resolvedRole.slice(0, 3)}-01`,
         name: `${resolvedRole.replace('_', ' ')} Staff`,
-        email: identifier.includes('@') ? identifier : `${identifier}@textech.com`,
+        email: identifier.includes('@') ? identifier : `${identifier}@sahana.com`,
         role: resolvedRole,
         title: resolveUserTitle(resolvedRole),
         status: 'ACTIVE',

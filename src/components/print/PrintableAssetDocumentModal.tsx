@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Machine } from '@/types/cmms';
-import { formatRupee } from '@/lib/formatters';
+import { formatRupee, formatAssetLocation } from '@/lib/formatters';
 
 interface PrintableAssetDocumentModalProps {
   isOpen: boolean;
@@ -75,7 +75,7 @@ export function PrintableAssetDocumentModal({
   initialMode = 'TAG',
 }: PrintableAssetDocumentModalProps) {
   const [printMode, setPrintMode] = useState<'TAG' | 'DOCUMENT' | 'BATCH'>(initialMode);
-  const [origin] = useState(() => (typeof window !== 'undefined' ? window.location.origin : 'https://textech.factory'));
+  const [origin] = useState(() => (typeof window !== 'undefined' ? window.location.origin : 'https://sahana.factory'));
 
   // Sync mode if initialMode prop changes without effect setState
   const [prevInitialMode, setPrevInitialMode] = useState(initialMode);
@@ -93,15 +93,16 @@ export function PrintableAssetDocumentModal({
     model: asset.model || '',
     type: asset.type || '',
     typeName: asset.typeName || TYPE_NAME_MAP[asset.type] || '',
-    unit: asset.unit || 'Unit 01',
-    area: asset.area || asset.department || 'Sewing Floor',
+    company: asset.company || (typeof window !== 'undefined' ? localStorage.getItem('cmms_company_name') || '' : '') || '',
+    unit: asset.unit || '',
+    area: asset.area || asset.department || '',
     cost: asset.cost ? String(asset.cost) : '',
     date: asset.purchaseDate || '',
   }).toString()}`;
   const displayClass = asset.typeName || TYPE_NAME_MAP[asset.type] || asset.type;
   const valuation = asset.cost ? formatRupee(asset.cost) : '₹75,000';
   const regDate = asset.purchaseDate || '2023-01-01';
-  const companyName = 'TexTech';
+  const companyName = asset.company || (typeof window !== 'undefined' ? localStorage.getItem('cmms_company_name') || '' : '') || 'Sahana';
 
   // Batch machines for sheet printing
   const batchList = allAssets.length > 0 ? allAssets.slice(0, 8) : [asset];
@@ -265,7 +266,7 @@ export function PrintableAssetDocumentModal({
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="text-xs font-black uppercase tracking-widest text-indigo-700">
-                      TexTech Apparel Group &bull; {asset.unit || 'Unit 01'} &bull; {asset.area || 'Sewing Floor'}
+                      {companyName} Apparel Group &bull; {asset.unit || 'Unit 01'} &bull; {asset.area || asset.currentLine || 'Sewing Floor'}
                     </div>
                     <h1 className="text-xl font-black text-slate-950 tracking-tight mt-0.5 uppercase">
                       Equipment Master Specification &amp; Asset Passport
@@ -364,10 +365,10 @@ export function PrintableAssetDocumentModal({
                       <span>Where Moved To (Current Active Station)</span>
                     </div>
                     <div className="font-black text-slate-950 text-sm mt-1">
-                      {asset.unit ? `${asset.unit} • ` : ''}{asset.currentLine}
+                      {formatAssetLocation(asset)}
                     </div>
                     <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                      {asset.area ? `${asset.area} • ` : ''}{asset.stationNo} &bull; {asset.department || 'Sewing Floor'}
+                      {asset.area || asset.currentLine} • {asset.stationNo} &bull; {asset.department || 'Sewing Floor'}
                     </div>
                   </div>
                 </div>

@@ -638,7 +638,7 @@ export default function UserManagementPage() {
                   <input
                     type="email"
                     required
-                    placeholder="e.g. anandhan@textech.garments"
+                    placeholder="e.g. anandhan@sahana.garments"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"

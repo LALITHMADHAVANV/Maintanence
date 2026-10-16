@@ -74,6 +74,7 @@ export type MotorType = 'SERVO' | 'CLUTCH';
 
 export type MachineStatus =
   | 'ACTIVE'
+  | 'IDLE' // Standby / Idle ready for production line assignment
   | 'BUFFER'
   | 'BREAKDOWN'
   | 'UNDER_MAINTENANCE'
@@ -103,11 +104,13 @@ export type FloorLine =
   | 'Quality & Packing'
   | 'Warehouse & Storage'
   | 'Central Utilities & Plant'
-  | 'Maintenance Workshop';
+  | 'Maintenance Workshop'
+  | (string & {});
 
 export interface Machine {
   id: string; // e.g., "MC-SNLS-101", "TBL-CUT-101", "CHR-ERG-101", "LGT-HBY-101", "FAN-CEIL-101"
   name?: string; // Display name, e.g. "Line 01 Fabric Spreading Table"
+  company?: string; // Company / Facility Name
   brand: string; // "Juki", "Featherlite", "Philips", "Almonard", "Eastman", "Godrej"
   model: string; // "DDL-8700-7", "Optima-360", "120W-LED"
   category?: AssetCategory; // Defaults to 'MACHINE' if absent
@@ -119,6 +122,7 @@ export interface Machine {
   purchaseDate: string; // ISO format or YYYY-MM-DD
   cost: number; // INR (₹)
   status: MachineStatus;
+  zone?: string; // Client Zone: "Zone 1", "Zone 2", ... "Zone 8"
   currentLine: FloorLine;
   stationNo: string; // e.g. "Station 04", "Cutting Bay", "Inspection Bay"
   unit?: string; // Plant Unit, e.g. "Unit 01", "Unit 02", "Unit 03"
@@ -141,6 +145,25 @@ export interface Machine {
     movedBy?: string;
     reason?: string;
   }[];
+}
+
+export interface AssetLogEntry {
+  id: string;
+  machineId: string;
+  machineName?: string;
+  machineType?: string;
+  brand?: string;
+  model?: string;
+  zone: string; // Zone 1 to Zone 8
+  line: string; // Line 01 to Line 08
+  stationNo?: string;
+  previousStatus: MachineStatus;
+  newStatus: MachineStatus;
+  action: 'IDLE_TO_ACTIVE' | 'ACTIVE_TO_IDLE' | 'STATUS_CHANGE' | 'ZONE_LINE_CHANGE';
+  changedBy: string;
+  changedAt: string; // ISO timestamp
+  notes?: string;
+  shift?: string;
 }
 
 export type PartCategory =

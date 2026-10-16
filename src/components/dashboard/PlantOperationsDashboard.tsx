@@ -1059,7 +1059,7 @@ export function PlantOperationsDashboard({
                     <td className="py-1.5 px-2.5 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
                     <td className="py-1.5 px-2.5 border-r border-b border-slate-200 font-mono font-bold text-slate-900">{m.id}</td>
                     <td className="py-1.5 px-2.5 border-r border-b border-slate-200 text-slate-700 font-medium truncate max-w-[180px]">{m.type}</td>
-                    <td className="py-1.5 px-2.5 border-r border-b border-slate-200 text-slate-600">{m.currentLine || 'Line 01'}</td>
+                    <td className="py-1.5 px-2.5 border-r border-b border-slate-200 text-slate-600">{m.area || m.currentLine || 'Line 01'}</td>
                     <td className="py-1.5 px-2.5 border-r border-b border-slate-200">
                       <span
                         className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${

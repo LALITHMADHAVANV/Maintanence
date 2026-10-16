@@ -1207,7 +1207,7 @@ export default function AdminSettingsPage() {
                   <input
                     type="email"
                     required
-                    placeholder="e.g. vijay@textech.com"
+                    placeholder="e.g. vijay@sahana.com"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"

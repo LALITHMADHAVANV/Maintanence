@@ -9,9 +9,10 @@ import { useToast } from '@/context/ToastContext';
 interface CameraScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onScanSuccess?: (id: string) => void;
 }
 
-export function CameraScannerModal({ isOpen, onClose }: CameraScannerModalProps) {
+export function CameraScannerModal({ isOpen, onClose, onScanSuccess }: CameraScannerModalProps) {
   const router = useRouter();
   const { showToast } = useToast();
   const [manualId, setManualId] = useState('');
@@ -64,7 +65,11 @@ export function CameraScannerModal({ isOpen, onClose }: CameraScannerModalProps)
             showToast(`Tag scanned: ${targetId}`, 'success');
             scanner.clear().catch(() => {});
             onClose();
-            router.push(`/scan/${encodeURIComponent(targetId)}`);
+            if (onScanSuccess) {
+              onScanSuccess(targetId);
+            } else {
+              router.push(`/scan/${encodeURIComponent(targetId)}`);
+            }
           },
           (errorMessage) => {
             // Non-critical scan tick errors can be ignored
@@ -83,7 +88,7 @@ export function CameraScannerModal({ isOpen, onClose }: CameraScannerModalProps)
         scannerRef.current = null;
       }
     };
-  }, [isOpen, onClose, router, showToast]);
+  }, [isOpen, onClose, onScanSuccess, router, showToast]);
 
   if (!isOpen) return null;
 
@@ -92,7 +97,11 @@ export function CameraScannerModal({ isOpen, onClose }: CameraScannerModalProps)
     const cleanId = manualId.trim();
     if (!cleanId) return;
     onClose();
-    router.push(`/scan/${encodeURIComponent(cleanId)}`);
+    if (onScanSuccess) {
+      onScanSuccess(cleanId);
+    } else {
+      router.push(`/scan/${encodeURIComponent(cleanId)}`);
+    }
   };
 
   return (

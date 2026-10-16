@@ -665,7 +665,7 @@ export function WidgetDrilldownDrawer({
           id: m.id,
           col1: m.id,
           col2: `${m.brand} ${m.model}`,
-          col3: `${m.currentLine} • ${m.stationNo}`,
+          col3: [m.unit, m.area || m.currentLine, m.stationNo].filter(Boolean).join(' • '),
           badge1: { text: m.category || 'MACHINE', bg: 'bg-slate-100 text-slate-700' },
           badge2: {
             text: m.status,
@@ -822,7 +822,7 @@ export function WidgetDrilldownDrawer({
           id: m.id,
           col1: m.id,
           col2: `${m.brand} ${m.model}`,
-          col3: m.currentLine,
+          col3: m.area || m.currentLine,
           badge1: { text: `₹${(m.cost || 45000).toLocaleString()}`, bg: 'bg-emerald-50 text-emerald-700 font-bold' },
           badge2: { text: m.status, bg: 'bg-slate-100 text-slate-800' },
           actionText: 'View Valuation',

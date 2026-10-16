@@ -35,6 +35,7 @@ import {
   ArrowUpRight,
   Radio,
   SlidersHorizontal,
+  ClipboardList,
 } from 'lucide-react';
 import {
   Machine,
@@ -55,6 +56,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 import { MaintenanceMilestonesAndTasks } from './MaintenanceMilestonesAndTasks';
+import { LineAvailabilityWidget } from './LineAvailabilityWidget';
 
 interface SeniorMechanicDashboardProps {
   machines: Machine[];
@@ -395,6 +397,15 @@ export function SeniorMechanicDashboard({
           </button>
 
           <button
+            onClick={() => router.push('/dashboard/asset-log')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-xs cursor-pointer"
+            title="Open Asset Log: Toggle Active/Idle and 8 Zones x 8 Lines Availability Report"
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            <span>Asset Log &amp; Status</span>
+          </button>
+
+          <button
             onClick={() => router.push('/dashboard/calendar')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
           >
@@ -590,7 +601,7 @@ export function SeniorMechanicDashboard({
                       <div>
                         <span className="text-xs font-extrabold text-slate-900 font-mono">{mach.id}</span>
                         <div className="text-[11px] text-slate-500 font-medium">
-                          {mach.currentLine || 'Line 01'} • {mach.stationNo || 'Station'} • {mach.type}
+                          {mach.area || mach.currentLine || 'Line 01'} • {mach.stationNo || 'Station'} • {mach.type}
                         </div>
                       </div>
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700 uppercase">
@@ -662,6 +673,14 @@ export function SeniorMechanicDashboard({
           <span className="text-xs text-emerald-700 font-medium">All lines producing nominally</span>
         </div>
       )}
+
+      {/* ─── 3.5. 8-ZONE × 8-LINE MACHINE COUNT & AVAILABILITY REPORT ─── */}
+      <LineAvailabilityWidget
+        machines={machines}
+        onSelectZoneLine={(zone, line) => {
+          router.push(`/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
+        }}
+      />
 
       {/* ─── 4. DELIVERY SCHEDULE, MY TASKS & ATTENDANCE TODAY (FOR SENIORS) ─── */}
       <MaintenanceMilestonesAndTasks
@@ -1244,7 +1263,7 @@ export function SeniorMechanicDashboard({
                   <option value="">Select Machine Asset...</option>
                   {machines.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.id} — {m.type} ({m.currentLine || 'Line 01'}) [{m.status}]
+                      {m.id} — {m.type} ({m.area || m.currentLine || 'Line 01'}) [{m.status}]
                     </option>
                   ))}
                 </select>

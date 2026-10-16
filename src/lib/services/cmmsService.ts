@@ -189,6 +189,8 @@ export async function relocateMachine(
       ? {
           ...m,
           currentLine: targetLine,
+          area: targetLine,
+          department: targetLine.includes('Line') ? 'Sewing Floor' : (targetLine as any),
           stationNo: newStation,
           status: newStatus,
           previousLine: oldLine,
@@ -235,6 +237,8 @@ export async function relocateMachine(
         id: machineId,
         updates: {
           currentLine: targetLine,
+          area: targetLine,
+          department: targetLine.includes('Line') ? 'Sewing Floor' : (targetLine as any),
           stationNo: newStation,
           status: newStatus,
           previousLine: oldLine,

@@ -28,7 +28,7 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
     uid: 'CEO-01',
     name: 'Executive Board Director',
-    email: 'ceo@textech.com',
+    email: 'ceo@sahana.com',
     role: 'CEO',
     title: 'Chief Executive Officer (Managing Director)',
     phone: '+91 98401 11001',
@@ -41,7 +41,7 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
     uid: 'ADM-01',
     name: 'Plant Administrator',
-    email: 'admin@textech.com',
+    email: 'admin@sahana.com',
     role: 'ADMIN',
     title: 'Plant Administrator & Asset Director',
     phone: '+91 98401 22002',
@@ -54,7 +54,7 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
     uid: 'SNR-01',
     name: 'R. Veeramani',
-    email: 'seniormechanic@textech.com',
+    email: 'seniormechanic@sahana.com',
     role: 'SENIOR_MECHANIC',
     title: 'Senior Master Technician & PPM Lead',
     phone: '+91 98401 33003',
@@ -67,7 +67,7 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
     uid: 'MEC-01',
     name: 'K. Murugan',
-    email: 'mechanic@textech.com',
+    email: 'mechanic@sahana.com',
     role: 'MECHANIC',
     title: 'Industrial Sewing Machine Mechanic',
     phone: '+91 98401 44004',
@@ -80,7 +80,7 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
     uid: 'SELE-01',
     name: 'M. Senthil Kumar',
-    email: 'seniorelectrician@textech.com',
+    email: 'seniorelectrician@sahana.com',
     role: 'SENIOR_ELECTRICIAN',
     title: 'Senior Plant Electrician & Power Specialist',
     phone: '+91 98401 55005',
@@ -93,7 +93,7 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
     uid: 'ELE-01',
     name: 'P. Anand',
-    email: 'electrician@textech.com',
+    email: 'electrician@sahana.com',
     role: 'ELECTRICIAN',
     title: 'Industrial Plant Electrician',
     phone: '+91 98401 66006',
@@ -106,7 +106,7 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
     uid: 'STR-01',
     name: 'M. Arumugam',
-    email: 'stores@textech.com',
+    email: 'stores@sahana.com',
     role: 'STORE_PERSON',
     title: 'Tool Crib & Inventory Custodian',
     phone: '+91 98401 77007',

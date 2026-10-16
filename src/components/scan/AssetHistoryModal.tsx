@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
 import { subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
+import { formatAssetLocation } from '@/lib/formatters';
 
 interface AssetHistoryModalProps {
   machine: Machine | null;
@@ -136,7 +137,7 @@ export function AssetHistoryModal({
               <div className="flex items-center gap-1.5 text-emerald-400">
                 <MapPin className="w-3.5 h-3.5" />
                 <span>
-                  Current: {machine.currentLine} ({machine.stationNo})
+                  Current: {formatAssetLocation(machine)}
                 </span>
               </div>
               <div className="text-slate-400 text-[11px]">
@@ -445,7 +446,7 @@ export function AssetHistoryModal({
                     Stationary Asset
                   </h4>
                   <p className="text-xs text-slate-500">
-                    Asset has remained stationed at {machine.currentLine} ({machine.stationNo}) since initial commissioning.
+                    Asset has remained stationed at {formatAssetLocation(machine)} since initial commissioning.
                   </p>
                 </div>
               ) : (
@@ -473,7 +474,7 @@ export function AssetHistoryModal({
                         </span>
                         <span className="text-indigo-600 font-bold">➜</span>
                         <span className="font-bold text-emerald-700">
-                          {machine.currentLine} ({machine.stationNo})
+                          {formatAssetLocation(machine)}
                         </span>
                       </div>
                       {machine.lastMovedReason && (

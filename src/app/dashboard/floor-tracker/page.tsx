@@ -361,13 +361,13 @@ export default function FloorTrackerPage() {
   const [newMachineCat, setNewMachineCat] = useState<MachineCategoryGroup>('OVERLOCK');
   const [newMachineType, setNewMachineType] = useState<MachineType>('OVERLOCK_4_THREAD');
   const [newDepartment, setNewDepartment] = useState<FactoryDepartment>('Cutting Department');
-  const [newId, setNewId] = useState(`TBL-CUT-${Math.floor(100 + Math.random() * 900)}`);
+  const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
-  const [newBrand, setNewBrand] = useState('Eastman');
-  const [newModel, setNewModel] = useState('SpreadMaster-Pro');
+  const [newBrand, setNewBrand] = useState('');
+  const [newModel, setNewModel] = useState('');
   const [newLine, setNewLine] = useState<FloorLine>('Cutting Department');
-  const [newStation, setNewStation] = useState('Cutting Bay 01');
-  const [newCost, setNewCost] = useState<number>(1400);
+  const [newStation, setNewStation] = useState('');
+  const [newCost, setNewCost] = useState<number | ''>('');
   const [newSpecs, setNewSpecs] = useState('');
   const [newStatus, setNewStatus] = useState<MachineStatus>('ACTIVE');
 
@@ -590,140 +590,23 @@ export default function FloorTrackerPage() {
 
   const handleUtilitySubtypeChangeInForm = (sub: 'PLANT' | 'LIGHT' | 'FAN') => {
     setNewUtilitySubtype(sub);
-    const rnd = Math.floor(100 + Math.random() * 900);
-    if (sub === 'LIGHT') {
-      setNewId(`LGT-HBY-${rnd}`);
-      setNewBrand('Philips');
-      setNewModel('CoreLine-150W');
-      setNewCost(130);
-      setNewDepartment('Cutting Department');
-      setNewLine('Cutting Department');
-      setNewStation('Overhead Spreading Bay');
-      setNewSpecs('150W Linear High-Bay LED, 6500K Cool Daylight, IP65');
-    } else if (sub === 'FAN') {
-      setNewId(`FAN-IND-${rnd}`);
-      setNewBrand('Almonard');
-      setNewModel('HeavyBlower-30');
-      setNewCost(135);
-      setNewDepartment('Finishing & Pressing');
-      setNewLine('Finishing & Pressing');
-      setNewStation('Pressing Line A');
-      setNewSpecs('30-inch industrial blade, 18,000 CFM rapid steam and heat dispersion');
-    } else {
-      setNewId(`UTL-SYS-${rnd}`);
-      setNewBrand('Atlas Copco');
-      setNewModel('G-11-FF');
-      setNewCost(3200);
-      setNewDepartment('Central Utilities & Plant');
-      setNewLine('Central Utilities & Plant');
-      setNewStation('Compressor Room');
-      setNewSpecs('11 kW 10 bar continuous compressed air for pneumatic tools');
-    }
   };
 
   const handleCategoryChangeInForm = (cat: AssetCategory) => {
-    const rnd = Math.floor(100 + Math.random() * 900);
-    switch (cat) {
-      case 'FURNITURE':
-      case 'TABLE':
-        setNewCategory(cat);
-        setNewId(`TBL-CUT-${rnd}`);
-        setNewBrand('Eastman');
-        setNewModel('SpreadMaster-12');
-        setNewCost(1400);
-        setNewDepartment('Cutting Department');
-        setNewLine('Cutting Department');
-        setNewStation('Cutting Bay 01');
-        setNewSpecs('Air flotation laminated top with metric measuring rule');
-        break;
-      case 'CHAIR':
-        setNewCategory('CHAIR');
-        setNewId(`CHR-ERG-${rnd}`);
-        setNewBrand('Featherlite');
-        setNewModel('Optima-Sew360');
-        setNewCost(85);
-        setNewDepartment('Sewing Floor');
-        setNewLine('Line 01');
-        setNewStation('Station 04');
-        setNewSpecs('Ergonomic gas-lift pneumatic swivel chair with lumbar support');
-        break;
-      case 'UTILITY':
-      case 'LIGHT':
-      case 'FAN':
-        setNewCategory('UTILITY');
-        if (cat === 'LIGHT') handleUtilitySubtypeChangeInForm('LIGHT');
-        else if (cat === 'FAN') handleUtilitySubtypeChangeInForm('FAN');
-        else handleUtilitySubtypeChangeInForm(newUtilitySubtype);
-        break;
-      case 'VEHICLE':
-        setNewCategory('VEHICLE');
-        setNewId(`VHC-FLT-${rnd}`);
-        setNewBrand('Godrej');
-        setNewModel('GX-20');
-        setNewCost(15000);
-        setNewDepartment('Warehouse & Storage');
-        setNewLine('Warehouse & Storage');
-        setNewStation('Loading Dock A');
-        setNewSpecs('2 Ton capacity, Diesel/Electric, 3-stage mast');
-        break;
-      case 'MACHINE':
-      default:
-        setNewCategory('MACHINE');
-        setNewMachineCat('OVERLOCK');
-        setNewMachineType('OVERLOCK_4_THREAD');
-        setNewId(`MC-OVK-4TH-${rnd}`);
-        setNewBrand('Yamato');
-        setNewModel('AZ-8000G / 4-Thread High-Speed');
-        setNewCost(980);
-        setNewDepartment('Sewing Floor');
-        setNewLine('Line 01');
-        setNewStation('Station 04');
-        setNewSpecs('4-thread safety stitch, differential feed ratio 1:0.7–1:2, max 7,500 RPM, auto-lubrication');
-        break;
+    setNewCategory(cat);
+    if (cat === 'LIGHT') {
+      setNewUtilitySubtype('LIGHT');
+    } else if (cat === 'FAN') {
+      setNewUtilitySubtype('FAN');
     }
   };
 
   const handleMachineCatChangeInForm = (cat: MachineCategoryGroup) => {
     setNewMachineCat(cat);
-    const catDef = MACHINE_CATALOG.find((c) => c.id === cat);
-    if (!catDef) return;
-    const firstSub = catDef.subtypes[0];
-    setNewMachineType(firstSub.id);
-    setNewBrand(firstSub.defaultBrand);
-    setNewModel(firstSub.defaultModel);
-    setNewSpecs(firstSub.specs);
-    const rnd = Math.floor(100 + Math.random() * 900);
-    if (cat === 'OVERLOCK') {
-      setNewId(`MC-OVK-4TH-${rnd}`);
-      setNewCost(980);
-    } else if (cat === 'FLATLOCK') {
-      setNewId(`MC-FLK-HEM-${rnd}`);
-      setNewCost(1550);
-    } else {
-      setNewId(`MC-SN-KAJA-${rnd}`);
-      setNewCost(1850);
-    }
   };
 
   const handleMachineSubtypeChangeInForm = (type: MachineType) => {
     setNewMachineType(type);
-    const meta = SUBTYPE_LOOKUP[type];
-    if (meta) {
-      setNewBrand(meta.defaultBrand);
-      setNewModel(meta.defaultModel);
-      setNewSpecs(meta.specs);
-      const rnd = Math.floor(100 + Math.random() * 900);
-      if (type.startsWith('OVERLOCK')) {
-        setNewId(`MC-OVK-${rnd}`);
-        setNewCost(980);
-      } else if (type.startsWith('FLATLOCK')) {
-        setNewId(`MC-FLK-${rnd}`);
-        setNewCost(1600);
-      } else {
-        setNewId(`MC-SN-${rnd}`);
-        setNewCost(1500);
-      }
-    }
   };
 
   const handleCreateAssetSubmit = async (e: React.FormEvent) => {
@@ -760,19 +643,19 @@ export default function FloorTrackerPage() {
       ? subMeta.name
       : newCategory === 'UTILITY'
       ? newUtilitySubtype === 'LIGHT'
-        ? `${newBrand} Overhead High-Bay LED`
+        ? `${newBrand || 'Overhead'} High-Bay LED`
         : newUtilitySubtype === 'FAN'
-        ? `${newBrand} Industrial Ventilation Fan`
-        : `${newBrand} Central Plant Utility`
-      : `${newBrand} ${getCategoryMeta(newCategory).label}`;
+        ? `${newBrand || 'Industrial'} Ventilation Fan`
+        : `${newBrand || 'Plant'} Utility`
+      : `${newBrand ? `${newBrand} ` : ''}${getCategoryMeta(newCategory).label}`;
 
     const newAsset: Machine = {
       id: newId.trim().toUpperCase(),
       name:
         newName.trim() ||
-        (subMeta
-          ? `${newBrand} ${subMeta.name} (${newModel})`
-          : `${newBrand} ${getCategoryMeta(newCategory).label} (${newStation})`),
+        (newBrand.trim()
+          ? `${newBrand.trim()} ${subMeta ? subMeta.name : getCategoryMeta(newCategory).label}${newModel.trim() ? ` (${newModel.trim()})` : ''}`
+          : `${subMeta ? subMeta.name : getCategoryMeta(newCategory).label}`),
       brand: newBrand.trim() || 'Generic',
       model: newModel.trim() || 'Standard',
       category: newCategory,
@@ -781,12 +664,14 @@ export default function FloorTrackerPage() {
       type: targetType,
       typeName: targetTypeName,
       purchaseDate: new Date().toISOString().split('T')[0],
-      cost: Number(newCost) || 100,
+      cost: typeof newCost === 'number' ? newCost : Number(newCost) || 0,
       status: newStatus,
+      unit: 'Unit 01',
+      area: newDepartment || newLine,
       currentLine: newLine,
-      stationNo: newStation.trim() || 'Station 01',
+      stationNo: newStation.trim() || 'Unassigned Station',
       totalDowntimeMinutes: 0,
-      ageYears: 0.1,
+      ageYears: 0,
       specs: newSpecs.trim() || (subMeta?.specs || ''),
     };
 
@@ -1187,9 +1072,9 @@ export default function FloorTrackerPage() {
                       <td className="py-2 px-3.5 text-slate-700 border-r border-b border-slate-200">
                         <span className="font-bold text-slate-900">{asset.unit || 'Unit 01'}</span>
                         <span className="text-slate-400 mx-1">•</span>
-                        <span className="text-slate-600">{asset.area || asset.department || 'Sewing Floor'}</span>
+                        <span className="text-slate-600">{asset.area || asset.department || asset.currentLine || 'Sewing Floor'}</span>
                       </td>
-                      <td className="py-2 px-3 font-mono text-slate-700 border-r border-b border-slate-200 tabular-nums">{asset.currentLine} ({asset.stationNo})</td>
+                      <td className="py-2 px-3 font-mono text-slate-700 border-r border-b border-slate-200 tabular-nums">{asset.area || asset.currentLine} ({asset.stationNo})</td>
                       <td className="py-2 px-3 text-center border-r border-b border-slate-200">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -1243,7 +1128,7 @@ export default function FloorTrackerPage() {
                 </div>
                 <div>
                   <span className="text-slate-500">Station / Line:</span>{' '}
-                  <span className="font-semibold text-slate-800">{selectedInlineAsset.currentLine} ({selectedInlineAsset.stationNo})</span>
+                  <span className="font-semibold text-slate-800">{selectedInlineAsset.area || selectedInlineAsset.currentLine} ({selectedInlineAsset.stationNo})</span>
                 </div>
               </div>
               {selectedInlineAsset.specs && (
@@ -1838,7 +1723,7 @@ export default function FloorTrackerPage() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateAssetSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleCreateAssetSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto" autoComplete="off">
               {/* Category Selector */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -1940,6 +1825,7 @@ export default function FloorTrackerPage() {
                     value={newId}
                     onChange={(e) => setNewId(e.target.value)}
                     required
+                    placeholder="e.g. MC-OVK-101"
                     className="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800"
                   />
                 </div>
@@ -1952,7 +1838,7 @@ export default function FloorTrackerPage() {
                     value={newStation}
                     onChange={(e) => setNewStation(e.target.value)}
                     required
-                    placeholder="e.g. Cutting Bay 01, Deck 04"
+                    placeholder="e.g. Cutting Bay 01, Station 04"
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800"
                   />
                 </div>
@@ -2016,6 +1902,7 @@ export default function FloorTrackerPage() {
                         onChange={(e) => setNewBrand(e.target.value)}
                         className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 font-bold"
                       >
+                        <option value="" disabled>-- Select OEM Brand --</option>
                         {MACHINE_CATALOG.find((c) => c.id === newMachineCat)?.brands.map((b) => (
                           <option key={b} value={b}>
                             {b}
@@ -2049,6 +1936,7 @@ export default function FloorTrackerPage() {
                       type="text"
                       value={newBrand}
                       onChange={(e) => setNewBrand(e.target.value)}
+                      placeholder="e.g. Brand Name"
                       className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800"
                     />
                   </div>
@@ -2060,6 +1948,7 @@ export default function FloorTrackerPage() {
                       type="text"
                       value={newModel}
                       onChange={(e) => setNewModel(e.target.value)}
+                      placeholder="e.g. Model Number / Spec"
                       className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800"
                     />
                   </div>
@@ -2075,7 +1964,8 @@ export default function FloorTrackerPage() {
                   <input
                     type="number"
                     value={newCost}
-                    onChange={(e) => setNewCost(Number(e.target.value))}
+                    onChange={(e) => setNewCost(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="e.g. 50000"
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 font-mono"
                   />
                 </div>

@@ -23,6 +23,7 @@ import {
   Menu,
   Users,
   CheckCircle2,
+  ClipboardList,
 } from 'lucide-react';
 import { LiveClock } from './LiveClock';
 import { useAuth } from '@/context/AuthContext';
@@ -150,6 +151,11 @@ export function Navbar() {
         icon: LayoutDashboard,
       },
       {
+        label: 'Asset Log',
+        href: '/dashboard/asset-log',
+        icon: ClipboardList,
+      },
+      {
         label: 'Mechanic Calendar',
         href: '/dashboard/calendar',
         icon: CalendarCheck,
@@ -180,6 +186,11 @@ export function Navbar() {
         label: 'Supervisor Dashboard',
         href: '/dashboard',
         icon: LayoutDashboard,
+      },
+      {
+        label: 'Asset Log',
+        href: '/dashboard/asset-log',
+        icon: ClipboardList,
       },
       {
         label: 'Electrical Calendar',

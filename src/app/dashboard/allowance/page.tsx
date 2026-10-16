@@ -39,8 +39,9 @@ import {
   Sparkles,
   Download,
 } from 'lucide-react';
-import { Machine, AssetCategory } from '@/types/cmms';
-import { subscribeMachines } from '@/lib/services/cmmsService';
+import { Machine, AssetCategory, RepairTicket, PPMSchedule } from '@/types/cmms';
+import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
+import { formatAssetLocation } from '@/lib/formatters';
 
 // Standard 4 categories requested
 type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
@@ -737,8 +738,14 @@ function mapToMainCategory(cat?: AssetCategory): MainCategory {
   return 'UTILITY';
 }
 
-// Deterministic helper to calculate maintenance allowances and lifecycle costs for assets
-function getAllowanceData(id: string, category: MainCategory, actualCost?: number): {
+// Helper to calculate maintenance allowances and actual occurring lifecycle costs for assets
+function getAllowanceData(
+  id: string,
+  category: MainCategory,
+  actualCost?: number,
+  machineRepairs: RepairTicket[] = [],
+  machinePpm: PPMSchedule[] = []
+): {
   monthlyAllowance: number;
   spentAmount: number;
   remainingBalance: number;
@@ -779,33 +786,51 @@ function getAllowanceData(id: string, category: MainCategory, actualCost?: numbe
     }
   }
 
-  const ratioVariant = seed % 10;
-  let spentRatio = 0.45;
-  if (ratioVariant === 0) spentRatio = 1.05; // over budget
-  else if (ratioVariant === 1 || ratioVariant === 2) spentRatio = 0.88; // near limit (>85%)
-  else spentRatio = 0.32 + (ratioVariant * 0.05); // within budget
+  // 1. Repair costs - ONLY display when repair actually occurs
+  let totalRepairCost = 0;
+  let recentRepairCost = 0;
 
-  const spentAmount = Math.round((baseAllowance * spentRatio) / 100) * 100;
+  if (machineRepairs.length > 0) {
+    totalRepairCost = machineRepairs.reduce((sum, r) => {
+      const cost =
+        typeof r.repairCost === 'number' && r.repairCost >= 0
+          ? r.repairCost
+          : r.partsUsed && r.partsUsed.length > 0
+          ? r.partsUsed.reduce((s, p) => sum + (p.quantity || 1) * 350, 0)
+          : (r.status === 'COMPLETED' ? 450 : 250);
+      return sum + cost;
+    }, 0);
+
+    const sortedRepairs = [...machineRepairs].sort(
+      (a, b) => new Date(b.reportedAt || 0).getTime() - new Date(a.reportedAt || 0).getTime()
+    );
+    const mostRecent = sortedRepairs[0];
+    recentRepairCost =
+      typeof mostRecent.repairCost === 'number' && mostRecent.repairCost >= 0
+        ? mostRecent.repairCost
+        : mostRecent.partsUsed && mostRecent.partsUsed.length > 0
+        ? mostRecent.partsUsed.reduce((s, p) => s + (p.quantity || 1) * 350, 0)
+        : (mostRecent.status === 'COMPLETED' ? 450 : 250);
+  }
+
+  // 2. Preventive maintenance price - ONLY display when completed PPM occurs
+  const completedPpm = machinePpm.filter((p) => p.status === 'COMPLETED' || !!p.lastServiced);
+  const pendingPpm = machinePpm.filter(
+    (p) => p.status === 'PENDING' || p.status === 'DUE_SOON' || p.status === 'OVERDUE' || p.status === 'IN_PROGRESS'
+  );
+
+  const preventiveMaintenancePrice = completedPpm.length > 0 ? completedPpm.length * 450 : 0;
+  const predictedPreventiveCost = pendingPpm.length > 0 ? pendingPpm.length * 450 : (completedPpm.length > 0 ? 450 : 0);
+
+  // 3. Spent Amount and Remaining Balance
+  const spentAmount = totalRepairCost + preventiveMaintenancePrice;
   const remainingBalance = baseAllowance - spentAmount;
   let allowanceStatus: 'WITHIN_BUDGET' | 'NEAR_LIMIT' | 'OVER_BUDGET' = 'WITHIN_BUDGET';
   if (remainingBalance < 0) {
     allowanceStatus = 'OVER_BUDGET';
-  } else if (spentAmount / baseAllowance >= 0.85) {
+  } else if (baseAllowance > 0 && spentAmount / baseAllowance >= 0.85) {
     allowanceStatus = 'NEAR_LIMIT';
   }
-
-  // Cost metrics requested by user:
-  // 1. Total repair cost: accumulated lifecycle repair cost
-  const totalRepairCost = Math.round((purchasePrice * (0.12 + (seed % 8) * 0.025)) / 100) * 100;
-
-  // 2. Recent repair cost: cost of the most recent service ticket
-  const recentRepairCost = Math.round((totalRepairCost * (0.15 + (seed % 6) * 0.04)) / 50) * 50;
-
-  // 3. Preventive maintenance price: routine PPM cost per interval
-  const preventiveMaintenancePrice = Math.round((baseAllowance * 0.28) / 50) * 50;
-
-  // 4. Predicted preventive cost: predictive AI estimation for the next servicing
-  const predictedPreventiveCost = Math.round((preventiveMaintenancePrice * (1.06 + (seed % 7) * 0.03)) / 50) * 50;
 
   return {
     monthlyAllowance: baseAllowance,
@@ -876,6 +901,8 @@ function formatDisplayDate(dateStr: string): string {
 
 export default function AllowancePage() {
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [repairs, setRepairs] = useState<RepairTicket[]>([]);
+  const [ppmList, setPpmList] = useState<PPMSchedule[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<MainCategory | 'ALL'>('ALL');
 
   // Time period filter ('WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM')
@@ -950,12 +977,22 @@ export default function AllowancePage() {
   const [groupBy, setGroupBy] = useState<'NONE' | 'CATEGORY' | 'SUBCATEGORY' | 'LOCATION' | 'RELOCATION' | 'BUDGET'>('NONE');
   const [collapsedSections, setCollapsedSections] = useState<string[]>([]);
 
-  // Subscribe to machines from DB/API
+  // Subscribe to machines, repairs, and PPM schedules from DB/API
   useEffect(() => {
-    const unsub = subscribeMachines((data) => {
+    const unsubMachines = subscribeMachines((data) => {
       setMachines(data);
     });
-    return () => unsub();
+    const unsubRepairs = subscribeRepairs((data) => {
+      setRepairs(data);
+    });
+    const unsubPpm = subscribePPMSchedules((data) => {
+      setPpmList(data);
+    });
+    return () => {
+      unsubMachines();
+      unsubRepairs();
+      unsubPpm();
+    };
   }, []);
 
   // Merge registered machines from MongoDB with the sample catalog
@@ -971,7 +1008,7 @@ export default function AllowancePage() {
           ? 'Electrical Utilities'
           : 'Vehicle';
 
-      const occupied = `${m.currentLine} • ${m.stationNo || 'Station 01'}`;
+      const occupied = formatAssetLocation(m);
 
       let mSubtype: MachineSubtype | undefined;
       let fSubtype: FurnitureSubtype | undefined;
@@ -996,7 +1033,7 @@ export default function AllowancePage() {
       return {
         id: m.id,
         name: m.name || m.typeName || m.model || 'Standard Asset Item',
-        company: m.brand || 'TexTech Equipment',
+        company: m.company || m.brand || 'Sahana Garments',
         category: cat,
         categoryLabel: catLabel,
         machineSubtype: mSubtype,
@@ -1016,7 +1053,13 @@ export default function AllowancePage() {
     const combined = dbItems;
 
     return combined.map((item) => {
-      const allw = getAllowanceData(item.id, item.category, item.cost);
+      const machineRepairs = repairs.filter(
+        (r) => r.machineId?.trim().toLowerCase() === item.id.trim().toLowerCase()
+      );
+      const machinePpm = ppmList.filter(
+        (p) => p.machineId?.trim().toLowerCase() === item.id.trim().toLowerCase()
+      );
+      const allw = getAllowanceData(item.id, item.category, item.cost, machineRepairs, machinePpm);
 
       const periodAllowance = Math.round((allw.monthlyAllowance * periodMultiplier) / 50) * 50;
       const spentAmount = Math.round((allw.spentAmount * periodMultiplier) / 50) * 50;
@@ -1049,7 +1092,7 @@ export default function AllowancePage() {
         predictedPreventiveCost,
       };
     });
-  }, [machines, periodMultiplier, timePeriod]);
+  }, [machines, repairs, ppmList, periodMultiplier, timePeriod]);
 
   // Overall cost statistics
   const costTotals = useMemo(() => {
@@ -1510,6 +1553,7 @@ export default function AllowancePage() {
       if (loc) set.add(loc);
     });
     machines.forEach((m) => {
+      if (m.area) set.add(m.area);
       if (m.currentLine) set.add(m.currentLine);
     });
     return Array.from(set).sort();

@@ -33,6 +33,7 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { getCategoryForType, SUBTYPE_LOOKUP } from '@/lib/machineCatalog';
 import { PrintableAssetDocumentModal } from '@/components/print/PrintableAssetDocumentModal';
+import { formatAssetLocation } from '@/lib/formatters';
 
 interface AssetModalProps {
   isOpen: boolean;
@@ -1172,10 +1173,10 @@ export function AssetModal({
                     <span>Unit &amp; Area</span>
                   </div>
                   <div className="font-bold text-xs text-slate-900 mt-1 truncate">
-                    {currentAsset.unit || 'Unit 01'} • {currentAsset.area || currentAsset.department || 'Sewing Floor'}
+                    {formatAssetLocation(currentAsset)}
                   </div>
                   <div className="text-[10px] text-indigo-600 font-semibold truncate">
-                    {currentAsset.currentLine} ({currentAsset.stationNo})
+                    {currentAsset.area || currentAsset.currentLine} ({currentAsset.stationNo})
                   </div>
                 </div>
 
@@ -1314,10 +1315,10 @@ export function AssetModal({
                       </span>
                     </div>
                     <div className="font-extrabold text-emerald-950 text-sm">
-                      {currentAsset.unit ? `${currentAsset.unit} • ` : ''}{currentAsset.currentLine}
+                      {formatAssetLocation(currentAsset)}
                     </div>
                     <div className="text-xs font-semibold text-emerald-700 mt-0.5">
-                      {currentAsset.area ? `${currentAsset.area} • ` : ''}{currentAsset.stationNo} • {currentAsset.department || 'Floor'}
+                      {currentAsset.area || currentAsset.currentLine} • {currentAsset.stationNo} • {currentAsset.department || 'Floor'}
                     </div>
                   </div>
                 </div>
@@ -1439,7 +1440,7 @@ export function AssetModal({
                 <p>
                   Create an immediate mechanical fault ticket for{' '}
                   <strong className="font-mono">{currentAsset.id}</strong> stationed at{' '}
-                  <strong>{currentAsset.currentLine}</strong> ({currentAsset.stationNo}).
+                  <strong>{formatAssetLocation(currentAsset)}</strong>.
                 </p>
               </div>
 
@@ -1549,10 +1550,10 @@ export function AssetModal({
                   <div className="bg-white p-2.5 rounded-xl border border-indigo-300 shadow-xs">
                     <div className="text-[10px] uppercase font-bold text-indigo-600">2. Current Location (From)</div>
                     <div className="font-extrabold text-indigo-950 truncate mt-0.5">
-                      {currentAsset.currentLine}
+                      {currentAsset.area || currentAsset.currentLine}
                     </div>
                     <div className="text-[10px] text-indigo-700 font-semibold truncate">
-                      {currentAsset.stationNo}
+                      {currentAsset.unit ? `${currentAsset.unit} • ` : ''}{currentAsset.stationNo}
                     </div>
                   </div>
 

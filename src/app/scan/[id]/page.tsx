@@ -28,6 +28,7 @@ import {
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
+import { formatAssetLocation } from '@/lib/formatters';
 
 function MobileScanContent() {
   const params = useParams();
@@ -72,8 +73,8 @@ function MobileScanContent() {
           model: searchParams.get('model') || 'Standard',
           type: (searchParams.get('type') as any) || 'SNLS',
           typeName: searchParams.get('typeName') || searchParams.get('type') || 'Plant Asset',
-          currentLine: (searchParams.get('area') || 'Sewing Floor') as FloorLine,
-          stationNo: '',
+          currentLine: (searchParams.get('area') || 'Line 01') as FloorLine,
+          stationNo: searchParams.get('station') || '',
           motorType: 'SERVO',
           purchaseDate: searchParams.get('date') || new Date().toISOString().slice(0, 10),
           cost: searchParams.get('cost') ? parseFloat(searchParams.get('cost')!) : 75000,
@@ -302,7 +303,7 @@ function MobileScanContent() {
               <span className="text-[10px] text-slate-500 block font-medium">Located Area</span>
               <span className="font-semibold text-emerald-700 flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-emerald-600" />
-                {machine.area || machine.department || machine.currentLine}
+                {formatAssetLocation(machine)}
               </span>
             </div>
           </div>

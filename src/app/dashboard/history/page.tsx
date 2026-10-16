@@ -8,6 +8,7 @@ import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHis
 import { QRCodeSVG } from 'qrcode.react';
 import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
 import type { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
+import { formatAssetLocation } from '@/lib/formatters';
 import {
   Search,
   Columns,
@@ -367,7 +368,7 @@ export default function HistoryPage() {
                 transferId: `TRF-${m.id.replace(/[^a-zA-Z0-9]/g, '')}-01`,
                 date: m.lastMovedAt ? m.lastMovedAt.slice(0, 10) : (m.purchaseDate || new Date().toISOString().slice(0, 10)),
                 fromLocation: m.previousLine ? `${m.previousLine}${m.previousStation ? ` • ${m.previousStation}` : ''}` : 'Receiving Inward Store',
-                toLocation: `${m.currentLine}${m.stationNo ? ` • ${m.stationNo}` : ''}`,
+                toLocation: formatAssetLocation(m),
                 reason: m.lastMovedReason || 'Initial installation and commissioning',
                 movedBy: m.lastMovedBy || 'Plant Maintenance Team',
                 status: 'CURRENT',
@@ -389,7 +390,7 @@ export default function HistoryPage() {
           ? 'MEDIUM'
           : 'LOW';
         const subCat = m.typeName || (m.type ? m.type.replace(/_/g, ' ') : m.model || 'Standard Machinery');
-        const locName = m.currentLine || 'Line 01';
+        const locName = m.area || m.currentLine || 'Line 01';
 
         return {
           _id: `live-${m.id}`,
@@ -402,7 +403,7 @@ export default function HistoryPage() {
           categoryLabel: m.category === 'FURNITURE' ? 'Furniture' : m.category === 'UTILITY' ? 'Utility' : m.category === 'VEHICLE' ? 'Vehicle' : 'Machine',
           subCategory: subCat,
           location: locName,
-          unit: `${m.currentLine || 'Line 01'}${m.stationNo ? ` • ${m.stationNo}` : ''}`,
+          unit: formatAssetLocation(m),
           riskLevel: riskLevel as any,
           status: m.status === 'BREAKDOWN' ? 'active' : 'completed',
           purchaseDate: m.purchaseDate || new Date().toISOString().slice(0, 10),
@@ -508,6 +509,7 @@ export default function HistoryPage() {
       if (loc) set.add(loc);
     });
     liveMachines.forEach((m) => {
+      if (m.area) set.add(m.area);
       if (m.currentLine) set.add(m.currentLine);
     });
     ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Cutting Department', 'Finishing & Pressing', 'Central Utilities & Plant'].forEach((l) => set.add(l));

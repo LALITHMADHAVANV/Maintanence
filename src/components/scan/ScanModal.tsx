@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { QrCode, X, AlertTriangle, ArrowRightLeft, Radio, Camera } from 'lucide-react';
 import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
 import { subscribeMachines, createBreakdownTicket, relocateMachine } from '@/lib/services/cmmsService';
+import { formatAssetLocation } from '@/lib/formatters';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 
@@ -82,7 +83,7 @@ export function ScanModal({
       const ticketId = await createBreakdownTicket({
         machineId: currentMachine.id,
         machineType: currentMachine.typeName || currentMachine.type,
-        line: currentMachine.currentLine,
+        line: (currentMachine.area || currentMachine.currentLine) as FloorLine,
         reportedAt: new Date().toISOString(),
         reportedBy: `${user?.name || 'Operator'} (${user?.title || 'Floor'})`,
         faultCategory: faultType,
@@ -91,7 +92,7 @@ export function ScanModal({
       });
 
       showToast(
-        `Critical breakdown #${ticketId} dispatched for ${currentMachine.id} on ${currentMachine.currentLine}!`,
+        `Critical breakdown #${ticketId} dispatched for ${currentMachine.id} on ${currentMachine.area || currentMachine.currentLine}!`,
         'error'
       );
       setFaultNotes('');
@@ -168,37 +169,24 @@ export function ScanModal({
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Scanned Machine Selector */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
-              Scanned Machine Tag
-            </label>
-            <select
-              value={selectedMachineId}
-              onChange={(e) => setSelectedMachineId(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
-            >
-              {visibleMachines.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.id} - {m.brand} {m.model} ({m.currentLine})
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Machine Brief Card */}
-          {currentMachine && (
-            <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 text-xs flex justify-between items-center">
+          {currentMachine ? (
+            <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-100 text-xs flex justify-between items-center shadow-2xs">
               <div>
-                <div className="font-bold text-indigo-950">
-                  {currentMachine.brand} {currentMachine.model} ({currentMachine.type})
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-mono font-black uppercase tracking-wider bg-indigo-600 text-white px-2 py-0.5 rounded shadow-2xs">
+                    {currentMachine.id}
+                  </span>
+                  <span className="font-extrabold text-indigo-950 text-xs">
+                    {currentMachine.brand} {currentMachine.model}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-semibold">
+                    ({currentMachine.typeName || currentMachine.type})
+                  </span>
                 </div>
                 <div className="text-indigo-700 text-[11px] mt-0.5">
-                  Location:{' '}
-                  {currentMachine.unit && <strong className="text-indigo-950 font-bold">{currentMachine.unit} • </strong>}
-                  {currentMachine.area && <span className="font-semibold text-slate-800">{currentMachine.area} • </span>}
-                  <span className="font-semibold">{currentMachine.currentLine}</span> •{' '}
-                  {currentMachine.stationNo}
+                  <span className="font-semibold text-slate-500">Location: </span>
+                  <strong className="text-indigo-950 font-bold">{formatAssetLocation(currentMachine)}</strong>
                 </div>
                 {currentMachine.previousLine && (
                   <div className="text-amber-800 text-[10px] mt-1 flex items-center gap-1 font-medium bg-amber-50/90 px-2 py-0.5 rounded border border-amber-200">
@@ -218,6 +206,10 @@ export function ScanModal({
               >
                 {currentMachine.status}
               </span>
+            </div>
+          ) : (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold">
+              No machine asset selected. Please scan an asset QR tag.
             </div>
           )}
 

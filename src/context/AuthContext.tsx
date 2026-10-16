@@ -126,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const roleProfile: UserProfile = {
       uid: `${targetRole.slice(0, 3)}-01`,
       name: `${targetRole.replace('_', ' ')} Staff`,
-      email: `${targetRole.toLowerCase()}@textech.garments`,
+      email: `${targetRole.toLowerCase()}@sahana.garments`,
       role: targetRole,
       title: roleTitle,
       status: 'ACTIVE',

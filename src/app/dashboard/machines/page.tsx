@@ -45,17 +45,18 @@ export default function MachinesPage() {
 
   // Asset Form State
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('MACHINE');
+  const [mCompany, setMCompany] = useState('');
   const [mId, setMId] = useState('');
-  const [mBrand, setMBrand] = useState('Yamato');
-  const [mType, setMType] = useState<MachineType>('OVERLOCK_4_THREAD');
+  const [mBrand, setMBrand] = useState('');
+  const [mType, setMType] = useState<MachineType | ''>('');
   const [mModel, setMModel] = useState('');
-  const [mDate, setMDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [mCost, setMCost] = useState<number>(0);
+  const [mDate, setMDate] = useState('');
+  const [mCost, setMCost] = useState<number | ''>('');
   const [mMotor, setMMotor] = useState<MotorType>('SERVO');
-  const [mUnit, setMUnit] = useState<string>('Unit 01');
-  const [mArea, setMArea] = useState<string>('Sewing Floor');
+  const [mUnit, setMUnit] = useState<string>('');
+  const [mArea, setMArea] = useState<string>('');
   const [mLine, setMLine] = useState<FloorLine>('Line 01');
-  const [mStation, setMStation] = useState('Station 01');
+  const [mStation, setMStation] = useState('');
 
   // QR generated state
   const [isQrGenerated, setIsQrGenerated] = useState(false);
@@ -79,7 +80,7 @@ export default function MachinesPage() {
   const [customSpecs, setCustomSpecs] = useState('');
 
   // Host origin for QR payload
-  const [origin, setOrigin] = useState('https://textech.factory');
+  const [origin, setOrigin] = useState('https://sahana.factory');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -104,8 +105,9 @@ export default function MachinesPage() {
 
   // Compute machine/asset age dynamically
   const calculatedAge = useMemo(() => {
-    if (!mDate) return 'New Asset';
+    if (!mDate) return '—';
     const pDate = new Date(mDate);
+    if (isNaN(pDate.getTime())) return '—';
     const now = new Date();
     const diff = (now.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
     return diff > 0 ? `${diff.toFixed(1)} Years` : 'New Asset';
@@ -145,7 +147,7 @@ export default function MachinesPage() {
   // Available brands for the current subtype or category (combines OEM catalog + custom brands)
   const availableBrands: string[] = useMemo(() => {
     const subDef =
-      ASSET_SUBTYPE_LOOKUP[mType] || customSubtypes.find((s) => s.id === mType);
+      (mType && ASSET_SUBTYPE_LOOKUP[mType]) || customSubtypes.find((s) => s.id === mType);
     let brands: string[] = [];
     if (subDef && subDef.brands && subDef.brands.length > 0) {
       brands = subDef.brands;
@@ -160,69 +162,75 @@ export default function MachinesPage() {
     setSelectedCategory(cat);
     setIsCustomType(false);
     setIsCustomBrand(false);
-    const catDef = ASSET_CATEGORIES.find((c) => c.id === cat) || ASSET_CATEGORIES[0];
-    const firstSub = catDef.subtypes[0];
-    if (firstSub) {
-      const rnd = Math.floor(100 + Math.random() * 900);
-      setMType(firstSub.id);
-      setMBrand(firstSub.defaultBrand);
-      setMModel(firstSub.defaultModel);
-      setMCost(firstSub.defaultCost);
-      setMId(`${firstSub.idPrefix}${rnd}`);
-    }
+    setMType('');
   };
 
   // Handler for subtype change
-  const handleSubtypeChange = (type: MachineType) => {
+  const handleSubtypeChange = (type: MachineType | '__CUSTOM_TYPE__') => {
     if (type === '__CUSTOM_TYPE__') {
       setIsCustomType(true);
-      const prefix =
-        selectedCategory === 'FURNITURE'
-          ? 'FUR-CST-'
-          : selectedCategory === 'CHAIR'
-          ? 'CHR-CST-'
-          : selectedCategory === 'TABLE'
-          ? 'TBL-CST-'
-          : selectedCategory === 'UTILITY'
-          ? 'UTL-CST-'
-          : selectedCategory === 'VEHICLE'
-          ? 'VHC-CST-'
-          : 'MC-CST-';
-      const rnd = Math.floor(100 + Math.random() * 900);
-      setMId(`${prefix}${rnd}`);
       setCustomTypeName('');
       setCustomSpecs('');
-      setMModel('Custom Specification');
       return;
     }
 
     setIsCustomType(false);
     setMType(type);
-    const meta =
-      ASSET_SUBTYPE_LOOKUP[type] || customSubtypes.find((s) => s.id === type);
-    if (meta) {
-      setMModel(meta.defaultModel);
-      setMBrand(meta.defaultBrand);
-      setMCost(meta.defaultCost);
-      const rnd = Math.floor(100 + Math.random() * 900);
-      setMId(`${meta.idPrefix}${rnd}`);
-    }
+  };
+
+  // Clear / Reset all inputs
+  const handleResetForm = () => {
+    setMCompany('');
+    setMId('');
+    setMBrand('');
+    setMType('');
+    setMModel('');
+    setMDate('');
+    setMCost('');
+    setMUnit('');
+    setMArea('');
+    setMStation('');
+    setIsCustomBrand(false);
+    setCustomBrandInput('');
+    setIsCustomType(false);
+    setCustomTypeName('');
+    setCustomSpecs('');
+    setIsQrGenerated(false);
   };
 
   // Handler for form submit & registration
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanId = mId.trim();
-    if (!cleanId) return;
+    if (!cleanId) {
+      showToast('Please enter an Asset ID', 'warning');
+      return;
+    }
+
+    if (!mCompany.trim()) {
+      showToast('Please enter a Company / Facility Name', 'warning');
+      return;
+    }
 
     const finalBrand =
-      isCustomBrand && customBrandInput.trim() ? customBrandInput.trim() : mBrand;
+      isCustomBrand && customBrandInput.trim() ? customBrandInput.trim() : mBrand.trim();
+    if (!finalBrand) {
+      showToast('Please select or specify a Brand', 'warning');
+      return;
+    }
+
+    if (!mDate) {
+      showToast('Please enter an Installation Date', 'warning');
+      return;
+    }
+
     let finalTypeName =
-      ASSET_SUBTYPE_LOOKUP[mType]?.name ||
+      (mType && ASSET_SUBTYPE_LOOKUP[mType]?.name) ||
       customSubtypes.find((s) => s.id === mType)?.name ||
-      mType;
+      mType ||
+      'General Asset';
     let finalSpecs =
-      ASSET_SUBTYPE_LOOKUP[mType]?.specs ||
+      (mType && ASSET_SUBTYPE_LOOKUP[mType]?.specs) ||
       customSubtypes.find((s) => s.id === mType)?.specs ||
       '';
 
@@ -263,7 +271,7 @@ export default function MachinesPage() {
         brands: [finalBrand],
         defaultBrand: finalBrand,
         defaultModel: mModel,
-        defaultCost: mCost,
+        defaultCost: typeof mCost === 'number' ? mCost : Number(mCost) || 0,
         idPrefix: prefix,
         specs: finalSpecs,
       };
@@ -275,30 +283,35 @@ export default function MachinesPage() {
       }
     }
 
+    const userLine = (mArea.trim() || 'Line 01') as FloorLine;
+    const userDept = (mArea.trim().includes('Line') ? 'Sewing Floor' : mArea.trim() || 'Sewing Floor') as any;
+
     const newAsset: Machine = {
       id: cleanId,
-      name: `${finalBrand} ${finalTypeName} (${mModel})`,
+      name: `${finalBrand} ${finalTypeName}${mModel.trim() ? ` (${mModel.trim()})` : ''}`,
+      company: mCompany.trim(),
       brand: finalBrand,
       model: mModel.trim() || 'Standard Model',
       category: selectedCategory,
       machineClass:
         selectedCategory === 'MACHINE'
-          ? mType.startsWith('OVERLOCK')
+          ? mType && mType.startsWith('OVERLOCK')
             ? 'OVERLOCK'
-            : mType.startsWith('FLATLOCK')
+            : mType && mType.startsWith('FLATLOCK')
             ? 'FLATLOCK'
             : 'SINGLE_NEEDLE'
           : undefined,
-      type: mType,
+      type: (mType || 'OVERLOCK_4_THREAD') as MachineType,
       typeName: finalTypeName,
       motorType: mMotor,
       purchaseDate: mDate,
-      cost: mCost,
+      cost: typeof mCost === 'number' ? mCost : Number(mCost) || 0,
       status: 'ACTIVE',
-      unit: mUnit.trim() || 'Unit 01',
-      area: mArea.trim() || 'Sewing Floor',
-      currentLine: mLine,
-      stationNo: mStation.trim() || 'Station 01',
+      unit: mUnit.trim() || 'Unassigned Unit',
+      area: mArea.trim() || 'Unassigned Area',
+      currentLine: userLine,
+      department: userDept,
+      stationNo: mStation.trim() || 'Unassigned Station',
       totalDowntimeMinutes: 0,
       ageYears: parseFloat(calculatedAge) || 0,
       specs: finalSpecs,
@@ -326,33 +339,38 @@ export default function MachinesPage() {
     const typeName =
       isCustomType && customTypeName.trim()
         ? customTypeName.trim()
-        : ASSET_SUBTYPE_LOOKUP[mType]?.name ||
+        : (mType && ASSET_SUBTYPE_LOOKUP[mType]?.name) ||
           customSubtypes.find((s) => s.id === mType)?.name ||
-          mType;
+          mType ||
+          'Asset';
     const specs =
       isCustomType && customSpecs.trim()
         ? customSpecs.trim()
-        : ASSET_SUBTYPE_LOOKUP[mType]?.specs ||
+        : (mType && ASSET_SUBTYPE_LOOKUP[mType]?.specs) ||
           customSubtypes.find((s) => s.id === mType)?.specs ||
           '';
 
+    const userLine = (mArea.trim() || 'Line 01') as FloorLine;
+    const userDept = (mArea.trim().includes('Line') ? 'Sewing Floor' : mArea.trim() || 'Sewing Floor') as any;
+
     return {
-      id: mId,
-      name: `${activeBrand} ${mModel}`,
-      brand: activeBrand,
-      model: mModel,
-      type: mType,
+      id: mId || 'ASSET-NEW',
+      name: `${activeBrand} ${mModel}`.trim() || 'New Asset',
+      company: mCompany.trim(),
+      brand: activeBrand || 'Unassigned Brand',
+      model: mModel || 'Standard',
+      type: (mType || 'OVERLOCK_4_THREAD') as MachineType,
       typeName: typeName,
-      cost: mCost,
+      cost: typeof mCost === 'number' ? mCost : Number(mCost) || 0,
       motorType: mMotor,
-      unit: mUnit.trim() || 'Unit 01',
-      area: mArea.trim() || 'Sewing Floor',
-      currentLine: mLine,
-      stationNo: mStation,
+      unit: mUnit.trim() || 'Unassigned Unit',
+      area: mArea.trim() || 'Unassigned Area',
+      currentLine: userLine,
+      stationNo: mStation.trim() || 'Unassigned Station',
       purchaseDate: mDate,
       status: existing?.status || 'ACTIVE',
       category: selectedCategory,
-      department: (mLine.includes('Line') ? 'Sewing Floor' : mLine) as any,
+      department: userDept,
       operator: existing?.operator || 'Plant Operator',
       previousLine: existing?.previousLine,
       previousStation: existing?.previousStation,
@@ -360,11 +378,12 @@ export default function MachinesPage() {
       lastMovedReason: existing?.lastMovedReason,
       lastMovedBy: existing?.lastMovedBy,
       totalDowntimeMinutes: existing?.totalDowntimeMinutes || 0,
-      ageYears: existing?.ageYears || 1.2,
+      ageYears: existing?.ageYears || 0,
       specs: specs,
     };
   }, [
     mId,
+    mCompany,
     mBrand,
     mModel,
     mType,
@@ -372,7 +391,6 @@ export default function MachinesPage() {
     mMotor,
     mUnit,
     mArea,
-    mLine,
     mStation,
     mDate,
     machines,
@@ -391,26 +409,28 @@ export default function MachinesPage() {
 
   // Encoded QR payload feeding all asset specifications into the QR code
   const qrData = useMemo(() => {
-    const base = `${origin}/scan/${encodeURIComponent(mId)}`;
+    const base = `${origin}/scan/${encodeURIComponent(mId || 'PENDING')}`;
     const activeBrand =
       isCustomBrand && customBrandInput.trim() ? customBrandInput.trim() : mBrand;
     const activeTypeName =
       isCustomType && customTypeName.trim()
         ? customTypeName.trim()
-        : ASSET_SUBTYPE_LOOKUP[mType]?.name ||
+        : (mType && ASSET_SUBTYPE_LOOKUP[mType]?.name) ||
           customSubtypes.find((s) => s.id === mType)?.name ||
           mType ||
           '';
 
     const params = new URLSearchParams({
       id: mId || '',
+      company: mCompany.trim() || '',
       brand: activeBrand || '',
       model: mModel || '',
       type: mType || '',
       typeName: activeTypeName,
       category: selectedCategory || '',
-      unit: mUnit || 'Unit 01',
-      area: mArea || 'Sewing Floor',
+      unit: mUnit.trim() || '',
+      area: mArea.trim() || '',
+      station: mStation.trim() || '',
       date: mDate || '',
       cost: mCost ? String(mCost) : '',
     });
@@ -418,12 +438,14 @@ export default function MachinesPage() {
   }, [
     origin,
     mId,
+    mCompany,
     mBrand,
     mModel,
     mType,
     selectedCategory,
     mUnit,
     mArea,
+    mStation,
     mDate,
     mCost,
     isCustomBrand,
@@ -514,26 +536,43 @@ export default function MachinesPage() {
             <span>Asset Specifications</span>
           </h3>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Factory Asset Category Dropdown */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Category *
-              </label>
-              <div className="relative">
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => handleCategorySelect(e.target.value as AssetCategory)}
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-900 font-bold appearance-none cursor-pointer transition shadow-xs pr-10"
-                >
-                  {ASSET_CATEGORIES.map((cat) => (
-                    <option key={cat.id} value={cat.id} className="text-slate-800 py-1 font-bold">
-                      {cat.name} ({cat.singular})
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-500">
-                  <ChevronDown className="w-4 h-4" />
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+            {/* Company / Enterprise Name & Category */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Company / Organization Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={mCompany}
+                  onChange={(e) => setMCompany(e.target.value)}
+                  placeholder="e.g. Sahana Garments Ltd"
+                  autoComplete="off"
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Category *
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => handleCategorySelect(e.target.value as AssetCategory)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-900 font-bold appearance-none cursor-pointer transition shadow-xs pr-10"
+                  >
+                    {ASSET_CATEGORIES.map((cat) => (
+                      <option key={cat.id} value={cat.id} className="text-slate-800 py-1 font-bold">
+                        {cat.name} ({cat.singular})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-500">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -559,7 +598,7 @@ export default function MachinesPage() {
                       type="button"
                       onClick={() => {
                         setIsCustomType(false);
-                        handleSubtypeChange(currentCategoryDef.subtypes[0].id);
+                        setMType('');
                       }}
                       className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
                     >
@@ -575,6 +614,7 @@ export default function MachinesPage() {
                     onChange={(e) => handleSubtypeChange(e.target.value as MachineType)}
                     className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-bold"
                   >
+                    <option value="" disabled>-- Select Asset Variety --</option>
                     {selectedCategory === 'FURNITURE' && furnitureGroups ? (
                       <>
                         <optgroup label="Work Tables & Workstations">
@@ -626,6 +666,7 @@ export default function MachinesPage() {
                         value={customTypeName}
                         onChange={(e) => setCustomTypeName(e.target.value)}
                         placeholder="e.g. Model Name"
+                        autoComplete="off"
                         className="w-full px-3 py-1.5 text-xs bg-white border border-indigo-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                         autoFocus
                       />
@@ -639,6 +680,7 @@ export default function MachinesPage() {
                         value={customSpecs}
                         onChange={(e) => setCustomSpecs(e.target.value)}
                         placeholder="e.g. Technical specifications"
+                        autoComplete="off"
                         className="w-full px-3 py-1.5 text-[11px] bg-white border border-indigo-200 rounded-lg text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
                     </div>
@@ -668,7 +710,7 @@ export default function MachinesPage() {
                       type="button"
                       onClick={() => {
                         setIsCustomBrand(false);
-                        setMBrand(availableBrands[0] || 'Generic OEM');
+                        setMBrand('');
                       }}
                       className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
                     >
@@ -691,6 +733,7 @@ export default function MachinesPage() {
                     }}
                     className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-bold"
                   >
+                    <option value="" disabled>-- Select Brand --</option>
                     <optgroup label="Available Brands">
                       {availableBrands.map((b) => (
                         <option key={b} value={b}>
@@ -717,6 +760,7 @@ export default function MachinesPage() {
                           setMBrand(e.target.value);
                         }}
                         placeholder="e.g. Brand Name"
+                        autoComplete="off"
                         className="w-full px-3 py-1.5 text-xs bg-white border border-indigo-300 rounded-lg text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                         autoFocus
                       />
@@ -738,6 +782,7 @@ export default function MachinesPage() {
                   value={mId}
                   onChange={(e) => setMId(e.target.value)}
                   placeholder="e.g. MC-OVK-4TH-101"
+                  autoComplete="off"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none font-mono font-bold text-slate-900"
                 />
               </div>
@@ -752,6 +797,7 @@ export default function MachinesPage() {
                   value={mModel}
                   onChange={(e) => setMModel(e.target.value)}
                   placeholder="e.g. AZ-8000G"
+                  autoComplete="off"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none font-medium text-slate-900"
                 />
               </div>
@@ -768,6 +814,7 @@ export default function MachinesPage() {
                   required
                   value={mDate}
                   onChange={(e) => setMDate(e.target.value)}
+                  autoComplete="off"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-medium"
                 />
               </div>
@@ -789,8 +836,9 @@ export default function MachinesPage() {
                 <input
                   type="number"
                   value={mCost}
-                  onChange={(e) => setMCost(parseFloat(e.target.value) || 0)}
-                  placeholder="65000"
+                  onChange={(e) => setMCost(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                  placeholder="e.g. 65000"
+                  autoComplete="off"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none font-mono font-medium text-slate-900"
                 />
               </div>
@@ -804,21 +852,13 @@ export default function MachinesPage() {
                 </label>
                 <input
                   type="text"
-                  list="unit-presets-list"
                   required
                   value={mUnit}
                   onChange={(e) => setMUnit(e.target.value)}
                   placeholder="e.g. Unit 01"
+                  autoComplete="off"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
                 />
-                <datalist id="unit-presets-list">
-                  <option value="Unit 01" />
-                  <option value="Unit 02" />
-                  <option value="Unit 03" />
-                  <option value="Unit 04" />
-                  <option value="Central Plant" />
-                  <option value="Warehouse Unit" />
-                </datalist>
               </div>
 
               <div>
@@ -827,28 +867,39 @@ export default function MachinesPage() {
                 </label>
                 <input
                   type="text"
-                  list="area-presets-list"
                   required
                   value={mArea}
                   onChange={(e) => setMArea(e.target.value)}
                   placeholder="e.g. Sewing Floor"
+                  autoComplete="off"
                   className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
                 />
-                <datalist id="area-presets-list">
-                  <option value="Sewing Floor" />
-                  <option value="Cutting Section" />
-                  <option value="Finishing & Ironing Section" />
-                  <option value="Embroidery & Printing Area" />
-                  <option value="Quality Inspection Zone" />
-                  <option value="Packing & Dispatch Bay" />
-                  <option value="Utility & Generator Room" />
-                  <option value="Maintenance Workshop" />
-                  <option value="Raw Material Storage" />
-                </datalist>
               </div>
             </div>
 
-            <div className="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+            {/* Station / Bay */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Station / Bay (Optional)
+              </label>
+              <input
+                type="text"
+                value={mStation}
+                onChange={(e) => setMStation(e.target.value)}
+                placeholder="e.g. Station 01, Cutting Bay 02"
+                autoComplete="off"
+                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-medium"
+              />
+            </div>
+
+            <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleResetForm}
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Clear Form
+              </button>
               <button
                 type="submit"
                 className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center gap-2 cursor-pointer"
@@ -902,11 +953,11 @@ export default function MachinesPage() {
                         Company / Unit / ID
                       </div>
                       <div className="text-xs sm:text-sm print:text-[9pt] font-black uppercase tracking-wider text-slate-800 truncate flex items-center gap-1">
-                        <span>TexTech</span>
+                        <span>{mCompany.trim() || 'Sahana'}</span>
                         <span className="text-slate-400">/</span>
-                        <span>{mUnit || 'Unit 01'}</span>
+                        <span>{mUnit.trim() || 'Unit'}</span>
                         <span className="text-slate-400">/</span>
-                        <span className="text-indigo-700 print:text-black font-mono">{mId || 'ASSET-101'}</span>
+                        <span className="text-indigo-700 print:text-black font-mono">{mId.trim() || 'ASSET-TAG'}</span>
                       </div>
                     </div>
 
@@ -916,7 +967,7 @@ export default function MachinesPage() {
                         Unique ID
                       </div>
                       <div className="text-lg sm:text-2xl print:text-[14pt] font-black text-slate-950 font-mono tracking-wide truncate leading-tight">
-                        {mId || 'ASSET-101'}
+                        {mId.trim() || 'ASSET-TAG'}
                       </div>
                     </div>
                   </div>

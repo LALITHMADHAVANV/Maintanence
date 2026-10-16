@@ -653,7 +653,7 @@ export function MechanicDeskDashboard({
                     </p>
 
                     <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap">
-                      <span>Line: <strong className="text-slate-600">{mch?.currentLine || 'Line 01'}</strong></span>
+                      <span>Line: <strong className="text-slate-600">{mch?.area || mch?.currentLine || 'Line 01'}</strong></span>
                       <span>•</span>
                       <span>Due: <strong className="text-slate-600">{p.nextDue}</strong></span>
                       {p.assignedBy && (

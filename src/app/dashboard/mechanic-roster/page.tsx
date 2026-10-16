@@ -172,7 +172,7 @@ export default function MechanicRosterPage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-700">
-              TexTech Apparel Group &bull; Unit 03 Coimbatore
+              Sahana Apparel Group &bull; Unit 03 Coimbatore
             </div>
             <h1 className="text-xl font-black text-slate-950 uppercase tracking-tight mt-0.5">
               {role === 'SENIOR_ELECTRICIAN'
