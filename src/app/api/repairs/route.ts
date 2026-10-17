@@ -53,7 +53,8 @@ export async function PATCH(req: Request) {
     const db = await getDatabase();
     await db.collection('repair_tickets').updateOne(
       { id },
-      { $set: updates }
+      { $set: updates },
+      { upsert: true }
     );
 
     return NextResponse.json({ success: true, message: `Repair ticket ${id} updated` });

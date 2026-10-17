@@ -11,6 +11,14 @@ import { MechanicDeskDashboard } from '@/components/dashboard/MechanicDeskDashbo
 import { StoreDashboard } from '@/components/dashboard/StoreDashboard';
 import { ExecutiveDashboard } from '@/components/dashboard/ExecutiveDashboard';
 
+import {
+  subscribeMachines,
+  subscribeRepairs,
+  subscribePPMSchedules,
+  subscribeParts,
+  subscribeRequisitions,
+} from '@/lib/services/cmmsService';
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
@@ -22,12 +30,38 @@ export default function DashboardPage() {
   const [ppmSchedules, setPpmSchedules] = useState<PPMSchedule[]>([]);
   const [parts, setParts] = useState<SparePart[]>([]);
   const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  // ─── Fetch all data ──────────────────────────────────────────────────
+  // ─── Immediate local reactive subscriptions ─────────────────────────
+  useEffect(() => {
+    const unsubMachines = subscribeMachines((data) => {
+      if (data && data.length > 0) setMachines(data);
+    });
+    const unsubRepairs = subscribeRepairs((data) => {
+      if (data && data.length > 0) setRepairs(data);
+    });
+    const unsubPpm = subscribePPMSchedules((data) => {
+      if (data && data.length > 0) setPpmSchedules(data);
+    });
+    const unsubParts = subscribeParts((data) => {
+      if (data && data.length > 0) setParts(data);
+    });
+    const unsubReqs = subscribeRequisitions((data) => {
+      if (data && data.length > 0) setRequisitions(data);
+    });
+
+    return () => {
+      unsubMachines();
+      unsubRepairs();
+      unsubPpm();
+      unsubParts();
+      unsubReqs();
+    };
+  }, []);
+
+  // ─── Fetch all data from MongoDB ─────────────────────────────────────
   const fetchAllData = async () => {
-    setDataLoading(true);
     try {
       const [machRes, repRes, ppmRes, partRes, reqRes] = await Promise.allSettled([
         fetch('/api/machines').then((r) => r.json()),
@@ -37,17 +71,26 @@ export default function DashboardPage() {
         fetch('/api/requisitions').then((r) => r.json()),
       ]);
 
-      if (machRes.status === 'fulfilled' && machRes.value?.data) setMachines(machRes.value.data);
-      if (repRes.status === 'fulfilled' && repRes.value?.data) setRepairs(repRes.value.data);
-      if (ppmRes.status === 'fulfilled' && ppmRes.value?.data) setPpmSchedules(ppmRes.value.data);
-      if (partRes.status === 'fulfilled' && partRes.value?.data) setParts(partRes.value.data);
-      if (reqRes.status === 'fulfilled' && reqRes.value?.data) setRequisitions(reqRes.value.data);
+      if (machRes.status === 'fulfilled' && machRes.value?.data?.length > 0) {
+        setMachines(machRes.value.data);
+      }
+      if (repRes.status === 'fulfilled' && repRes.value?.data?.length > 0) {
+        setRepairs(repRes.value.data);
+      }
+      if (ppmRes.status === 'fulfilled' && ppmRes.value?.data?.length > 0) {
+        setPpmSchedules(ppmRes.value.data);
+      }
+      if (partRes.status === 'fulfilled' && partRes.value?.data?.length > 0) {
+        setParts(partRes.value.data);
+      }
+      if (reqRes.status === 'fulfilled' && reqRes.value?.data?.length > 0) {
+        setRequisitions(reqRes.value.data);
+      }
 
       setLastRefresh(new Date());
     } catch {
       showToast('Failed to load dashboard data', 'error');
     }
-    setDataLoading(false);
   };
 
   useEffect(() => {

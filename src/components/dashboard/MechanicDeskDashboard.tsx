@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Timer,
   Play,
+  Pause,
   Check,
   X,
   ExternalLink,
@@ -36,8 +37,10 @@ import {
 import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
 import {
   startRepairTicket,
+  stopRepairTicket,
   resolveRepairTicket,
   startPPMTask,
+  stopPPMTask,
   completePPMTask,
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
@@ -81,13 +84,32 @@ export function MechanicDeskDashboard({
     );
   }, [userName]);
 
-  // My assigned tickets
+  // My assigned tickets (or floor open jobs if generic technician)
   const myTickets = useMemo(() => {
-    return repairs.filter(
-      (r) =>
-        r.attendedBy &&
-        r.attendedBy.toLowerCase() === userName.toLowerCase()
-    );
+    const userNameClean = (userName || '').trim().toLowerCase();
+    const firstName = userNameClean.split(' ')[0] || '';
+    const isGeneric =
+      !userNameClean ||
+      userNameClean.includes('mechanic') ||
+      userNameClean.includes('staff') ||
+      userNameClean === 'technician';
+
+    const matched = repairs.filter((r) => {
+      if (!r.attendedBy) return isGeneric;
+      const attendedClean = r.attendedBy.trim().toLowerCase();
+      return (
+        attendedClean === userNameClean ||
+        isGeneric ||
+        (firstName.length > 2 && attendedClean.includes(firstName)) ||
+        (attendedClean.split(' ')[0]?.length > 2 && userNameClean.includes(attendedClean.split(' ')[0]))
+      );
+    });
+
+    if (matched.length === 0) {
+      return repairs.filter((r) => r.status !== 'COMPLETED');
+    }
+
+    return matched;
   }, [repairs, userName]);
 
   const myOpenTickets = useMemo(() => {
@@ -151,9 +173,24 @@ export function MechanicDeskDashboard({
     try {
       await startRepairTicket(ticket.id, userName);
       showToast(`⚡ Work Order ${ticket.id} on ${ticket.machineId} ACCEPTED & STARTED! Live timer running for downtime tracking.`, 'success');
-      onRefresh();
+      setTimeout(() => {
+        onRefresh();
+      }, 500);
     } catch {
       showToast('Failed to start repair ticket', 'error');
+    }
+  };
+
+  // ─── Stop / Pause Repair Ticket ───────────────────────────────────
+  const handleStopRepair = async (ticket: RepairTicket) => {
+    try {
+      await stopRepairTicket(ticket.id);
+      showToast(`⏸️ Work paused / stopped on ${ticket.id} (${ticket.machineId}). Accrued downtime recorded.`, 'info');
+      setTimeout(() => {
+        onRefresh();
+      }, 500);
+    } catch {
+      showToast('Failed to stop/pause work order', 'error');
     }
   };
 
@@ -289,9 +326,23 @@ export function MechanicDeskDashboard({
     try {
       await startPPMTask(ppm.id, userName);
       showToast(`⚡ PPM Inspection on ${ppm.machineId} started! Live timer running for MTTR calculation.`, 'success');
-      onRefresh();
+      setTimeout(() => {
+        onRefresh();
+      }, 500);
     } catch {
       showToast('Failed to start PPM task', 'error');
+    }
+  };
+
+  const handleStopPPM = async (ppm: PPMSchedule) => {
+    try {
+      await stopPPMTask(ppm.id);
+      showToast(`⏸️ PPM inspection on ${ppm.machineId} paused / stopped.`, 'info');
+      setTimeout(() => {
+        onRefresh();
+      }, 500);
+    } catch {
+      showToast('Failed to pause/stop PPM inspection', 'error');
     }
   };
 
@@ -560,13 +611,21 @@ export function MechanicDeskDashboard({
               </button>
 
               {!activeJob.startedAt || activeJob.status !== 'IN_PROGRESS' ? (
-                <button
-                  onClick={() => handleStartRepair(activeJob)}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <Play className="w-4 h-4 fill-white" />
-                  <span>Accept & Start Work</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleStartRepair(activeJob)}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Play className="w-4 h-4 fill-white" />
+                    <span>Accept &amp; Start Work</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenResolve(activeJob)}
+                    className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Direct Resolve</span>
+                  </button>
+                </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 px-3 py-2 bg-blue-100 text-blue-800 rounded-xl text-xs font-mono font-bold border border-blue-200">
@@ -574,11 +633,19 @@ export function MechanicDeskDashboard({
                     <span>Live DT: {Math.max(1, Math.round((Date.now() - new Date(activeJob.startedAt).getTime()) / 60000))}m</span>
                   </div>
                   <button
+                    onClick={() => handleStopRepair(activeJob)}
+                    className="px-3.5 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-xl border border-amber-300 shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                    title="Stop or pause live repair work"
+                  >
+                    <Pause className="w-4 h-4" />
+                    <span>Stop / Pause Work</span>
+                  </button>
+                  <button
                     onClick={() => handleOpenResolve(activeJob)}
                     className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/25 transition cursor-pointer flex items-center gap-1.5"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Finish & Resolve Work Order</span>
+                    <span>Finish &amp; Resolve Work Order</span>
                   </button>
                 </div>
               )}
@@ -681,14 +748,25 @@ export function MechanicDeskDashboard({
                           <span>⚡ Start PPM Inspection</span>
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenInspectPPM(p)}
-                          className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Camera className="w-3.5 h-3.5" />
-                          <span>📷 Inspect &amp; Complete</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStopPPM(p)}
+                            className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition flex items-center gap-1 cursor-pointer"
+                            title="Pause or stop PPM inspection"
+                          >
+                            <Pause className="w-3.5 h-3.5" />
+                            <span>Stop</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenInspectPPM(p)}
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>📷 Inspect &amp; Complete</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -708,8 +786,10 @@ export function MechanicDeskDashboard({
         role={user?.role || 'MECHANIC'}
         onOpenResolve={handleOpenResolve}
         onStartRepair={handleStartRepair}
+        onStopRepair={handleStopRepair}
         onCompletePPM={(ppmId, machineId) => handleCompletePPM(ppmId, machineId)}
         onStartPPM={(ppm) => handleStartPPM(ppm)}
+        onStopPPM={(ppm) => handleStopPPM(ppm)}
         onInspectPPM={(ppm) => handleOpenInspectPPM(ppm)}
         onOpenCalendarDate={(dStr) => router.push(`/dashboard/calendar?date=${dStr}`)}
       />

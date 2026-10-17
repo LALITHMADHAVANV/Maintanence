@@ -14,6 +14,8 @@ import {
   X,
   ShieldCheck,
   Truck,
+  Play,
+  Pause,
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
@@ -29,8 +31,10 @@ interface MaintenanceMilestonesAndTasksProps {
   defaultTab?: 'schedules' | 'month_grid';
   onOpenResolve?: (ticket: RepairTicket) => void;
   onStartRepair?: (ticket: RepairTicket) => void;
+  onStopRepair?: (ticket: RepairTicket) => void;
   onCompletePPM?: (ppmId: string, machineId: string) => void;
   onStartPPM?: (ppm: PPMSchedule) => void;
+  onStopPPM?: (ppm: PPMSchedule) => void;
   onInspectPPM?: (ppm: PPMSchedule) => void;
   onOpenCalendarDate?: (dateString: string) => void;
   onOpenFullCalendar?: () => void;
@@ -96,8 +100,10 @@ export function MaintenanceMilestonesAndTasks({
   defaultTab,
   onOpenResolve,
   onStartRepair,
+  onStopRepair,
   onCompletePPM,
   onStartPPM,
+  onStopPPM,
   onInspectPPM,
   onOpenCalendarDate,
   onOpenFullCalendar,
@@ -537,34 +543,20 @@ export function MaintenanceMilestonesAndTasks({
     }
   }, [selectedGridDate]);
 
-  // Handle task click
+  // Handle task click: open task detail popup so technician can inspect details and start/stop/resolve
   const handleTaskClick = (task: MyTaskItem) => {
-    if (task.ticketObj && onOpenResolve) {
-      onOpenResolve(task.ticketObj);
-    } else if (task.ppmObj) {
-      const isStarted = !!task.ppmObj.startedAt || task.ppmObj.status === 'IN_PROGRESS';
-      if (!isStarted && onStartPPM) {
-        onStartPPM(task.ppmObj);
-      } else if (isStarted && onInspectPPM) {
-        onInspectPPM(task.ppmObj);
-      } else if (onCompletePPM) {
-        onCompletePPM(task.ppmObj.id, task.ppmObj.machineId);
-      }
-    } else {
-      setSelectedTaskDetail({
-        id: task.id,
-        title: task.title,
-        type: task.type,
-        machineId: task.code,
-        line: task.line,
-        stage: task.stage,
-        dueText: task.dueBadgeText,
-        dueBadgeStyle: task.dueBadgeStyle,
-        ticketObj: task.ticketObj,
-        ppmObj: task.ppmObj,
-      });
-      setIsTaskDrawerOpen(true);
-    }
+    setSelectedTaskDetail({
+      id: task.id,
+      title: task.title,
+      type: task.type,
+      machineId: task.code,
+      line: task.line,
+      stage: task.stage,
+      dueText: task.dueBadgeText,
+      dueBadgeStyle: task.dueBadgeStyle,
+      ticketObj: task.ticketObj,
+      ppmObj: task.ppmObj,
+    });
   };
 
   // ─── 5. LIVE FACTORY ATTENDANCE (MAPPED FROM FACTORY_MECHANICS_ROSTER) ────
@@ -743,23 +735,110 @@ export function MaintenanceMilestonesAndTasks({
                     >
                       {item.riskBadgeText}
                     </span>
-                    {!isSenior && item.type === 'TICKET' && item.ticketObj && onOpenResolve && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenResolve(item.ticketObj!)}
-                        className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
-                      >
-                        Resolve
-                      </button>
+                    {/* Action buttons for tickets and PPM */}
+                    {!isSenior && item.type === 'TICKET' && item.ticketObj && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {item.ticketObj.status !== 'IN_PROGRESS' ? (
+                          <>
+                            {onStartRepair && (
+                              <button
+                                type="button"
+                                onClick={() => onStartRepair(item.ticketObj!)}
+                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                                title="Start work on this order"
+                              >
+                                <Play className="w-3 h-3 fill-white" />
+                                <span>Start</span>
+                              </button>
+                            )}
+                            {onOpenResolve && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenResolve(item.ticketObj!)}
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                              >
+                                Resolve
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {onStopRepair && (
+                              <button
+                                type="button"
+                                onClick={() => onStopRepair(item.ticketObj!)}
+                                className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                                title="Stop or pause active work"
+                              >
+                                <Pause className="w-3 h-3" />
+                                <span>Stop</span>
+                              </button>
+                            )}
+                            {onOpenResolve && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenResolve(item.ticketObj!)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Resolve</span>
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     )}
-                    {!isSenior && item.type === 'PPM' && item.ppmObj && onCompletePPM && (
-                      <button
-                        type="button"
-                        onClick={() => onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId)}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
-                      >
-                        Complete
-                      </button>
+                    {!isSenior && item.type === 'PPM' && item.ppmObj && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {!item.ppmObj.startedAt && item.ppmObj.status !== 'IN_PROGRESS' ? (
+                          <>
+                            {onStartPPM && (
+                              <button
+                                type="button"
+                                onClick={() => onStartPPM(item.ppmObj!)}
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                              >
+                                <Play className="w-3 h-3 fill-white" />
+                                <span>Start</span>
+                              </button>
+                            )}
+                            {onCompletePPM && (
+                              <button
+                                type="button"
+                                onClick={() => onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                              >
+                                Complete
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {onStopPPM && (
+                              <button
+                                type="button"
+                                onClick={() => onStopPPM(item.ppmObj!)}
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                              >
+                                <Pause className="w-3 h-3" />
+                                <span>Stop</span>
+                              </button>
+                            )}
+                            {(onInspectPPM || onCompletePPM) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (onInspectPPM) onInspectPPM(item.ppmObj!);
+                                  else if (onCompletePPM) onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId);
+                                }}
+                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                              >
+                                Complete
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -961,15 +1040,55 @@ export function MaintenanceMilestonesAndTasks({
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                          {item.type === 'TICKET' && item.ticketObj && onOpenResolve && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenResolve(item.ticketObj!)}
-                              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
-                            >
-                              <Wrench className="w-3.5 h-3.5" />
-                              <span>Resolve</span>
-                            </button>
+                          {item.type === 'TICKET' && item.ticketObj && (
+                            item.ticketObj.status !== 'IN_PROGRESS' ? (
+                              <div className="flex items-center gap-1.5">
+                                {onStartRepair && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onStartRepair(item.ticketObj!)}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                                  >
+                                    <Play className="w-3.5 h-3.5 fill-white" />
+                                    <span>Start Work</span>
+                                  </button>
+                                )}
+                                {onOpenResolve && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenResolve(item.ticketObj!)}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                                  >
+                                    <Wrench className="w-3.5 h-3.5" />
+                                    <span>Resolve</span>
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                {onStopRepair && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onStopRepair(item.ticketObj!)}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                                    title="Pause or stop work"
+                                  >
+                                    <Pause className="w-3.5 h-3.5" />
+                                    <span>Stop Work</span>
+                                  </button>
+                                )}
+                                {onOpenResolve && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenResolve(item.ticketObj!)}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Resolve</span>
+                                  </button>
+                                )}
+                              </div>
+                            )
                           )}
                           {item.type === 'PPM' && item.ppmObj && (
                             !item.ppmObj.startedAt && item.ppmObj.status !== 'IN_PROGRESS' ? (
@@ -984,16 +1103,28 @@ export function MaintenanceMilestonesAndTasks({
                                 <span>⚡ Start PPM</span>
                               </button>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (onInspectPPM) onInspectPPM(item.ppmObj!);
-                                  else if (onCompletePPM) onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId);
-                                }}
-                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
-                              >
-                                <span>📷 Inspect &amp; Complete</span>
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                {onStopPPM && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onStopPPM(item.ppmObj!)}
+                                    className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Pause className="w-3.5 h-3.5" />
+                                    <span>Stop</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (onInspectPPM) onInspectPPM(item.ppmObj!);
+                                    else if (onCompletePPM) onCompletePPM(item.ppmObj!.id, item.ppmObj!.machineId);
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer shadow-2xs flex items-center gap-1.5"
+                                >
+                                  <span>📷 Inspect &amp; Complete</span>
+                                </button>
+                              </div>
                             )
                           )}
                           <button
@@ -1114,32 +1245,64 @@ export function MaintenanceMilestonesAndTasks({
                     )
                   ) : task.type === 'TICKET' && task.ticketObj ? (
                     !task.ticketObj.startedAt && task.ticketObj.status !== 'IN_PROGRESS' ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onStartRepair) onStartRepair(task.ticketObj!);
-                          else handleTaskClick(task);
-                        }}
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                        title="Click to accept work order and start live downtime tracking"
-                      >
-                        <span>⚡ Start Work</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onStartRepair) onStartRepair(task.ticketObj!);
+                            else handleTaskClick(task);
+                          }}
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                          title="Click to accept work order and start live downtime tracking"
+                        >
+                          <Play className="w-3 h-3 fill-white" />
+                          <span>Start Work</span>
+                        </button>
+                        {onOpenResolve && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenResolve(task.ticketObj!);
+                            }}
+                            className="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
+                            title="Directly resolve ticket"
+                          >
+                            Resolve
+                          </button>
+                        )}
+                      </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onOpenResolve) onOpenResolve(task.ticketObj!);
-                          else handleTaskClick(task);
-                        }}
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                        title="Click to resolve work order and submit downtime proof & costs"
-                      >
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Resolve</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {onStopRepair && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onStopRepair(task.ticketObj!);
+                            }}
+                            className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                            title="Click to pause or stop work on this order"
+                          >
+                            <Pause className="w-3 h-3" />
+                            <span>Stop</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onOpenResolve) onOpenResolve(task.ticketObj!);
+                            else handleTaskClick(task);
+                          }}
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                          title="Click to resolve work order and submit downtime proof & costs"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Resolve</span>
+                        </button>
+                      </div>
                     )
                   ) : (
                     <span
@@ -1366,16 +1529,77 @@ export function MaintenanceMilestonesAndTasks({
                           </button>
                         )
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsTaskDrawerOpen(false);
-                            handleTaskClick(task);
-                          }}
-                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                        >
-                          Attend
-                        </button>
+                        task.ticketObj ? (
+                          task.ticketObj.status !== 'IN_PROGRESS' ? (
+                            <div className="flex items-center gap-1.5">
+                              {onStartRepair && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsTaskDrawerOpen(false);
+                                    onStartRepair(task.ticketObj!);
+                                  }}
+                                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
+                                >
+                                  <Play className="w-3 h-3 fill-white" />
+                                  <span>Start</span>
+                                </button>
+                              )}
+                              {onOpenResolve && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsTaskDrawerOpen(false);
+                                    onOpenResolve(task.ticketObj!);
+                                  }}
+                                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                                >
+                                  Resolve
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              {onStopRepair && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsTaskDrawerOpen(false);
+                                    onStopRepair(task.ticketObj!);
+                                  }}
+                                  className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
+                                >
+                                  <Pause className="w-3 h-3" />
+                                  <span>Stop</span>
+                                </button>
+                              )}
+                              {onOpenResolve && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsTaskDrawerOpen(false);
+                                    onOpenResolve(task.ticketObj!);
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Resolve</span>
+                                </button>
+                              )}
+                            </div>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsTaskDrawerOpen(false);
+                              handleTaskClick(task);
+                            }}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                          >
+                            Inspect
+                          </button>
+                        )
                       )}
                     </div>
                   </div>
@@ -1444,19 +1668,71 @@ export function MaintenanceMilestonesAndTasks({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 pt-2">
-              {selectedTaskDetail.ticketObj && onOpenResolve && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const t = selectedTaskDetail.ticketObj!;
-                    setSelectedTaskDetail(null);
-                    onOpenResolve(t);
-                  }}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  Resolve &amp; Log Parts
-                </button>
+            <div className="flex items-center gap-2 pt-2 flex-wrap">
+              {selectedTaskDetail.ticketObj && (
+                selectedTaskDetail.ticketObj.status !== 'IN_PROGRESS' ? (
+                  <>
+                    {onStartRepair && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const t = selectedTaskDetail.ticketObj!;
+                          setSelectedTaskDetail(null);
+                          onStartRepair(t);
+                        }}
+                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Play className="w-4 h-4 fill-white" />
+                        <span>Start Work</span>
+                      </button>
+                    )}
+                    {onOpenResolve && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const t = selectedTaskDetail.ticketObj!;
+                          setSelectedTaskDetail(null);
+                          onOpenResolve(t);
+                        }}
+                        className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Wrench className="w-4 h-4" />
+                        <span>Resolve &amp; Log Parts</span>
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {onStopRepair && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const t = selectedTaskDetail.ticketObj!;
+                          setSelectedTaskDetail(null);
+                          onStopRepair(t);
+                        }}
+                        className="flex-1 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Pause className="w-4 h-4" />
+                        <span>Stop / Pause Work</span>
+                      </button>
+                    )}
+                    {onOpenResolve && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const t = selectedTaskDetail.ticketObj!;
+                          setSelectedTaskDetail(null);
+                          onOpenResolve(t);
+                        }}
+                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Resolve &amp; Log Parts</span>
+                      </button>
+                    )}
+                  </>
+                )
               )}
               {selectedTaskDetail.ppmObj && (
                 !selectedTaskDetail.ppmObj.startedAt && selectedTaskDetail.ppmObj.status !== 'IN_PROGRESS' ? (

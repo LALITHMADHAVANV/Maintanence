@@ -495,6 +495,58 @@ export async function startRepairTicket(ticketId: string, attendedBy?: string): 
   }
 }
 
+export async function stopRepairTicket(ticketId: string, notes?: string): Promise<void> {
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
+  const ticket = currentRepairs.find((t) => t.id === ticketId);
+  if (!ticket) return;
+
+  const now = Date.now();
+  let addedMinutes = 0;
+  if (ticket.startedAt) {
+    const startMs = new Date(ticket.startedAt).getTime();
+    if (!isNaN(startMs) && startMs < now) {
+      addedMinutes = Math.max(1, Math.round((now - startMs) / 60000));
+    }
+  }
+
+  const newDowntime = (ticket.downtimeMinutes || 0) + addedMinutes;
+  const newActionTaken = notes
+    ? `${ticket.actionTaken ? ticket.actionTaken + ' | ' : ''}Work paused: ${notes}`
+    : ticket.actionTaken;
+
+  const updatedRepairs = currentRepairs.map((t) =>
+    t.id === ticketId
+      ? {
+          ...t,
+          status: 'ASSIGNED' as const,
+          startedAt: null,
+          downtimeMinutes: newDowntime,
+          actionTaken: newActionTaken,
+        }
+      : t
+  );
+  setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
+  notifyLocal('repairs', updatedRepairs);
+
+  try {
+    await fetch('/api/repairs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ticketId,
+        updates: {
+          status: 'ASSIGNED',
+          startedAt: null,
+          downtimeMinutes: newDowntime,
+          actionTaken: newActionTaken,
+        },
+      }),
+    });
+  } catch (e) {
+    console.error('MongoDB stopRepairTicket error:', e);
+  }
+}
+
 export async function resolveRepairTicket(
   ticketId: string,
   downtimeMinutes: number,
@@ -910,6 +962,37 @@ export async function startPPMTask(
     });
   } catch (err) {
     console.warn('MongoDB startPPMTask fallback:', err);
+  }
+}
+
+export async function stopPPMTask(scheduleId: string): Promise<void> {
+  const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
+  const updatedSchedules = currentSchedules.map((s) =>
+    s.id === scheduleId
+      ? {
+          ...s,
+          startedAt: undefined,
+          status: 'SCHEDULED' as const,
+        }
+      : s
+  );
+  setLocal(STORAGE_KEYS.PPM, updatedSchedules);
+  notifyLocal('ppm', updatedSchedules);
+
+  try {
+    await fetch('/api/ppm', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: scheduleId,
+        updates: {
+          startedAt: null,
+          status: 'SCHEDULED',
+        },
+      }),
+    });
+  } catch (err) {
+    console.warn('MongoDB stopPPMTask fallback:', err);
   }
 }
 

@@ -45,7 +45,8 @@ export async function PATCH(req: Request) {
     const db = await getDatabase();
     await db.collection('ppm_schedules').updateOne(
       { id },
-      { $set: updates }
+      { $set: updates },
+      { upsert: true }
     );
 
     return NextResponse.json({ success: true, message: `PPM schedule ${id} updated` });

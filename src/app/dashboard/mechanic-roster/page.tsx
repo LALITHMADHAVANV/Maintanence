@@ -19,6 +19,8 @@ import {
   UserCheck,
   Sparkles,
   ArrowLeft,
+  Play,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 import { RepairTicket, PPMSchedule, Machine } from '@/types/cmms';
@@ -28,6 +30,7 @@ import {
   subscribePPMSchedules,
   assignRepairTicket,
   completePPMTask,
+  startRepairTicket,
 } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -152,6 +155,21 @@ export default function MechanicRosterPage() {
     } catch (e) {
       console.error(e);
       showToast('Error reassigning work ticket.', 'error');
+    }
+  };
+
+  const handleStartWork = async (ticket: RepairTicket, mechanicName: string) => {
+    try {
+      // Use attendedBy if already set, otherwise stamp the mechanic's name
+      const workerName = ticket.attendedBy || mechanicName;
+      await startRepairTicket(ticket.id, workerName);
+      showToast(
+        `⚡ Work started on ${ticket.machineId} (${ticket.id}) — downtime clock is now running!`,
+        'success'
+      );
+    } catch (e) {
+      console.error(e);
+      showToast('Error starting work on ticket.', 'error');
     }
   };
 
@@ -515,6 +533,13 @@ export default function MechanicRosterPage() {
                     {tickets.map((t) => {
                       const isCrit = t.urgency === 'CRITICAL';
                       const isDone = t.status === 'COMPLETED';
+                      const isInProgress = t.status === 'IN_PROGRESS';
+                      const startedAtTime = t.startedAt
+                        ? new Date(t.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : null;
+                      const elapsedMins = t.startedAt
+                        ? Math.max(1, Math.round((Date.now() - new Date(t.startedAt).getTime()) / 60000))
+                        : null;
 
                       return (
                         <div
@@ -522,6 +547,8 @@ export default function MechanicRosterPage() {
                           className={`p-3.5 rounded-xl border text-xs space-y-2 transition ${
                             isDone
                               ? 'bg-slate-50 border-slate-200 opacity-80'
+                              : isInProgress
+                              ? 'bg-blue-50/50 border-blue-300 ring-1 ring-blue-300'
                               : isCrit
                               ? 'bg-rose-50/50 border-rose-200 ring-1 ring-rose-200'
                               : 'bg-amber-50/40 border-amber-200'
@@ -533,6 +560,8 @@ export default function MechanicRosterPage() {
                                 className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
                                   isDone
                                     ? 'bg-emerald-100 text-emerald-800'
+                                    : isInProgress
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-300 animate-pulse'
                                     : t.status === 'ASSIGNED'
                                     ? 'bg-violet-100 text-violet-800 border border-violet-200'
                                     : isCrit
@@ -540,9 +569,15 @@ export default function MechanicRosterPage() {
                                     : 'bg-amber-100 text-amber-800'
                                 }`}
                               >
-                                {isDone ? 'RESOLVED' : t.status === 'ASSIGNED' ? 'ASSIGNED' : t.urgency} • {t.faultCategory}
+                                {isDone ? 'RESOLVED' : isInProgress ? 'IN PROGRESS' : t.status === 'ASSIGNED' ? 'ASSIGNED' : t.urgency} • {t.faultCategory}
                               </span>
-                              {t.status === 'ASSIGNED' && (
+                              {isInProgress && startedAtTime && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
+                                  <Clock className="w-2.5 h-2.5 text-blue-600 animate-spin" />
+                                  <span>Started {startedAtTime} • {elapsedMins}m elapsed</span>
+                                </span>
+                              )}
+                              {!isInProgress && t.status === 'ASSIGNED' && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
                                   <UserCheck className="w-2.5 h-2.5 text-violet-600" />
                                   <span>Assigned by {t.assignedBy || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic')}</span>
@@ -563,13 +598,49 @@ export default function MechanicRosterPage() {
                                 Location: <span className="font-semibold text-indigo-700">{t.line}</span>
                               </div>
                             </div>
-                            {isDone && (
+                            {isDone ? (
                               <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                                 <CheckCheck className="w-3 h-3" />
                                 <span>{t.downtimeMinutes}m Downtime</span>
                               </span>
-                            )}
+                            ) : isInProgress ? (
+                              <span className="text-[10px] font-bold text-blue-800 bg-blue-100 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-blue-300">
+                                <Clock className="w-3 h-3 text-blue-600 animate-spin" />
+                                <span>Live DT: {elapsedMins}m</span>
+                              </span>
+                            ) : null}
                           </div>
+
+                          {/* Start Work Log Banner */}
+                          {!isDone && !isInProgress && (
+                            <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 text-[10px] text-indigo-700 font-semibold">
+                                <Clock className="w-3 h-3 text-indigo-500" />
+                                <span>Not started — click to log start time &amp; begin downtime tracking</span>
+                              </div>
+                              <button
+                                onClick={() => handleStartWork(t, mechanic.name)}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg transition cursor-pointer shadow-xs whitespace-nowrap"
+                                title="Log start time for this work order"
+                              >
+                                <Play className="w-2.5 h-2.5 fill-white" />
+                                <span>Start Work Log</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* In-Progress Time Log Display */}
+                          {isInProgress && startedAtTime && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-center gap-2 text-[10px] text-blue-800 font-semibold">
+                              <Clock className="w-3 h-3 text-blue-600 animate-spin shrink-0" />
+                              <span>
+                                Work log started at <strong>{startedAtTime}</strong> — downtime clock running
+                              </span>
+                              <span className="ml-auto px-2 py-0.5 bg-blue-600 text-white rounded font-mono font-bold">
+                                {elapsedMins}m
+                              </span>
+                            </div>
+                          )}
 
                           <p className="text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
                             {t.faultDetails}
