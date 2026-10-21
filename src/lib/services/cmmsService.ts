@@ -69,21 +69,25 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
  */
 export function initLocalSeedData(): void {
   if (typeof window === 'undefined') return;
-  const cacheVersion = 'cmms_v9_plant_495';
+  const cacheVersion = 'cmms_v11_plant_495_unit2_full';
   if (localStorage.getItem('cmms_cache_ver') !== cacheVersion) {
     localStorage.removeItem(STORAGE_KEYS.MACHINES);
     localStorage.removeItem(STORAGE_KEYS.SEEDED);
     localStorage.setItem('cmms_cache_ver', cacheVersion);
   }
   const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
-  if (!currentMachines || currentMachines.length === 0) {
+  if (!currentMachines || currentMachines.length < (plantAssetsSeed as any).length) {
     setLocal(STORAGE_KEYS.MACHINES, plantAssetsSeed as unknown as Machine[]);
   }
 
-  const sparesCacheVer = 'cmms_spares_v260_mapped';
+  const sparesCacheVer = 'cmms_spares_v260_mapped_full';
   if (localStorage.getItem('cmms_spares_cache_ver') !== sparesCacheVer) {
     localStorage.removeItem(STORAGE_KEYS.PARTS);
     localStorage.setItem('cmms_spares_cache_ver', sparesCacheVer);
+    setLocal(STORAGE_KEYS.PARTS, factorySparesSeed as unknown as SparePart[]);
+  }
+  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
+  if (!currentParts || currentParts.length < (factorySparesSeed as any).length) {
     setLocal(STORAGE_KEYS.PARTS, factorySparesSeed as unknown as SparePart[]);
   }
 }

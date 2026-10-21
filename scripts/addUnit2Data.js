@@ -252,17 +252,19 @@ function getUnit2Items(unit1Items) {
 }
 
 async function run() {
-  const unit1 = getUnit1Items();
-  console.log(`Unit 1 items: ${unit1.length}`);
-  const unit2 = getUnit2Items(unit1);
-  console.log(`Unit 2 items: ${unit2.length}`);
-
-  const combined = [...unit1, ...unit2];
-  console.log(`Total combined items: ${combined.length}`);
-
   const seedPath = path.join(__dirname, '../src/data/plantAssetsSeed.json');
-  fs.writeFileSync(seedPath, JSON.stringify(combined, null, 2), 'utf8');
-  console.log(`Saved to ${seedPath}`);
+  let combined;
+  if (fs.existsSync(seedPath)) {
+    combined = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+  }
+  if (!combined || combined.length < 495) {
+    const unit1 = getUnit1Items();
+    console.log(`Unit 1 items: ${unit1.length}`);
+    const unit2 = getUnit2Items(unit1);
+    console.log(`Unit 2 items: ${unit2.length}`);
+    combined = [...unit1, ...unit2];
+  }
+  console.log(`Total plant machines to sync: ${combined.length}`);
 
   let uri = process.env.MONGODB_URI;
   if (!uri) {
@@ -282,9 +284,16 @@ async function run() {
     await client.connect();
     const db = client.db('textech_cmms');
     const collection = db.collection('machines');
-    await collection.deleteMany({});
-    const res = await collection.insertMany(combined);
-    console.log(`Seeded ${res.insertedCount} machines into MongoDB!`);
+    // Upsert all machines by id to avoid destructive wiping
+    const ops = combined.map((m) => ({
+      updateOne: {
+        filter: { id: m.id },
+        update: { $set: m },
+        upsert: true,
+      },
+    }));
+    const res = await collection.bulkWrite(ops);
+    console.log(`Synced ${res.upsertedCount + res.modifiedCount} machines in MongoDB! Total count now: ${await collection.countDocuments()}`);
   } catch (e) {
     console.error('Mongo error:', e);
   } finally {

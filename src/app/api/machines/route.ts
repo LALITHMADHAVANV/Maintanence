@@ -6,9 +6,33 @@ import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 export async function GET() {
   try {
     const db = await getDatabase();
-    const machines = await db.collection<Machine>('machines').find({}).toArray();
+    let machines = await db.collection<Machine>('machines').find({}).toArray();
+
+    // If database has fewer machines than our comprehensive seed (e.g. if Unit 2 was incomplete),
+    // automatically sync missing seed machines so all 495 plant assets are always present.
+    if (!machines || machines.length < plantAssetsSeed.length) {
+      try {
+        const existingIds = new Set((machines || []).map((m: any) => (m.id || '').toUpperCase()));
+        const missingSeed = (plantAssetsSeed as Machine[]).filter(
+          (seedM) => !existingIds.has((seedM.id || '').toUpperCase())
+        );
+        if (missingSeed.length > 0) {
+          const ops = missingSeed.map((m) => ({
+            updateOne: {
+              filter: { id: m.id },
+              update: { $set: m },
+              upsert: true,
+            },
+          }));
+          await db.collection('machines').bulkWrite(ops);
+          machines = await db.collection<Machine>('machines').find({}).toArray();
+        }
+      } catch (syncErr) {
+        console.warn('Machine auto-sync warning:', syncErr);
+      }
+    }
+
     if (machines && machines.length > 0) {
-      // Normalize _id out or keep id
       const cleanMachines = machines.map(({ _id, ...m }: any) => m);
       return NextResponse.json({ success: true, data: cleanMachines });
     }

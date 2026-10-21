@@ -129,25 +129,25 @@ export default function DashboardPage() {
 
   const scopedRepairs = useMemo(() => {
     if (!effectiveUnit || effectiveUnit === 'All Units') return repairs;
-    const machineIdSet = new Set(scopedMachines.map((m) => m.id));
-    return repairs.filter((r) => !r.machineId || machineIdSet.has(r.machineId));
+    const machineIdSet = new Set(scopedMachines.map((m) => (m.id || '').toUpperCase()));
+    return repairs.filter((r) => !r.machineId || machineIdSet.has((r.machineId || '').toUpperCase()));
   }, [repairs, scopedMachines, effectiveUnit]);
 
   const scopedPpmSchedules = useMemo(() => {
     if (!effectiveUnit || effectiveUnit === 'All Units') return ppmSchedules;
-    const machineIdSet = new Set(scopedMachines.map((m) => m.id));
-    return ppmSchedules.filter((p) => !p.machineId || machineIdSet.has(p.machineId));
+    const machineIdSet = new Set(scopedMachines.map((m) => (m.id || '').toUpperCase()));
+    return ppmSchedules.filter((p) => !p.machineId || machineIdSet.has((p.machineId || '').toUpperCase()));
   }, [ppmSchedules, scopedMachines, effectiveUnit]);
 
   const scopedParts = useMemo(() => {
-    if (!effectiveUnit || effectiveUnit === 'All Units') return parts;
-    return parts.filter((p) => !(p as any).unit || matchesUnit((p as any).unit, effectiveUnit));
-  }, [parts, effectiveUnit]);
+    // Spare parts are factory-wide inventory, categorized and mapped by machine type
+    return parts;
+  }, [parts]);
 
   const scopedRequisitions = useMemo(() => {
     if (!effectiveUnit || effectiveUnit === 'All Units') return requisitions;
-    const machineIdSet = new Set(scopedMachines.map((m) => m.id));
-    return requisitions.filter((r) => !r.machineId || machineIdSet.has(r.machineId));
+    const machineIdSet = new Set(scopedMachines.map((m) => (m.id || '').toUpperCase()));
+    return requisitions.filter((r) => !r.machineId || machineIdSet.has((r.machineId || '').toUpperCase()));
   }, [requisitions, scopedMachines, effectiveUnit]);
 
   return (

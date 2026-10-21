@@ -12,10 +12,23 @@ export async function GET() {
     const col = db.collection<SparePart>('spare_parts');
     let parts = await col.find({}).toArray();
 
-    if (!parts || parts.length === 0) {
+    if (!parts || parts.length < factorySparesSeed.length) {
       try {
-        await col.insertMany(factorySparesSeed as unknown as SparePart[]);
-        parts = await col.find({}).toArray();
+        const existingIds = new Set((parts || []).map((p: any) => (p.partId || p.id || '').toUpperCase()));
+        const missingSeed = (factorySparesSeed as unknown as SparePart[]).filter(
+          (sp) => !existingIds.has((sp.partId || (sp as any).id || '').toUpperCase())
+        );
+        if (missingSeed.length > 0) {
+          const ops = missingSeed.map((sp) => ({
+            updateOne: {
+              filter: { $or: [{ id: (sp as any).id || sp.partId }, { partId: sp.partId }] },
+              update: { $set: sp },
+              upsert: true,
+            },
+          }));
+          await col.bulkWrite(ops);
+          parts = await col.find({}).toArray();
+        }
       } catch (seedErr) {
         console.warn('Auto-seed parts failed, serving static seed:', seedErr);
         return NextResponse.json({ success: true, data: factorySparesSeed });
