@@ -59,6 +59,7 @@ import { ScanModal } from '@/components/scan/ScanModal';
 import { AssetModal } from '@/components/asset/AssetModal';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import {
   MACHINE_CATALOG,
   MachineCategoryGroup,
@@ -294,8 +295,26 @@ export function getCategoryMeta(category?: AssetCategory, asset?: Machine) {
 
 export default function FloorTrackerPage() {
   const { showToast } = useToast();
-  const { role } = useAuth();
-  const [machines, setMachines] = useState<Machine[]>([]);
+  const { user, role } = useAuth();
+  const isAdmin = isUserAdmin(role);
+  const [selectedUnit, setSelectedUnit] = useState<string>(() => {
+    if (isUserAdmin(role)) return 'ALL';
+    return getUserScopedUnit(user, role);
+  });
+  const effectiveUnit = getUserScopedUnit(user, role, selectedUnit === 'ALL' ? null : selectedUnit);
+
+  useEffect(() => {
+    if (!isUserAdmin(role)) {
+      setSelectedUnit(getUserScopedUnit(user, role));
+    }
+  }, [user, role]);
+
+  const [rawMachines, setRawMachines] = useState<Machine[]>([]);
+  const machines = useMemo(() => {
+    if (isAdmin && selectedUnit === 'ALL') return rawMachines;
+    return rawMachines.filter((m) => matchesUnit(m.unit, effectiveUnit));
+  }, [rawMachines, isAdmin, selectedUnit, effectiveUnit]);
+
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [targetMoveMachineId, setTargetMoveMachineId] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -374,7 +393,7 @@ export default function FloorTrackerPage() {
   const [hasCheckedUrlParams, setHasCheckedUrlParams] = useState(false);
 
   useEffect(() => {
-    const unsub = subscribeMachines((data) => setMachines(data));
+    const unsub = subscribeMachines((data) => setRawMachines(data));
     return () => unsub();
   }, []);
 
@@ -666,7 +685,7 @@ export default function FloorTrackerPage() {
       purchaseDate: new Date().toISOString().split('T')[0],
       cost: typeof newCost === 'number' ? newCost : Number(newCost) || 0,
       status: newStatus,
-      unit: 'Unit 01',
+      unit: !isAdmin ? effectiveUnit : (selectedUnit !== 'ALL' ? selectedUnit : user?.unit || 'UNIT - 1'),
       area: newDepartment || newLine,
       currentLine: newLine,
       stationNo: newStation.trim() || 'Unassigned Station',
@@ -741,7 +760,21 @@ export default function FloorTrackerPage() {
               <span>Plant Enterprise CMMS</span>
             </span>
             <span className="text-slate-300">•</span>
-            <span className="text-xs font-semibold text-slate-500">Coimbatore Unit 03</span>
+            {isAdmin ? (
+              <select
+                value={selectedUnit}
+                onChange={(e) => setSelectedUnit(e.target.value)}
+                className="text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-2 py-0.5 text-slate-800 outline-none cursor-pointer"
+              >
+                <option value="ALL">All Plants</option>
+                <option value="UNIT - 1">UNIT - 1</option>
+                <option value="UNIT-2">UNIT-2</option>
+              </select>
+            ) : (
+              <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                {effectiveUnit}
+              </span>
+            )}
             <span className="text-slate-300">•</span>
             <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />

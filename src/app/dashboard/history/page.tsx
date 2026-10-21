@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
 import { QRCodeSVG } from 'qrcode.react';
 import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
@@ -248,6 +249,8 @@ export default function HistoryPage() {
     }
   }, [role, router]);
 
+  const isAdmin = isUserAdmin(role);
+  const effectiveUnit = getUserScopedUnit(user, role);
   const isExecutiveOrAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER';
   const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('ASSETS');
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
@@ -311,10 +314,17 @@ export default function HistoryPage() {
     }
   };
 
-  // Combined items populated strictly from live registered machines, repairs, and PPM
+  // Combined items populated strictly from live registered machines, repairs, and PPM (scoped to unit for non-admins)
   const allItems = useMemo(() => {
-    const initialIds = new Set(items.map((i) => i.assetId.toLowerCase()));
-    const extraLive: AssetHistoryRecord[] = liveMachines
+    const scopedLiveMachines = !isAdmin
+      ? liveMachines.filter((m) => matchesUnit(m.unit, effectiveUnit))
+      : liveMachines;
+    const scopedInitialItems = !isAdmin
+      ? items.filter((i) => matchesUnit(i.unit, effectiveUnit))
+      : items;
+
+    const initialIds = new Set(scopedInitialItems.map((i) => i.assetId.toLowerCase()));
+    const extraLive: AssetHistoryRecord[] = scopedLiveMachines
       .filter((m) => !initialIds.has(m.id.toLowerCase()))
       .map((m) => {
         const cost = typeof m.cost === 'number' ? m.cost : 0;
@@ -420,8 +430,8 @@ export default function HistoryPage() {
         };
       });
 
-    return [...items, ...extraLive];
-  }, [items, liveMachines, liveRepairs, livePpm]);
+    return [...scopedInitialItems, ...extraLive];
+  }, [items, liveMachines, liveRepairs, livePpm, isAdmin, effectiveUnit]);
 
   // Helper to resolve assigned mechanic for an asset
   const getAssetMechanic = (asset: AssetHistoryRecord): string => {

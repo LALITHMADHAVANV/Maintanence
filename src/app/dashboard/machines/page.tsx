@@ -22,12 +22,17 @@ import {
   CalendarCheck,
   Boxes,
   QrCode,
+  Pencil,
+  Search,
+  X,
 } from 'lucide-react';
+import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { QRCodeSVG } from 'qrcode.react';
 import { Machine, MachineType, MotorType, FloorLine, MachineStatus, AssetCategory } from '@/types/cmms';
 import { subscribeMachines, createMachine } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { ScanModal } from '@/components/scan/ScanModal';
 import { PrintableAssetDocumentModal } from '@/components/print/PrintableAssetDocumentModal';
 import {
@@ -37,10 +42,12 @@ import {
   getAssetCategoryForType,
   AssetSubtypeDef,
 } from '@/lib/machineCatalog';
+import { PDF_MACHINE_TYPES, PDF_MACHINE_MAKES } from '@/app/dashboard/asset-types/page';
 
 export default function MachinesPage() {
   const { showToast } = useToast();
-  const { role } = useAuth();
+  const { user, role } = useAuth();
+  const isAdmin = isUserAdmin(role);
   const [machines, setMachines] = useState<Machine[]>([]);
 
   // Asset Form State
@@ -53,10 +60,20 @@ export default function MachinesPage() {
   const [mDate, setMDate] = useState('');
   const [mCost, setMCost] = useState<number | ''>('');
   const [mMotor, setMMotor] = useState<MotorType>('SERVO');
-  const [mUnit, setMUnit] = useState<string>('');
+  const [mUnit, setMUnit] = useState<string>(() => {
+    if (!isUserAdmin(role)) return getUserScopedUnit(user, role);
+    return user?.unit && user.unit !== 'All Units' ? user.unit : 'UNIT - 1';
+  });
+  const effectiveUnit = getUserScopedUnit(user, role, mUnit || null);
   const [mArea, setMArea] = useState<string>('');
   const [mLine, setMLine] = useState<FloorLine>('Line 01');
   const [mStation, setMStation] = useState('');
+
+  useEffect(() => {
+    if (!isUserAdmin(role)) {
+      setMUnit(getUserScopedUnit(user, role));
+    }
+  }, [user, role]);
 
   // QR generated state
   const [isQrGenerated, setIsQrGenerated] = useState(false);
@@ -79,6 +96,12 @@ export default function MachinesPage() {
   const [customTypeName, setCustomTypeName] = useState('');
   const [customSpecs, setCustomSpecs] = useState('');
 
+  // Edit Existing Asset State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
+  const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
+  const [pickerSearchQuery, setPickerSearchQuery] = useState('');
+
   // Host origin for QR payload
   const [origin, setOrigin] = useState('https://sahana.factory');
 
@@ -86,9 +109,9 @@ export default function MachinesPage() {
     if (typeof window !== 'undefined') {
       setOrigin(window.location.origin);
       try {
-        const savedBrands = localStorage.getItem('textech_custom_brands');
+        const savedBrands = localStorage.getItem('sahana_custom_brands') || localStorage.getItem('textech_custom_brands');
         if (savedBrands) setCustomBrands(JSON.parse(savedBrands));
-        const savedSubtypes = localStorage.getItem('textech_custom_subtypes');
+        const savedSubtypes = localStorage.getItem('sahana_custom_subtypes') || localStorage.getItem('textech_custom_subtypes');
         if (savedSubtypes) setCustomSubtypes(JSON.parse(savedSubtypes));
       } catch (e) {
         console.error('Failed to load custom catalog from localStorage', e);
@@ -146,6 +169,9 @@ export default function MachinesPage() {
 
   // Available brands for the current subtype or category (combines OEM catalog + custom brands)
   const availableBrands: string[] = useMemo(() => {
+    if (selectedCategory === 'MACHINE') {
+      return Array.from(new Set([...PDF_MACHINE_MAKES, ...customBrands])).filter(Boolean);
+    }
     const subDef =
       (mType && ASSET_SUBTYPE_LOOKUP[mType]) || customSubtypes.find((s) => s.id === mType);
     let brands: string[] = [];
@@ -155,7 +181,7 @@ export default function MachinesPage() {
       brands = currentCategoryDef.subtypes.flatMap((s) => s.brands);
     }
     return Array.from(new Set([...brands, ...customBrands])).filter(Boolean);
-  }, [mType, currentCategoryDef, customBrands, customSubtypes]);
+  }, [mType, currentCategoryDef, customBrands, customSubtypes, selectedCategory]);
 
   // Handler for category switch
   const handleCategorySelect = (cat: AssetCategory) => {
@@ -241,7 +267,7 @@ export default function MachinesPage() {
         const nextBrands = [...customBrands, trimmed];
         setCustomBrands(nextBrands);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('textech_custom_brands', JSON.stringify(nextBrands));
+          localStorage.setItem('sahana_custom_brands', JSON.stringify(nextBrands));
         }
       }
     }
@@ -279,7 +305,7 @@ export default function MachinesPage() {
       const nextSubtypes = [...customSubtypes, newDef];
       setCustomSubtypes(nextSubtypes);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('textech_custom_subtypes', JSON.stringify(nextSubtypes));
+        localStorage.setItem('sahana_custom_subtypes', JSON.stringify(nextSubtypes));
       }
     }
 
@@ -307,7 +333,7 @@ export default function MachinesPage() {
       purchaseDate: mDate,
       cost: typeof mCost === 'number' ? mCost : Number(mCost) || 0,
       status: 'ACTIVE',
-      unit: mUnit.trim() || 'Unassigned Unit',
+      unit: !isAdmin ? effectiveUnit : (mUnit.trim() || 'UNIT - 1'),
       area: mArea.trim() || 'Unassigned Area',
       currentLine: userLine,
       department: userDept,
@@ -516,7 +542,15 @@ export default function MachinesPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsAssetPickerOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white transition cursor-pointer shadow-xs"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            <span>Edit Existing Asset</span>
+          </button>
           <Link
             href="/dashboard/asset-types"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
@@ -615,7 +649,15 @@ export default function MachinesPage() {
                     className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-bold"
                   >
                     <option value="" disabled>-- Select Asset Variety --</option>
-                    {selectedCategory === 'FURNITURE' && furnitureGroups ? (
+                    {selectedCategory === 'MACHINE' ? (
+                      <optgroup label="Plant Sheet Machine Types (from PDF)">
+                        {PDF_MACHINE_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : selectedCategory === 'FURNITURE' && furnitureGroups ? (
                       <>
                         <optgroup label="Work Tables & Workstations">
                           {furnitureGroups.tables.map((sub) => (
@@ -631,15 +673,6 @@ export default function MachinesPage() {
                             </option>
                           ))}
                         </optgroup>
-                        {furnitureGroups.others.length > 0 && (
-                          <optgroup label="Other Furniture Models">
-                            {furnitureGroups.others.map((sub) => (
-                              <option key={sub.id} value={sub.id}>
-                                {sub.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
                       </>
                     ) : (
                       <optgroup label={`Standard ${currentCategoryDef.singular} Models`}>
@@ -848,16 +881,21 @@ export default function MachinesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Plant Unit *
+                  Plant Unit * {!isAdmin && <span className="text-[10px] text-indigo-600 font-bold">(Locked to your assigned unit)</span>}
                 </label>
                 <input
                   type="text"
                   required
-                  value={mUnit}
+                  readOnly={!isAdmin}
+                  value={!isAdmin ? effectiveUnit : mUnit}
                   onChange={(e) => setMUnit(e.target.value)}
                   placeholder="e.g. Unit 01"
                   autoComplete="off"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
+                  className={`w-full px-3 py-2 text-sm border rounded-xl outline-none font-semibold ${
+                    !isAdmin
+                      ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800'
+                  }`}
                 />
               </div>
 
@@ -1040,6 +1078,123 @@ export default function MachinesPage() {
           initialMode={printModalMode}
         />
       )}
+
+      {/* Asset Search & Select Modal for Editing */}
+      {isAssetPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="p-4 sm:p-5 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Select Asset to Edit</h3>
+                  <p className="text-xs text-slate-500">Search plant machinery or assets to update details</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAssetPickerOpen(false);
+                  setPickerSearchQuery('');
+                }}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-slate-100 bg-white shrink-0">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={pickerSearchQuery}
+                  onChange={(e) => setPickerSearchQuery(e.target.value)}
+                  placeholder="Search by M/C NO, brand (Juki, Jack), type (SNLS, O/L), or location..."
+                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 divide-y divide-slate-100">
+              {machines
+                .filter((m) => {
+                  if (!isAdmin && !matchesUnit(m.unit, effectiveUnit)) return false;
+                  if (!pickerSearchQuery.trim()) return true;
+                  const q = pickerSearchQuery.toLowerCase();
+                  return (
+                    m.id?.toLowerCase().includes(q) ||
+                    m.name?.toLowerCase().includes(q) ||
+                    m.brand?.toLowerCase().includes(q) ||
+                    m.model?.toLowerCase().includes(q) ||
+                    m.type?.toLowerCase().includes(q) ||
+                    m.typeName?.toLowerCase().includes(q) ||
+                    m.area?.toLowerCase().includes(q) ||
+                    m.unit?.toLowerCase().includes(q)
+                  );
+                })
+                .slice(0, 50)
+                .map((m) => (
+                  <div
+                    key={m.id}
+                    className="py-2.5 px-3 hover:bg-indigo-50/50 rounded-xl transition flex items-center justify-between gap-3 group"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-slate-900 group-hover:text-indigo-600 transition">
+                          {m.id}
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                          {m.typeName || m.type}
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {m.brand} {m.model}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                        <span>{m.area || 'NETHAJI'}</span>
+                        <span>•</span>
+                        <span>{m.unit || 'UNIT - 1'}</span>
+                        <span>•</span>
+                        <span className="font-mono text-slate-400">Year: {(m as any).year || m.purchaseDate?.slice(0, 4) || '—'}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingMachine(m);
+                        setIsAssetPickerOpen(false);
+                        setIsEditModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs cursor-pointer shrink-0"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>Edit</span>
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Asset Information Modal */}
+      <EditAssetModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingMachine(null);
+        }}
+        asset={editingMachine}
+        onSave={(updated) => {
+          setMachines((prev) =>
+            prev.map((m) => (m.id === updated.id || m.id === editingMachine?.id ? updated : m))
+          );
+        }}
+      />
     </div>
   );
 }

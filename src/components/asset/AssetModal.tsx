@@ -26,7 +26,9 @@ import {
   Printer,
   Truck,
   SlidersHorizontal,
+  Pencil,
 } from 'lucide-react';
+import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { Machine, FloorLine, AssetCategory, MachineStatus, RepairUrgency } from '@/types/cmms';
 import { createBreakdownTicket, relocateMachine, updateMachineStatus } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
@@ -581,6 +583,7 @@ export function AssetModal({
   );
   const [activeTab, setActiveTab] = useState<'DETAILS' | 'REPORT' | 'RELOCATE'>('DETAILS');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Breakdown Ticket Form
@@ -819,6 +822,15 @@ export function AssetModal({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsEditModalOpen(true)}
+              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+              title="Edit Asset Details"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Edit Asset</span>
+            </button>
             <button
               type="button"
               onClick={() => setIsPrintModalOpen(true)}
@@ -1689,6 +1701,15 @@ export function AssetModal({
           asset={currentAsset}
           allAssets={filteredCategoryAssets}
           initialMode="TAG"
+        />
+      )}
+
+      {/* Edit Asset Modal */}
+      {currentAsset && (
+        <EditAssetModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          asset={currentAsset}
         />
       )}
     </div>

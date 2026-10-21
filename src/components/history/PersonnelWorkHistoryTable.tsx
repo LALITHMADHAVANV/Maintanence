@@ -27,6 +27,7 @@ import {
 } from '@/lib/services/cmmsService';
 import type { RepairTicket, Machine, SparePart } from '@/types/cmms';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
 
 export interface PersonnelHistoryRow {
@@ -92,14 +93,29 @@ export function PersonnelWorkHistoryTable() {
     };
   }, []);
 
-  // Merge live completed repairs with realistic roster logs
+  const isAdmin = isUserAdmin(role);
+  const effectiveUnit = getUserScopedUnit(user, role);
+
+  // Merge live completed repairs with realistic roster logs (scoped to unit for non-admins)
   const allHistoryRows: PersonnelHistoryRow[] = useMemo(() => {
+    const scopedMachines = !isAdmin
+      ? machines.filter((m) => matchesUnit(m.unit, effectiveUnit))
+      : machines;
+    const allowedMachineIds = new Set(scopedMachines.map((m) => m.id.toLowerCase()));
+
     const machineMap = new Map<string, Machine>();
-    machines.forEach((m) => machineMap.set(m.id, m));
+    scopedMachines.forEach((m) => machineMap.set(m.id, m));
 
     // Live completed or attended repair tickets
     const liveCompletedRows: PersonnelHistoryRow[] = repairs
-      .filter((r) => r.status === 'COMPLETED' || (r.attendedBy && r.actionTaken))
+      .filter((r) => {
+        if (!isAdmin) {
+          const matchMach = r.machineId && allowedMachineIds.has(r.machineId.toLowerCase());
+          const matchUnit = r.unit && matchesUnit(r.unit, effectiveUnit);
+          if (!matchMach && !matchUnit) return false;
+        }
+        return r.status === 'COMPLETED' || (r.attendedBy && r.actionTaken);
+      })
       .map((t) => {
         const mch = machineMap.get(t.machineId);
         const resolvedDateObj = t.resolvedAt ? new Date(t.resolvedAt) : new Date(t.reportedAt);
@@ -167,8 +183,6 @@ export function PersonnelWorkHistoryTable() {
         set.add(r.personName);
       }
     });
-    // Add known roster names if not present
-    FACTORY_MECHANICS_ROSTER.forEach((m) => set.add(m.name));
     return Array.from(set).sort();
   }, [allHistoryRows]);
 

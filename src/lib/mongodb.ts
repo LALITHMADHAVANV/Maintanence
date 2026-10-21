@@ -1,29 +1,57 @@
 import { MongoClient, Db } from 'mongodb';
 
-const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/textech_cmms';
+const primaryUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/textech_cmms';
+const localUri = 'mongodb://127.0.0.1:27017/textech_cmms';
 
 declare global {
   // eslint-disable-next-line no-var
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
+async function connectClient(): Promise<MongoClient> {
+  const options = { serverSelectionTimeoutMS: 2000 };
+  try {
+    const client = new MongoClient(primaryUri, options);
+    await client.connect();
+    return client;
+  } catch (err: unknown) {
+    if (primaryUri !== localUri) {
+      console.warn(`Primary MongoDB failed (${(err as any)?.message || err}). Falling back to local MongoDB at ${localUri}...`);
+      try {
+        const fallbackClient = new MongoClient(localUri, options);
+        await fallbackClient.connect();
+        return fallbackClient;
+      } catch (fallbackErr) {
+        console.warn('Local MongoDB fallback also failed:', (fallbackErr as any)?.message || fallbackErr);
+        throw err;
+      }
+    }
+    throw err;
+  }
+}
+
 let clientPromise: Promise<MongoClient>;
 
 if (process.env.NODE_ENV === 'development') {
   if (!global._mongoClientPromise) {
-    const client = new MongoClient(uri);
-    global._mongoClientPromise = client.connect();
+    global._mongoClientPromise = connectClient();
   }
   clientPromise = global._mongoClientPromise;
 } else {
-  const client = new MongoClient(uri);
-  clientPromise = client.connect();
+  clientPromise = connectClient();
 }
 
 export default clientPromise;
 
 export async function getDatabase(dbName?: string): Promise<Db> {
-  const client = await clientPromise;
-  // If uri has a db name in the path, client.db() will use it, otherwise fallback to 'textech_cmms'
-  return client.db(dbName || process.env.MONGODB_DB_NAME || 'textech_cmms');
+  try {
+    const client = await clientPromise;
+    return client.db(dbName || process.env.MONGODB_DB_NAME || 'textech_cmms');
+  } catch (err) {
+    console.warn('Cached clientPromise failed, connecting directly...');
+    const fresh = await connectClient();
+    global._mongoClientPromise = Promise.resolve(fresh);
+    clientPromise = global._mongoClientPromise;
+    return fresh.db(dbName || process.env.MONGODB_DB_NAME || 'textech_cmms');
+  }
 }

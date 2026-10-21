@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   Calendar,
@@ -27,7 +27,8 @@ import { RepairTicket, PPMSchedule, Machine } from '@/types/cmms';
 import { assignRepairTicket, completePPMTask } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 
 export type { MechanicDuty };
 export { FACTORY_MECHANICS_ROSTER };
@@ -55,21 +56,47 @@ export function TeamScheduleModal({
 }: TeamScheduleModalProps) {
   const { showToast } = useToast();
   const { user, role } = useAuth();
+  const isAdmin = isUserAdmin(role);
+  const effectiveUnit = getUserScopedUnit(user, role);
 
   const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
+  const [registeredTechs, setRegisteredTechs] = useState<MechanicDuty[]>([]);
 
-  // Filter technicians based on role (Senior Electrician sees junior electricians; Senior Mechanic sees mechanics)
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/users')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.users && Array.isArray(data.users)) {
+            let techs = data.users.filter((u: any) =>
+              ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+            );
+            if (!isAdmin) {
+              techs = techs.filter((u: any) => matchesUnit(u.unit, effectiveUnit));
+            }
+            if (techs.length > 0) {
+              setRegisteredTechs(techs.map(userToMechanicDuty));
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, isAdmin, effectiveUnit]);
+
+  const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
+
+  // Filter technicians based on role
   const relevantTechnicians = React.useMemo(() => {
     if (role === 'SENIOR_ELECTRICIAN') {
-      return FACTORY_MECHANICS_ROSTER.filter(
-        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      return activeStaffRoster.filter(
+        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
       );
     }
     if (role === 'SENIOR_MECHANIC') {
-      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC');
     }
-    return FACTORY_MECHANICS_ROSTER;
-  }, [role]);
+    return activeStaffRoster;
+  }, [role, activeStaffRoster]);
 
   if (!isOpen) return null;
 
@@ -198,7 +225,7 @@ export function TeamScheduleModal({
           <div className="flex items-start justify-between">
             <div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-700">
-                Sahana Apparel Group &bull; Unit 03 Coimbatore
+                Sahana Garments Ltd &bull; Coimbatore Plant
               </div>
               <h1 className="text-xl font-black text-slate-950 uppercase tracking-tight mt-0.5">
                 Senior Mechanic Duty Roster &amp; Dispatch Board
@@ -300,10 +327,10 @@ export function TeamScheduleModal({
             <select
               value={selectedMechanicFilter}
               onChange={(e) => setSelectedMechanicFilter(e.target.value)}
-              className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
+              className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none cursor-pointer"
             >
-              <option value="ALL">All 5 Factory Technicians</option>
-              {FACTORY_MECHANICS_ROSTER.map((m) => (
+              <option value="ALL">All {relevantTechnicians.length} Technicians</option>
+              {relevantTechnicians.map((m) => (
                 <option key={m.id} value={m.name}>
                   {m.name} ({m.role.split(' ')[0]})
                 </option>
@@ -338,14 +365,14 @@ export function TeamScheduleModal({
                   <span className="text-slate-500">({r.faultCategory})</span>
                   <div className="flex flex-wrap items-center gap-1.5 ml-auto">
                     <button
-                      onClick={() => handleReassign(r.id, user?.name || 'Ramesh Kumar')}
+                      onClick={() => handleReassign(r.id, user?.name || 'Technician')}
                       className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                       title="Assign task directly to myself"
                     >
                       <UserCheck className="w-3 h-3" />
                       <span>Assign to Myself</span>
                     </button>
-                    {FACTORY_MECHANICS_ROSTER.filter((m) => !m.name.toLowerCase().includes('ramesh')).map((mech) => {
+                    {relevantTechnicians.filter((m) => !m.name.toLowerCase().includes((user?.name || '').toLowerCase())).map((mech) => {
                       const firstName = mech.name.split(' ')[0];
                       return (
                         <button

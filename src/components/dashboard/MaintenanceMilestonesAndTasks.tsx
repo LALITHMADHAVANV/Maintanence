@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   CalendarDays,
@@ -130,10 +130,25 @@ export function MaintenanceMilestonesAndTasks({
     ppmObj?: PPMSchedule;
   } | null>(null);
 
-  // Month grid navigation state (defaults to current month)
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
+
+  const [liveTechUsers, setLiveTechUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const techs = data.users.filter((u: any) =>
+            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+          );
+          setLiveTechUsers(techs);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // ─── 1. DERIVED DATA FOR LEFT CARD: DELIVERIES / TODAY'S WORK ───────────
   const deliveriesList = useMemo(() => {
@@ -559,16 +574,16 @@ export function MaintenanceMilestonesAndTasks({
     });
   };
 
-  // ─── 5. LIVE FACTORY ATTENDANCE (MAPPED FROM FACTORY_MECHANICS_ROSTER) ────
+  // ─── 5. LIVE FACTORY ATTENDANCE (MAPPED FROM REGISTERED TECHNICAL USERS) ────
   const attendanceList = useMemo(() => {
-    return FACTORY_MECHANICS_ROSTER.map((m) => ({
-      id: m.id,
-      initial: m.name.charAt(0).toUpperCase(),
+    return liveTechUsers.map((m) => ({
+      id: m.employeeId || m.uid,
+      initial: (m.name || 'T').charAt(0).toUpperCase(),
       name: m.name,
-      role: m.role,
-      status: m.status === 'ON_DUTY' ? ('Present' as const) : m.status === 'ON_LEAVE' ? ('On Leave' as const) : ('Absent' as const),
+      role: m.title || m.role,
+      status: (m.status === 'INACTIVE' ? ('Absent' as const) : m.status === 'ON_LEAVE' ? ('On Leave' as const) : ('Present' as const)) as 'Present' | 'On Leave' | 'Absent',
     }));
-  }, []);
+  }, [liveTechUsers]);
 
   const attendanceStats = useMemo(() => {
     const total = attendanceList.length;

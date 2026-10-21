@@ -157,6 +157,8 @@ export interface AssetLogEntry {
   zone: string; // Zone 1 to Zone 8
   line: string; // Line 01 to Line 08
   stationNo?: string;
+  unit?: string;
+  machineUnit?: string;
   previousStatus: MachineStatus;
   newStatus: MachineStatus;
   action: 'IDLE_TO_ACTIVE' | 'ACTIVE_TO_IDLE' | 'STATUS_CHANGE' | 'ZONE_LINE_CHANGE';
@@ -205,6 +207,7 @@ export interface RepairTicket {
   machineId: string;
   machineType: string;
   line: string;
+  unit?: string;
   reportedAt: string; // ISO date string
   reportedBy: string;
   faultCategory: string; // e.g. "Skipping Stitches", "Needle Breakage", etc.
@@ -248,6 +251,7 @@ export type PPMStatus = 'PENDING' | 'DUE_SOON' | 'OVERDUE' | 'COMPLETED';
 export interface PPMSchedule {
   id: string;
   machineId: string;
+  unit?: string;
   task: string;
   intervalDays: number;
   frequency: PPMFrequency;
@@ -282,6 +286,7 @@ export interface UserProfile {
   phone?: string;
   department?: string;
   employeeId?: string;
+  unit?: string; // Plant Unit: "All Units" | "UNIT - 1" | "UNIT-2"
   status?: 'ACTIVE' | 'INACTIVE';
   defaultPassword?: string;
   createdAt?: string;
@@ -330,6 +335,7 @@ export interface PartRequisition {
   monthYear: string; // e.g. "October 2026"
   targetLine?: string; // e.g. "Line 02"
   targetMachineId?: string; // e.g. "MC-OVK-204"
+  machineId?: string;
   justification: string;
   status: RequisitionStatus;
   createdAt: string;

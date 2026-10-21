@@ -28,12 +28,11 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
   const [isNavHidden, setIsNavHidden] = useState<boolean>(false);
   const [isMobileOpen, setIsMobileOpen] = useState<boolean>(false);
 
-  // Restore user preference from localStorage if available
+  // Keep navbar open and clear any old collapsed state
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('textech_nav_hidden');
-      if (saved !== null) {
-        setIsNavHidden(saved === 'true');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('textech_nav_hidden');
       }
     } catch {
       // Ignore storage errors
@@ -41,27 +40,15 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleNav = () => {
-    setIsNavHidden((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('textech_nav_hidden', String(next));
-      } catch {}
-      return next;
-    });
+    setIsNavHidden((prev) => !prev);
   };
 
   const hideNav = () => {
     setIsNavHidden(true);
-    try {
-      localStorage.setItem('textech_nav_hidden', 'true');
-    } catch {}
   };
 
   const showNav = () => {
     setIsNavHidden(false);
-    try {
-      localStorage.setItem('textech_nav_hidden', 'false');
-    } catch {}
   };
 
   const openMobileNav = () => setIsMobileOpen(true);

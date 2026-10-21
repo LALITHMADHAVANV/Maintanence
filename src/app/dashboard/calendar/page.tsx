@@ -45,9 +45,10 @@ import {
 } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { TeamScheduleModal } from '@/components/calendar/TeamScheduleModal';
 import { MaintenanceMilestonesAndTasks } from '@/components/dashboard/MaintenanceMilestonesAndTasks';
-import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
+import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 
 // Helper to format Date to 'YYYY-MM-DD'
 function toDateKey(d: Date): string {
@@ -60,6 +61,8 @@ function toDateKey(d: Date): string {
 export default function CalendarPage() {
   const { showToast } = useToast();
   const { user, role } = useAuth();
+  const isAdmin = isUserAdmin(role);
+  const effectiveUnit = getUserScopedUnit(user, role);
 
   const [repairs, setRepairs] = useState<RepairTicket[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -190,24 +193,50 @@ export default function CalendarPage() {
     };
   }, []);
 
-  // Map of all machines by ID
-  const machineMap = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
+  // In calendar & dispatch, include plant floor machinery scoped to user's unit for non-admins
+  const displayMachines = useMemo(() => {
+    if (isAdmin) return machines;
+    return machines.filter((m) => matchesUnit(m.unit, effectiveUnit));
+  }, [machines, isAdmin, effectiveUnit]);
 
-  // In calendar & dispatch, include all plant floor machinery, tables, and equipment
-  const displayMachines = machines;
+  // Map of scoped machines by ID
+  const machineMap = useMemo(() => new Map(displayMachines.map((m) => [m.id, m])), [displayMachines]);
+
+  const [registeredTechs, setRegisteredTechs] = useState<MechanicDuty[]>([]);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          let techs = data.users.filter((u: any) =>
+            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+          );
+          if (!isAdmin) {
+            techs = techs.filter((u: any) => matchesUnit(u.unit, effectiveUnit));
+          }
+          if (techs.length > 0) {
+            setRegisteredTechs(techs.map(userToMechanicDuty));
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isAdmin, effectiveUnit]);
+
+  const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
 
   // For Senior Electrician, ONLY show junior electricians; for Senior Mechanic, show mechanics
   const relevantTechnicians = useMemo(() => {
     if (role === 'SENIOR_ELECTRICIAN') {
-      return FACTORY_MECHANICS_ROSTER.filter(
-        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      return activeStaffRoster.filter(
+        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
       );
     }
     if (role === 'SENIOR_MECHANIC') {
-      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC');
     }
-    return FACTORY_MECHANICS_ROSTER;
-  }, [role]);
+    return activeStaffRoster;
+  }, [role, activeStaffRoster]);
 
   // Set default machine for PPM and inline dispatch once machines load
   useEffect(() => {
@@ -236,9 +265,26 @@ export default function CalendarPage() {
 
   const todayKey = useMemo(() => toDateKey(new Date()), []);
 
-  // Include ALL floor repairs and PPM schedules across sewing, furniture/tables, and utilities
-  const scopedRepairs = repairs;
-  const scopedPpmSchedules = ppmSchedules;
+  // Floor repairs and PPM schedules scoped to user's unit for non-admins
+  const scopedRepairs = useMemo(() => {
+    if (isAdmin) return repairs;
+    const allowedMachineIds = new Set(displayMachines.map((m) => m.id.toLowerCase()));
+    return repairs.filter((r) => {
+      if (r.machineId && allowedMachineIds.has(r.machineId.toLowerCase())) return true;
+      if (r.unit && matchesUnit(r.unit, effectiveUnit)) return true;
+      return false;
+    });
+  }, [repairs, displayMachines, isAdmin, effectiveUnit]);
+
+  const scopedPpmSchedules = useMemo(() => {
+    if (isAdmin) return ppmSchedules;
+    const allowedMachineIds = new Set(displayMachines.map((m) => m.id.toLowerCase()));
+    return ppmSchedules.filter((p) => {
+      if (p.machineId && allowedMachineIds.has(p.machineId.toLowerCase())) return true;
+      if (p.unit && matchesUnit(p.unit, effectiveUnit)) return true;
+      return false;
+    });
+  }, [ppmSchedules, displayMachines, isAdmin, effectiveUnit]);
 
   // Open tickets eligible for Move / Reassignment
   const openTicketsForMove = useMemo(
@@ -1473,9 +1519,9 @@ export default function CalendarPage() {
         onClose={() => setIsTeamModalOpen(false)}
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
-        repairs={repairs}
-        ppmSchedules={ppmSchedules}
-        machines={machines}
+        repairs={scopedRepairs}
+        ppmSchedules={scopedPpmSchedules}
+        machines={displayMachines}
         onOpenResolveModal={handleOpenResolveModal}
       />
 

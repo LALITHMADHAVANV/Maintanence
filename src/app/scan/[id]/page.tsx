@@ -17,7 +17,9 @@ import {
   ShieldCheck,
   Loader2,
   History,
+  Pencil,
 } from 'lucide-react';
+import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
 import {
   subscribeMachines,
@@ -43,6 +45,7 @@ function MobileScanContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'report' | 'relocate'>('report');
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [assetHistoryCount, setAssetHistoryCount] = useState<number>(0);
 
   // Breakdown Form
@@ -220,8 +223,18 @@ function MobileScanContent() {
           <span>{role === 'CEO' ? 'Executive Dashboard' : 'Maintenance Dashboard'}</span>
         </Link>
 
-        {/* Top Actions: History Button + Live Status */}
+        {/* Top Actions: Edit Button + History Button + Live Status */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+            title="Edit this asset's specifications, location, and operational details"
+          >
+            <Pencil className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Edit Asset</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsHistoryModalOpen(true)}
@@ -282,11 +295,19 @@ function MobileScanContent() {
               </span>
               <button
                 type="button"
-                onClick={() => setIsHistoryModalOpen(true)}
+                onClick={() => setIsEditModalOpen(true)}
                 className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
               >
+                <Pencil className="w-3 h-3" />
+                <span>Edit Details</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsHistoryModalOpen(true)}
+                className="text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:underline flex items-center gap-1 cursor-pointer"
+              >
                 <History className="w-3 h-3" />
-                <span>View Timeline ({assetHistoryCount})</span>
+                <span>Timeline ({assetHistoryCount})</span>
               </button>
             </div>
           </div>
@@ -575,6 +596,16 @@ function MobileScanContent() {
         machine={machine}
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
+      />
+
+      {/* Edit Asset Information Modal */}
+      <EditAssetModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        asset={machine}
+        onSave={(updated) => {
+          setMachine(updated);
+        }}
       />
     </div>
   );

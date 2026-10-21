@@ -25,7 +25,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
-import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
+import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 
 export type DrillDownType =
   | 'open_tickets'
@@ -88,6 +88,26 @@ export function WidgetDrilldownDrawer({
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [liveRoster, setLiveRoster] = useState<MechanicDuty[]>(FACTORY_MECHANICS_ROSTER);
+
+  // Fetch registered users when drawer opens for roster/toolbox
+  useEffect(() => {
+    if (isOpen && (type === 'duty_roster' || type === 'toolbox_kit')) {
+      fetch('/api/users')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.users && Array.isArray(data.users)) {
+            const techs = data.users.filter((u: any) =>
+              ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+            );
+            if (techs.length > 0) {
+              setLiveRoster(techs.map(userToMechanicDuty));
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, type]);
 
   // Reset filters when drawer opens or type changes
   useEffect(() => {
@@ -894,11 +914,29 @@ export function WidgetDrilldownDrawer({
     if (type === 'toolbox_kit') {
       const kitCode = meta?.kitCode || 'TBX-MEC-08';
       const mechanic =
-        FACTORY_MECHANICS_ROSTER.find(
+        liveRoster.find(
           (m) =>
-            m.toolbox.kitCode === kitCode ||
+            m.toolbox?.kitCode === kitCode ||
             (meta?.assignedTo && m.name.toLowerCase() === meta.assignedTo.toLowerCase())
-        ) || FACTORY_MECHANICS_ROSTER[1];
+        ) || liveRoster[0];
+
+      if (!mechanic || !mechanic.toolbox) {
+        return {
+          categoryTitle: 'TOOL CUSTODY & AUDIT',
+          mainTitle: 'Technician Toolbox Kit & Calibration',
+          badge: 'Empty Toolkit',
+          badgeColor: 'bg-slate-100 text-slate-700',
+          kpiCards: [
+            { label: 'Assigned Tools', value: 0, color: 'text-slate-800' },
+            { label: 'Checked Out', value: 0, color: 'text-amber-600' },
+            { label: 'Parts Drawn', value: 0, color: 'text-indigo-600' },
+          ],
+          filterPills: [{ id: 'all', label: 'All Items (0)' }],
+          tableHeaders: ['TOOL CODE / SN', 'NAME & SPECIFICATION', 'CUSTODY & LOCATION', 'CALIBRATION', 'STATUS', 'ACTIONS'],
+          rows: [],
+          bottomAction: { label: 'Indent Spares or Tools in Crib Catalog →', url: '/dashboard/inventory' },
+        };
+      }
 
       const kit = mechanic.toolbox;
       const checkedOut = mechanic.checkedOutTools || [];
@@ -995,7 +1033,7 @@ export function WidgetDrilldownDrawer({
 
     // 13. ON-DUTY MECHANIC & TECHNICIAN ROSTER
     if (type === 'duty_roster') {
-      const roster = FACTORY_MECHANICS_ROSTER;
+      const roster = liveRoster;
       const onDuty = roster.filter((m) => m.status === 'ON_DUTY').length;
       const standby = roster.filter((m) => m.status === 'STANDBY').length;
       const mechanicsCount = roster.filter((m) => m.trade === 'MECHANIC').length;

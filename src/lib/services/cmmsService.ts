@@ -10,16 +10,17 @@ import {
   RequisitionStatus,
   AppNotification,
 } from '@/types/cmms';
+import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 
 // Local storage keys for offline/immediate UI responsiveness
 const STORAGE_KEYS = {
-  MACHINES: 'textech_machines',
-  PARTS: 'textech_parts',
-  REPAIRS: 'textech_repairs',
-  PPM: 'textech_ppm',
-  REQUISITIONS: 'textech_requisitions',
-  NOTIFICATIONS: 'textech_notifications',
-  SEEDED: 'textech_seeded',
+  MACHINES: 'sahana_machines',
+  PARTS: 'sahana_parts',
+  REPAIRS: 'sahana_repairs',
+  PPM: 'sahana_ppm',
+  REQUISITIONS: 'sahana_requisitions',
+  NOTIFICATIONS: 'sahana_notifications',
+  SEEDED: 'sahana_seeded',
 };
 
 // In-memory subscriber registry for reactive updates
@@ -36,7 +37,7 @@ const listeners = {
 function getLocal<T>(key: string, defaultVal: T): T {
   if (typeof window === 'undefined') return defaultVal;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(key) || localStorage.getItem(key.replace('sahana_', 'textech_'));
     return raw ? JSON.parse(raw) : defaultVal;
   } catch {
     return defaultVal;
@@ -67,15 +68,15 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
  */
 export function initLocalSeedData(): void {
   if (typeof window === 'undefined') return;
-  const cacheVersion = 'cmms_v5_clean';
+  const cacheVersion = 'cmms_v9_plant_495';
   if (localStorage.getItem('cmms_cache_ver') !== cacheVersion) {
     localStorage.removeItem(STORAGE_KEYS.MACHINES);
-    localStorage.removeItem(STORAGE_KEYS.PARTS);
-    localStorage.removeItem(STORAGE_KEYS.REPAIRS);
-    localStorage.removeItem(STORAGE_KEYS.PPM);
-    localStorage.removeItem(STORAGE_KEYS.REQUISITIONS);
     localStorage.removeItem(STORAGE_KEYS.SEEDED);
     localStorage.setItem('cmms_cache_ver', cacheVersion);
+  }
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  if (!currentMachines || currentMachines.length === 0) {
+    setLocal(STORAGE_KEYS.MACHINES, plantAssetsSeed as unknown as Machine[]);
   }
 }
 
@@ -280,6 +281,28 @@ export async function updateMachineStatus(
     });
   } catch (e) {
     console.error('MongoDB updateMachineStatus error:', e);
+  }
+}
+
+export async function updateMachine(
+  machineId: string,
+  updates: Partial<Machine>
+): Promise<void> {
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  const updatedMachines = currentMachines.map((m) =>
+    m.id === machineId ? { ...m, ...updates } : m
+  );
+  setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
+  notifyLocal('machines', updatedMachines);
+
+  try {
+    await fetch('/api/machines', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: machineId, updates }),
+    });
+  } catch (e) {
+    console.error('MongoDB updateMachine error:', e);
   }
 }
 

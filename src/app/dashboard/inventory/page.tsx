@@ -64,7 +64,7 @@ import {
   rejectRequisition,
   sendAppNotification,
 } from '@/lib/services/cmmsService';
-import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
+import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 import { MechanicCustodyModal } from '@/components/mechanic/MechanicCustodyModal';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -89,13 +89,32 @@ export default function InventoryPage() {
   const [activeMechanicId, setActiveMechanicId] = useState<string>('ELEC-02');
   const [showFullPartsTable, setShowFullPartsTable] = useState(true);
 
+  // Dynamic staff roster from registered users
+  const [registeredStaff, setRegisteredStaff] = useState<MechanicDuty[]>([]);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const staff = data.users.filter((u: any) =>
+            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'STORE_PERSON', 'ADMIN'].includes(u.role)
+          );
+          if (staff.length > 0) {
+            setRegisteredStaff(staff.map(userToMechanicDuty));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const activeStaffRoster = registeredStaff.length > 0 ? registeredStaff : FACTORY_MECHANICS_ROSTER;
+
   // Fast Floor Issue Modal state
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [activeIssuePart, setActiveIssuePart] = useState<SparePart | null>(null);
   const [issueQty, setIssueQty] = useState<number>(1);
-  const [selectedIssueMechanicId, setSelectedIssueMechanicId] = useState<string>(
-    FACTORY_MECHANICS_ROSTER[0]?.id || 'MECH-01'
-  );
+  const [selectedIssueMechanicId, setSelectedIssueMechanicId] = useState<string>('');
   const [issueTargetLine, setIssueTargetLine] = useState<string>('Line 02');
   const [issueTargetMachine, setIssueTargetMachine] = useState<string>('');
   const [oldPartReturned, setOldPartReturned] = useState<boolean>(true);
@@ -106,12 +125,20 @@ export default function InventoryPage() {
 
   // Sync default receiver details when mechanic changes
   useEffect(() => {
-    const m = FACTORY_MECHANICS_ROSTER.find((mech) => mech.id === selectedIssueMechanicId);
+    if (activeStaffRoster.length > 0 && (!selectedIssueMechanicId || !activeStaffRoster.some((m) => m.id === selectedIssueMechanicId))) {
+      setSelectedIssueMechanicId(activeStaffRoster[0].id);
+      setIssueReceivedByPerson(activeStaffRoster[0].name);
+      setIssueReceiverEmpId(activeStaffRoster[0].id);
+    }
+  }, [activeStaffRoster, selectedIssueMechanicId]);
+
+  useEffect(() => {
+    const m = activeStaffRoster.find((mech) => mech.id === selectedIssueMechanicId);
     if (m) {
       setIssueReceivedByPerson(m.name);
       setIssueReceiverEmpId(m.id);
     }
-  }, [selectedIssueMechanicId]);
+  }, [selectedIssueMechanicId, activeStaffRoster]);
 
   // Printable Gate Pass Slip state
   interface GatePassPayload {
@@ -145,15 +172,15 @@ export default function InventoryPage() {
   // For Senior Electrician, ONLY show junior electricians
   const visibleMechanics = useMemo(() => {
     if (role === 'SENIOR_ELECTRICIAN') {
-      return FACTORY_MECHANICS_ROSTER.filter(
-        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      return activeStaffRoster.filter(
+        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
       );
     }
     if (role === 'SENIOR_MECHANIC') {
-      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC');
     }
-    return FACTORY_MECHANICS_ROSTER;
-  }, [role]);
+    return activeStaffRoster;
+  }, [role, activeStaffRoster]);
 
   // Sync active selected mechanic
   useEffect(() => {
@@ -163,7 +190,7 @@ export default function InventoryPage() {
   }, [visibleMechanics, activeMechanicId]);
 
   const currentMechanicData = useMemo(
-    () => visibleMechanics.find((m) => m.id === activeMechanicId) || visibleMechanics[0] || FACTORY_MECHANICS_ROSTER[0],
+    () => visibleMechanics.find((m) => m.id === activeMechanicId) || visibleMechanics[0] || null,
     [activeMechanicId, visibleMechanics]
   );
 
@@ -175,16 +202,18 @@ export default function InventoryPage() {
       return;
     }
     const cleanName = (mechIdentifier || '').toLowerCase();
-    const found = FACTORY_MECHANICS_ROSTER.find(
+    const found = activeStaffRoster.find(
       (m) =>
         m.name.toLowerCase().includes(cleanName) ||
         cleanName.includes(m.name.toLowerCase()) ||
         m.id.toLowerCase() === cleanName
     );
-    const mech = found || FACTORY_MECHANICS_ROSTER[0];
-    setSelectedMechanic(mech);
-    setActiveMechanicId(mech.id);
-    setIsMechCustodyOpen(true);
+    const mech = found || activeStaffRoster[0];
+    if (mech) {
+      setSelectedMechanic(mech);
+      setActiveMechanicId(mech.id);
+      setIsMechCustodyOpen(true);
+    }
   };
 
   // Requisition Hub Modal tab: 'MONTHLY_INDENT' | 'URGENT_NEED' | 'CRITICAL_CEO' | 'VIEW_ALL'
@@ -416,8 +445,12 @@ export default function InventoryPage() {
       await adjustPartStock(activeIssuePart.partId, -issueQty);
 
       const mech =
-        FACTORY_MECHANICS_ROSTER.find((m) => m.id === selectedIssueMechanicId) ||
-        FACTORY_MECHANICS_ROSTER[0];
+        activeStaffRoster.find((m) => m.id === selectedIssueMechanicId) ||
+        activeStaffRoster[0] || {
+          id: issueReceiverEmpId.trim() || 'EMP-01',
+          name: issueReceivedByPerson.trim() || 'Maintenance Staff',
+          role: 'Maintenance Technician',
+        };
       const slipNumber = `GPS-2026-${Math.floor(100000 + Math.random() * 900000)}`;
       const actualReceiver = issueReceivedByPerson.trim() || mech.name;
       const actualEmpId = issueReceiverEmpId.trim() || mech.id;
@@ -2747,11 +2780,15 @@ export default function InventoryPage() {
                   onChange={(e) => setSelectedIssueMechanicId(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
                 >
-                  {FACTORY_MECHANICS_ROSTER.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.id}) &mdash; {m.role} &bull; {m.assignedLines}
-                    </option>
-                  ))}
+                  {activeStaffRoster.length > 0 ? (
+                    activeStaffRoster.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.id}) &mdash; {m.role} &bull; {m.assignedLines}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="STAFF-GEN">General Maintenance Personnel</option>
+                  )}
                 </select>
               </div>
 
@@ -2795,7 +2832,7 @@ export default function InventoryPage() {
                 </div>
 
                 <p className="text-[10px] text-indigo-700/90 leading-tight">
-                  ⚡ An instant notification &amp; acknowledgment request will be dispatched to <strong>{FACTORY_MECHANICS_ROSTER.find((m) => m.id === selectedIssueMechanicId)?.name || 'the mechanic'}</strong> upon issuing.
+                  ⚡ An instant notification &amp; acknowledgment request will be dispatched to <strong>{activeStaffRoster.find((m) => m.id === selectedIssueMechanicId)?.name || 'the mechanic'}</strong> upon issuing.
                 </p>
               </div>
 

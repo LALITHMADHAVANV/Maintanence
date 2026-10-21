@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition, RequisitionItem } from '@/types/cmms';
 import { adjustPartStock, restockPart, createRequisition, sendAppNotification } from '@/lib/services/cmmsService';
-import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
+import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 
@@ -81,7 +81,7 @@ interface StoreDashboardProps {
 }
 
 // Local storage key for persistent store issue ledger
-const STORAGE_STORE_ISSUES = 'textech_store_issues';
+const STORAGE_STORE_ISSUES = 'sahana_store_issues';
 
 export function StoreDashboard({
   machines = [],
@@ -311,10 +311,28 @@ export function StoreDashboard({
   };
 
   // ─── 3. ISSUE PART TO MECHANIC MODAL STATE (POINT 7) ─────────────
+  const [registeredStaff, setRegisteredStaff] = useState<MechanicDuty[]>([]);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const staff = data.users.filter((u: any) =>
+            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'STORE_PERSON', 'ADMIN'].includes(u.role)
+          );
+          if (staff.length > 0) {
+            setRegisteredStaff(staff.map(userToMechanicDuty));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const activeStaffRoster = registeredStaff.length > 0 ? registeredStaff : FACTORY_MECHANICS_ROSTER;
+
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
-  const [issueMechanicId, setIssueMechanicId] = useState(
-    FACTORY_MECHANICS_ROSTER[0]?.id || 'MEC-01'
-  );
+  const [issueMechanicId, setIssueMechanicId] = useState('');
   const [issuePartId, setIssuePartId] = useState('');
   const [issueQty, setIssueQty] = useState(1);
   const [issueLine, setIssueLine] = useState('Line 01');
@@ -325,14 +343,23 @@ export function StoreDashboard({
   const [receiverEmpId, setReceiverEmpId] = useState('');
   const [receiverPhone, setReceiverPhone] = useState('');
 
+  // Default to first staff member when roster loads
+  useEffect(() => {
+    if (activeStaffRoster.length > 0 && (!issueMechanicId || !activeStaffRoster.some((m) => m.id === issueMechanicId))) {
+      setIssueMechanicId(activeStaffRoster[0].id);
+      setReceivedByPerson(activeStaffRoster[0].name);
+      setReceiverEmpId(activeStaffRoster[0].id);
+    }
+  }, [activeStaffRoster, issueMechanicId]);
+
   // Sync default receiver details when mechanic changes
   useEffect(() => {
-    const m = FACTORY_MECHANICS_ROSTER.find((mech) => mech.id === issueMechanicId);
+    const m = activeStaffRoster.find((mech) => mech.id === issueMechanicId);
     if (m) {
       setReceivedByPerson(m.name);
       setReceiverEmpId(m.id);
     }
-  }, [issueMechanicId]);
+  }, [issueMechanicId, activeStaffRoster]);
 
   // Selected part in issue modal
   const selectedPartForIssue = useMemo(() => {
@@ -367,8 +394,12 @@ export function StoreDashboard({
       await adjustPartStock(selectedPartForIssue.partId, -issueQty);
 
       const targetMech =
-        FACTORY_MECHANICS_ROSTER.find((m) => m.id === issueMechanicId) ||
-        FACTORY_MECHANICS_ROSTER[0];
+        activeStaffRoster.find((m) => m.id === issueMechanicId) ||
+        activeStaffRoster[0] || {
+          id: receiverEmpId.trim() || 'EMP-01',
+          name: receivedByPerson.trim() || 'Maintenance Staff',
+          role: 'Staff',
+        };
 
       const actualReceiver = receivedByPerson.trim() || targetMech.name;
       const actualEmpId = receiverEmpId.trim() || targetMech.id;
@@ -891,7 +922,7 @@ export function StoreDashboard({
               className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-700 font-medium cursor-pointer"
             >
               <option value="ALL">All Mechanics ({issueRecords.length})</option>
-              {FACTORY_MECHANICS_ROSTER.map((m) => (
+              {activeStaffRoster.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} ({m.id})
                 </option>
@@ -1269,11 +1300,15 @@ export function StoreDashboard({
                   onChange={(e) => setIssueMechanicId(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                 >
-                  {FACTORY_MECHANICS_ROSTER.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.role}) • {m.shift}
-                    </option>
-                  ))}
+                  {activeStaffRoster.length > 0 ? (
+                    activeStaffRoster.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.role}) • {m.shift}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="STAFF-GEN">General Maintenance Personnel</option>
+                  )}
                 </select>
               </div>
 
@@ -1330,7 +1365,7 @@ export function StoreDashboard({
                 </div>
 
                 <p className="text-[10px] text-indigo-700/90 leading-tight">
-                  ⚡ An instant notification &amp; acknowledgment request will be dispatched to <strong>{FACTORY_MECHANICS_ROSTER.find((m) => m.id === issueMechanicId)?.name || 'the mechanic'}</strong> for verification upon issuing.
+                  ⚡ An instant notification &amp; acknowledgment request will be dispatched to <strong>{activeStaffRoster.find((m) => m.id === issueMechanicId)?.name || 'the mechanic'}</strong> for verification upon issuing.
                 </p>
               </div>
 

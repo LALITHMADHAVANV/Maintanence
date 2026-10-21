@@ -34,7 +34,7 @@ import {
   SparePart,
   PartRequisition,
 } from '@/types/cmms';
-import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
+import { FACTORY_MECHANICS_ROSTER, userToMechanicDuty } from '@/lib/constants/mechanics';
 import {
   startRepairTicket,
   stopRepairTicket,
@@ -75,14 +75,17 @@ export function MechanicDeskDashboard({
 
   const userName = user?.name || 'Mechanic';
 
-  // Mechanic duty info from roster
+  // Mechanic duty info from logged in user profile
   const mechanicProfile = useMemo(() => {
+    if (user) {
+      return userToMechanicDuty(user);
+    }
     return (
       FACTORY_MECHANICS_ROSTER.find(
         (m) => m.name.toLowerCase() === userName.toLowerCase()
-      ) || FACTORY_MECHANICS_ROSTER[1] // Default fallback to Suresh Babu
+      ) || userToMechanicDuty({ name: userName, role: 'MECHANIC', employeeId: 'MECH-01' })
     );
-  }, [userName]);
+  }, [user, userName]);
 
   // My assigned tickets (or floor open jobs if generic technician)
   const myTickets = useMemo(() => {

@@ -27,8 +27,8 @@ export type ClientZone = (typeof CLIENT_ZONES)[number];
 export type ClientLine = (typeof CLIENT_LINES)[number];
 
 const STORAGE_KEYS = {
-  ASSET_LOGS: 'textech_asset_logs',
-  MACHINES: 'textech_machines',
+  ASSET_LOGS: 'sahana_asset_logs',
+  MACHINES: 'sahana_machines',
 };
 
 type Listener<T> = (data: T) => void;
@@ -37,7 +37,7 @@ const logListeners = new Set<Listener<AssetLogEntry[]>>();
 function getLocal<T>(key: string, defaultVal: T): T {
   if (typeof window === 'undefined') return defaultVal;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(key) || localStorage.getItem(key.replace('sahana_', 'textech_'));
     return raw ? JSON.parse(raw) : defaultVal;
   } catch {
     return defaultVal;
@@ -293,6 +293,173 @@ export async function toggleMachineActiveIdle(
     previousStatus: prevStatus,
     newStatus: nextStatus,
     message: `Machine ${machine.id} successfully switched from ${prevStatus} to ${nextStatus}.`,
+  };
+}
+
+/**
+ * Directly set machine status to ACTIVE or IDLE and record log.
+ * Fulfills: dropdown as "idle", "Move to active"
+ */
+export async function setMachineStatusWithLog(
+  machineId: string,
+  targetStatus: MachineStatus,
+  changedBy: string = 'Senior Mechanic',
+  notes: string = ''
+): Promise<{ success: boolean; machine?: Machine; previousStatus?: MachineStatus; newStatus?: MachineStatus; message: string }> {
+  const cleanId = machineId.trim().toUpperCase();
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  const machine = currentMachines.find((m) => m.id.toUpperCase() === cleanId);
+
+  if (!machine) {
+    return {
+      success: false,
+      message: `Machine with ID "${machineId}" was not found in the asset registry.`,
+    };
+  }
+
+  const prevStatus = machine.status;
+  if (prevStatus === targetStatus) {
+    return {
+      success: true,
+      machine,
+      previousStatus: prevStatus,
+      newStatus: targetStatus,
+      message: `Machine ${machine.id} is already ${targetStatus}.`,
+    };
+  }
+
+  // Update machine in local database & API
+  await updateMachineStatus(machine.id, targetStatus);
+
+  const zone = getMachineZone(machine);
+  const line = getMachineLine(machine);
+
+  const action = targetStatus === 'ACTIVE' ? 'IDLE_TO_ACTIVE' : 'ACTIVE_TO_IDLE';
+  const defaultNote =
+    targetStatus === 'ACTIVE'
+      ? 'Moved to active — added to zone active count'
+      : 'Made idle — standby on line';
+
+  const logEntry: AssetLogEntry = {
+    id: `LOG-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`,
+    machineId: machine.id,
+    machineName: machine.name || `${machine.brand} ${machine.typeName || machine.type}`,
+    machineType: machine.typeName || machine.type,
+    brand: machine.brand,
+    model: machine.model,
+    zone,
+    line,
+    stationNo: machine.stationNo,
+    previousStatus: prevStatus,
+    newStatus: targetStatus,
+    action,
+    changedBy,
+    changedAt: new Date().toISOString(),
+    notes: notes || defaultNote,
+    shift: 'Shift A',
+  };
+
+  await createAssetLog(logEntry);
+
+  return {
+    success: true,
+    machine: { ...machine, status: targetStatus },
+    previousStatus: prevStatus,
+    newStatus: targetStatus,
+    message: `Machine ${machine.id} is now ${targetStatus === 'ACTIVE' ? 'Active' : 'Idle'}.`,
+  };
+}
+
+/**
+ * Add an extra machine to a zone and line, contributing to the zone total & active count.
+ * Fulfills: "if they add extra machine more than idle add it to the total count of the zone the active counnt"
+ */
+export async function addExtraMachineToZone(params: {
+  machineId: string;
+  name?: string;
+  brand: string;
+  type: string;
+  model?: string;
+  zone: ClientZone;
+  line: ClientLine;
+  stationNo?: string;
+  status?: MachineStatus;
+  unit?: string;
+  changedBy?: string;
+}): Promise<{ success: boolean; machine: Machine; message: string }> {
+  const status: MachineStatus = params.status || 'ACTIVE';
+  const changedBy = params.changedBy || 'Senior Mechanic';
+
+  const newMachine: Machine = {
+    id: params.machineId.trim().toUpperCase(),
+    name: params.name || `${params.brand} ${params.type}`,
+    brand: params.brand,
+    type: params.type as any,
+    typeName: params.type,
+    model: params.model || 'Standard',
+    status,
+    zone: params.zone,
+    currentLine: params.line as FloorLine,
+    area: `${params.zone} • ${params.line}`,
+    stationNo: params.stationNo || `Station Extra`,
+    unit: params.unit || 'Unit 1',
+    category: 'MACHINE',
+    motorType: 'SERVO',
+    purchaseDate: new Date().toISOString().slice(0, 10),
+    totalDowntimeMinutes: 0,
+    cost: 0,
+    company: 'Sahana Clothing Company',
+    lastMovedAt: new Date().toISOString(),
+    lastMovedBy: changedBy,
+  };
+
+  // Save to local storage
+  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  const existingIdx = current.findIndex((m) => m.id.toUpperCase() === newMachine.id);
+  let updated: Machine[];
+  if (existingIdx >= 0) {
+    updated = [...current];
+    updated[existingIdx] = { ...updated[existingIdx], ...newMachine };
+  } else {
+    updated = [newMachine, ...current];
+  }
+  setLocal(STORAGE_KEYS.MACHINES, updated);
+
+  try {
+    await fetch('/api/machines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newMachine),
+    });
+  } catch (e) {
+    console.warn('API error creating extra machine:', e);
+  }
+
+  // Record asset log
+  const logEntry: AssetLogEntry = {
+    id: `LOG-EXTRA-${Date.now().toString().slice(-6)}`,
+    machineId: newMachine.id,
+    machineName: newMachine.name,
+    machineType: newMachine.typeName || newMachine.type,
+    brand: newMachine.brand,
+    zone: params.zone,
+    line: params.line,
+    stationNo: newMachine.stationNo,
+    previousStatus: 'IDLE',
+    newStatus: status,
+    action: status === 'ACTIVE' ? 'IDLE_TO_ACTIVE' : 'ZONE_LINE_CHANGE',
+    changedBy,
+    changedAt: new Date().toISOString(),
+    notes: `Extra machine deployed to ${params.zone} • ${params.line} (${status}). Added to zone total & active count.`,
+    shift: 'Shift A',
+  };
+
+  await createAssetLog(logEntry);
+
+  return {
+    success: true,
+    machine: newMachine,
+    message: `Extra machine ${newMachine.id} successfully added to ${params.zone} • ${params.line} as ${status}. Zone total and active count updated!`,
   };
 }
 

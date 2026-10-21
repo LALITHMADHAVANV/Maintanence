@@ -14,6 +14,7 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Zap,
+  Plus,
 } from 'lucide-react';
 import { Machine } from '@/types/cmms';
 import {
@@ -33,6 +34,7 @@ interface LineAvailabilityWidgetProps {
   selectedLine?: ClientLine | 'ALL';
   onSelectZoneLine?: (zone: ClientZone | 'ALL', line: ClientLine | 'ALL') => void;
   onQuickToggleMachine?: (machineId: string) => void;
+  onAddExtraMachine?: (zone: ClientZone) => void;
 }
 
 export function LineAvailabilityWidget({
@@ -40,6 +42,7 @@ export function LineAvailabilityWidget({
   selectedZone: propZone = 'Zone 1',
   selectedLine: propLine = 'ALL',
   onSelectZoneLine,
+  onAddExtraMachine,
 }: LineAvailabilityWidgetProps) {
   const [activeZone, setActiveZone] = useState<ClientZone | 'ALL'>(
     propZone === 'ALL' ? 'Zone 1' : propZone
@@ -260,7 +263,17 @@ export function LineAvailabilityWidget({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex flex-wrap items-center gap-3 shrink-0">
+                    {onAddExtraMachine && (
+                      <button
+                        type="button"
+                        onClick={() => onAddExtraMachine(currentZoneReport.zone)}
+                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs border border-indigo-400/40"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Extra Machine</span>
+                      </button>
+                    )}
                     <div className="text-right">
                       <div className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
                         Zone Operational Rate

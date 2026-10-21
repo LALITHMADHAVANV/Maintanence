@@ -26,19 +26,6 @@ function getDefaultTitle(role: UserRole): string {
 
 const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
   {
-    uid: 'CEO-01',
-    name: 'Executive Board Director',
-    email: 'ceo@sahana.com',
-    role: 'CEO',
-    title: 'Chief Executive Officer (Managing Director)',
-    phone: '+91 98401 11001',
-    department: 'Executive Management',
-    employeeId: 'EMP-CEO-01',
-    status: 'ACTIVE',
-    defaultPassword: 'ceo123',
-    createdAt: new Date().toISOString(),
-  },
-  {
     uid: 'ADM-01',
     name: 'Plant Administrator',
     email: 'admin@sahana.com',
@@ -47,73 +34,9 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
     phone: '+91 98401 22002',
     department: 'Factory Operations',
     employeeId: 'EMP-ADM-01',
+    unit: 'All Units',
     status: 'ACTIVE',
     defaultPassword: 'admin123',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    uid: 'SNR-01',
-    name: 'R. Veeramani',
-    email: 'seniormechanic@sahana.com',
-    role: 'SENIOR_MECHANIC',
-    title: 'Senior Master Technician & PPM Lead',
-    phone: '+91 98401 33003',
-    department: 'Maintenance Workshop',
-    employeeId: 'EMP-SNR-01',
-    status: 'ACTIVE',
-    defaultPassword: 'senior123',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    uid: 'MEC-01',
-    name: 'K. Murugan',
-    email: 'mechanic@sahana.com',
-    role: 'MECHANIC',
-    title: 'Industrial Sewing Machine Mechanic',
-    phone: '+91 98401 44004',
-    department: 'Sewing Floor Lines',
-    employeeId: 'EMP-MEC-01',
-    status: 'ACTIVE',
-    defaultPassword: 'mechanic123',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    uid: 'SELE-01',
-    name: 'M. Senthil Kumar',
-    email: 'seniorelectrician@sahana.com',
-    role: 'SENIOR_ELECTRICIAN',
-    title: 'Senior Plant Electrician & Power Specialist',
-    phone: '+91 98401 55005',
-    department: 'Electrical & Power Plant',
-    employeeId: 'EMP-SELE-01',
-    status: 'ACTIVE',
-    defaultPassword: 'senior123',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    uid: 'ELE-01',
-    name: 'P. Anand',
-    email: 'electrician@sahana.com',
-    role: 'ELECTRICIAN',
-    title: 'Industrial Plant Electrician',
-    phone: '+91 98401 66006',
-    department: 'Electrical & Utilities',
-    employeeId: 'EMP-ELE-01',
-    status: 'ACTIVE',
-    defaultPassword: 'electrician123',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    uid: 'STR-01',
-    name: 'M. Arumugam',
-    email: 'stores@sahana.com',
-    role: 'STORE_PERSON',
-    title: 'Tool Crib & Inventory Custodian',
-    phone: '+91 98401 77007',
-    department: 'Central Spare Store',
-    employeeId: 'EMP-STR-01',
-    status: 'ACTIVE',
-    defaultPassword: 'stores123',
     createdAt: new Date().toISOString(),
   },
 ];
@@ -125,7 +48,7 @@ export async function GET() {
     const collection = db.collection('users');
     let users = await collection.find({}).toArray();
 
-    // If users collection is empty, seed initial factory roles
+    // If users collection is empty, seed only the Administrator
     if (users.length === 0) {
       await collection.insertMany(DEFAULT_USERS);
       users = await collection.find({}).toArray();
@@ -140,6 +63,7 @@ export async function GET() {
       phone: data.phone || '',
       department: data.department || 'Floor Maintenance',
       employeeId: data.employeeId || data.employee_id || `EMP-${(data.uid || '').slice(0, 4)}`,
+      unit: data.unit || 'All Units',
       status: data.status || 'ACTIVE',
       defaultPassword: data.defaultPassword || data.default_password || password,
       createdAt: data.createdAt || data.created_at,
@@ -163,7 +87,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, email, role, title, password, phone, department, employeeId } = body;
+    const { name, email, role, title, password, phone, department, employeeId, unit } = body;
 
     if (!name || !email || !password || !role) {
       return NextResponse.json(
@@ -179,18 +103,12 @@ export async function POST(req: Request) {
       );
     }
 
-    if (role === 'CEO') {
-      return NextResponse.json(
-        { error: 'Cannot create CEO accounts. Executive board role cannot be provisioned by admin.' },
-        { status: 403 }
-      );
-    }
-
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
     const cleanRole: UserRole = role;
     const finalTitle = title?.trim() || getDefaultTitle(cleanRole);
     const finalEmpId = employeeId?.trim() || `EMP-${Math.floor(100 + Math.random() * 900)}`;
+    const finalUnit = unit?.trim() || 'All Units';
     const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
 
     const db = await getDatabase();
@@ -212,6 +130,7 @@ export async function POST(req: Request) {
             phone: phone?.trim() || '',
             department: department?.trim() || '',
             employeeId: finalEmpId,
+            unit: finalUnit,
             updatedAt: new Date().toISOString(),
           },
         }
@@ -234,6 +153,7 @@ export async function POST(req: Request) {
       phone: phone?.trim() || '',
       department: department?.trim() || 'Floor Maintenance',
       employeeId: finalEmpId,
+      unit: finalUnit,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -243,7 +163,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `User ${name} (${cleanEmail}) successfully created with role ${cleanRole}!`,
+      message: `User ${name} (${cleanEmail}) successfully created with role ${cleanRole} in ${finalUnit}!`,
       user: {
         uid,
         name: newUserDoc.name,
@@ -251,6 +171,7 @@ export async function POST(req: Request) {
         role: newUserDoc.role,
         title: newUserDoc.title,
         employeeId: newUserDoc.employeeId,
+        unit: newUserDoc.unit,
       },
     });
   } catch (err: unknown) {
@@ -259,3 +180,177 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }
+
+// DELETE /api/users - Delete a non-admin factory member from MongoDB
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const emailParam = searchParams.get('email')?.trim().toLowerCase();
+    const uidParam = searchParams.get('uid')?.trim();
+
+    let targetEmail = emailParam;
+    let targetUid = uidParam;
+
+    if (!targetEmail && !targetUid) {
+      try {
+        const body = await req.json();
+        targetEmail = body.email?.trim().toLowerCase();
+        targetUid = body.uid?.trim();
+      } catch {
+        // no body
+      }
+    }
+
+    if (!targetEmail && !targetUid) {
+      return NextResponse.json({ error: 'User email or UID is required to delete' }, { status: 400 });
+    }
+
+    // Verify Admin permission
+    const requesterRole = req.headers.get('x-user-role');
+    if (requesterRole && requesterRole !== 'ADMIN' && requesterRole !== 'ASSET_MANAGER') {
+      return NextResponse.json(
+        { error: 'Unauthorized: Only Administrators have access to delete personnel records' },
+        { status: 403 }
+      );
+    }
+
+    // Safeguard: Never delete the primary administrator
+    if (targetEmail === 'admin@sahana.com' || targetUid === 'ADM-01') {
+      return NextResponse.json({ error: 'Cannot delete the primary System Administrator account' }, { status: 403 });
+    }
+
+    const db = await getDatabase();
+    const collection = db.collection('users');
+
+    const filter: Record<string, any> = {};
+    if (targetEmail) filter.email = targetEmail;
+    if (targetUid) filter.uid = targetUid;
+
+    // Check if target user is an Admin
+    const existing = await collection.findOne(filter);
+    if (!existing) {
+      return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
+    }
+    if (existing.role === 'ADMIN' && (existing.email === 'admin@sahana.com' || existing.uid === 'ADM-01')) {
+      return NextResponse.json({ error: 'Cannot delete the primary System Administrator account' }, { status: 403 });
+    }
+
+    await collection.deleteOne({ _id: existing._id });
+
+    return NextResponse.json({
+      success: true,
+      message: `User ${existing.name || targetEmail} removed from database`,
+    });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('Error deleting user in MongoDB:', err);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
+  }
+}
+
+// PUT /api/users - Update an existing user in MongoDB
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+    const { uid, email, name, role, title, department, phone, employeeId, unit, status, password } = body;
+
+    if (!uid && !email) {
+      return NextResponse.json({ error: 'User UID or email is required to update' }, { status: 400 });
+    }
+
+    const requesterRole = req.headers.get('x-user-role');
+    if (requesterRole && requesterRole !== 'ADMIN' && requesterRole !== 'ASSET_MANAGER') {
+      return NextResponse.json(
+        { error: 'Unauthorized: Only Administrators have permission to edit user profiles' },
+        { status: 403 }
+      );
+    }
+
+    const db = await getDatabase();
+    const collection = db.collection('users');
+
+    const filter: Record<string, any> = {};
+    if (uid) filter.uid = uid;
+    else if (email) filter.email = email.trim().toLowerCase();
+
+    const existing = await collection.findOne(filter);
+    if (!existing) {
+      return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
+    }
+
+    const isPrimaryAdmin = existing.email === 'admin@sahana.com' || existing.uid === 'ADM-01';
+
+    // Prevent demoting primary admin
+    const updatedRole = role ? (role as UserRole) : (existing.role as UserRole);
+    if (isPrimaryAdmin && updatedRole !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'The primary Administrator account cannot be assigned a different role' },
+        { status: 400 }
+      );
+    }
+
+    const updateDoc: Record<string, any> = {
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (name !== undefined) updateDoc.name = name.trim();
+    if (role !== undefined) updateDoc.role = updatedRole;
+    if (title !== undefined) updateDoc.title = title.trim();
+    if (department !== undefined) updateDoc.department = department.trim();
+    if (phone !== undefined) updateDoc.phone = phone.trim();
+    if (employeeId !== undefined) updateDoc.employeeId = employeeId.trim();
+    if (unit !== undefined) updateDoc.unit = unit.trim();
+    if (status !== undefined) updateDoc.status = status;
+
+    // Optional email change (prevent duplicate email)
+    if (email && email.trim().toLowerCase() !== existing.email) {
+      const cleanEmail = email.trim().toLowerCase();
+      if (isPrimaryAdmin) {
+        return NextResponse.json(
+          { error: 'Primary Administrator email cannot be changed' },
+          { status: 400 }
+        );
+      }
+      const duplicate = await collection.findOne({ email: cleanEmail, _id: { $ne: existing._id } });
+      if (duplicate) {
+        return NextResponse.json({ error: 'Email is already in use by another user' }, { status: 400 });
+      }
+      updateDoc.email = cleanEmail;
+    }
+
+    // Optional password update
+    if (password && password.trim()) {
+      if (password.trim().length < 6) {
+        return NextResponse.json({ error: 'Password must be at least 6 characters long' }, { status: 400 });
+      }
+      updateDoc.password = password.trim();
+      updateDoc.defaultPassword = password.trim();
+    }
+
+    await collection.updateOne({ _id: existing._id }, { $set: updateDoc });
+
+    const updatedUser = await collection.findOne({ _id: existing._id });
+
+    return NextResponse.json({
+      success: true,
+      message: `User ${updatedUser?.name || 'profile'} updated successfully!`,
+      user: {
+        uid: updatedUser?.uid,
+        name: updatedUser?.name,
+        email: updatedUser?.email,
+        role: updatedUser?.role,
+        title: updatedUser?.title,
+        department: updatedUser?.department,
+        phone: updatedUser?.phone,
+        employeeId: updatedUser?.employeeId,
+        unit: updatedUser?.unit,
+        status: updatedUser?.status,
+      },
+    });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('Error updating user in MongoDB:', err);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
+  }
+}
+

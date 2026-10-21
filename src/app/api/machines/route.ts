@@ -1,17 +1,21 @@
 import { NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 import { Machine } from '@/types/cmms';
+import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 
 export async function GET() {
   try {
     const db = await getDatabase();
     const machines = await db.collection<Machine>('machines').find({}).toArray();
-    // Normalize _id out or keep id
-    const cleanMachines = machines.map(({ _id, ...m }: any) => m);
-    return NextResponse.json({ success: true, data: cleanMachines });
+    if (machines && machines.length > 0) {
+      // Normalize _id out or keep id
+      const cleanMachines = machines.map(({ _id, ...m }: any) => m);
+      return NextResponse.json({ success: true, data: cleanMachines });
+    }
+    return NextResponse.json({ success: true, data: plantAssetsSeed });
   } catch (err: unknown) {
-    console.error('Error fetching machines from MongoDB:', err);
-    return NextResponse.json({ success: false, error: 'Database error', data: [] }, { status: 500 });
+    console.warn('MongoDB machines unavailable, returning seed assets fallback:', (err as any)?.message || err);
+    return NextResponse.json({ success: true, data: plantAssetsSeed });
   }
 }
 
@@ -43,10 +47,12 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Machine ID and updates are required' }, { status: 400 });
     }
 
+    const { _id, ...safeUpdates } = updates;
+
     const db = await getDatabase();
     await db.collection('machines').updateOne(
       { id },
-      { $set: updates }
+      { $set: safeUpdates }
     );
 
     return NextResponse.json({ success: true, message: `Machine ${id} updated` });

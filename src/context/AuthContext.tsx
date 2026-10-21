@@ -19,6 +19,7 @@ interface AuthContextType {
   role: UserRole | null;
   isLoading: boolean;
   loginAsRole: (role: UserRole) => Promise<void>;
+  loginAsUser: (profile: UserProfile) => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   updateUserPassword: (newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -59,7 +60,7 @@ function resolveUserTitle(role: UserRole): string {
   }
 }
 
-const AUTH_STORAGE_KEY = 'textech_current_user';
+const AUTH_STORAGE_KEY = 'sahana_current_user';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -69,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Restore session from localStorage on mount
     try {
       if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+        const stored = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('textech_current_user');
         if (stored) {
           const parsed = JSON.parse(stored);
           setUser(parsed);
@@ -119,6 +120,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loginAsUser = async (profile: UserProfile): Promise<void> => {
+    setUser(profile);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(profile));
+    }
+    setIsLoading(false);
   };
 
   const loginAsRole = async (targetRole: UserRole): Promise<void> => {
@@ -177,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: user?.role || null,
         isLoading,
         loginAsRole,
+        loginAsUser,
         loginWithEmail,
         updateUserPassword,
         logout,

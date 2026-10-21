@@ -21,9 +21,10 @@ import {
   ArrowLeft,
   Play,
   Clock,
+  Building2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { RepairTicket, PPMSchedule, Machine } from '@/types/cmms';
+import { RepairTicket, PPMSchedule, Machine, UserProfile } from '@/types/cmms';
 import {
   subscribeRepairs,
   subscribeMachines,
@@ -34,8 +35,10 @@ import {
 } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import {
   FACTORY_MECHANICS_ROSTER,
+  userToMechanicDuty,
 } from '@/lib/constants/mechanics';
 
 // Helper to format Date to 'YYYY-MM-DD'
@@ -49,29 +52,101 @@ function toDateKey(d: Date): string {
 export default function MechanicRosterPage() {
   const { showToast } = useToast();
   const { user, role } = useAuth();
+  const isAdmin = isUserAdmin(role);
 
   const [repairs, setRepairs] = useState<RepairTicket[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [ppmSchedules, setPpmSchedules] = useState<PPMSchedule[]>([]);
+  const [techUsers, setTechUsers] = useState<UserProfile[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
   const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
   const [hideUnassigned, setHideUnassigned] = useState<boolean>(false);
 
+  const [selectedUnit, setSelectedUnit] = useState<string>(() => {
+    if (isUserAdmin(role)) return 'ALL';
+    return getUserScopedUnit(user, role);
+  });
+  const effectiveUnit = getUserScopedUnit(user, role, selectedUnit === 'ALL' ? null : selectedUnit);
+
+  useEffect(() => {
+    if (!isUserAdmin(role)) {
+      setSelectedUnit(getUserScopedUnit(user, role));
+    }
+  }, [user, role]);
+
+  // Fetch registered users to populate live technicians
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          setTechUsers(data.users);
+        }
+      })
+      .catch((err) => console.warn('Failed to load tech users:', err));
+  }, []);
+
   const isSeniorMechanicOrAdmin =
     role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN' || role === 'ASSET_MANAGER';
 
-  // For Senior Electrician, ONLY show junior electricians
+  // Scoped machines by unit
+  const scopedMachines = React.useMemo(() => {
+    if (isAdmin && selectedUnit === 'ALL') return machines;
+    return machines.filter((m) => matchesUnit(m.unit, effectiveUnit));
+  }, [machines, isAdmin, selectedUnit, effectiveUnit]);
+
+  // Scoped repairs by unit
+  const scopedRepairs = React.useMemo(() => {
+    if (isAdmin && selectedUnit === 'ALL') return repairs;
+    const allowedMachineIds = new Set(scopedMachines.map((m) => m.id.toLowerCase()));
+    return repairs.filter((r) => {
+      if (r.machineId && allowedMachineIds.has(r.machineId.toLowerCase())) return true;
+      if (r.unit && matchesUnit(r.unit, effectiveUnit)) return true;
+      return false;
+    });
+  }, [repairs, scopedMachines, isAdmin, selectedUnit, effectiveUnit]);
+
+  // Scoped PPM schedules by unit
+  const scopedPpm = React.useMemo(() => {
+    if (isAdmin && selectedUnit === 'ALL') return ppmSchedules;
+    const allowedMachineIds = new Set(scopedMachines.map((m) => m.id.toLowerCase()));
+    return ppmSchedules.filter((p) => {
+      if (p.machineId && allowedMachineIds.has(p.machineId.toLowerCase())) return true;
+      if (p.unit && matchesUnit(p.unit, effectiveUnit)) return true;
+      return false;
+    });
+  }, [ppmSchedules, scopedMachines, isAdmin, selectedUnit, effectiveUnit]);
+
+  // Dynamic roster from real registered staff scoped to the unit
+  const registeredRoster = React.useMemo(() => {
+    let technicalStaff = techUsers.filter(
+      (u) =>
+        u.role === 'MECHANIC' ||
+        u.role === 'SENIOR_MECHANIC' ||
+        u.role === 'ELECTRICIAN' ||
+        u.role === 'SENIOR_ELECTRICIAN'
+    );
+    if (!isAdmin) {
+      technicalStaff = technicalStaff.filter((u) => matchesUnit(u.unit, effectiveUnit));
+    } else if (selectedUnit !== 'ALL') {
+      technicalStaff = technicalStaff.filter((u) => matchesUnit(u.unit, selectedUnit));
+    }
+    if (technicalStaff.length === 0) return FACTORY_MECHANICS_ROSTER;
+    return technicalStaff.map(userToMechanicDuty);
+  }, [techUsers, isAdmin, selectedUnit, effectiveUnit]);
+
+  // For Senior Electrician, ONLY show junior electricians; for Senior Mechanic, show mechanics
   const relevantTechnicians = React.useMemo(() => {
     if (role === 'SENIOR_ELECTRICIAN') {
-      return FACTORY_MECHANICS_ROSTER.filter(
-        (m) => m.trade === 'ELECTRICIAN' && m.id !== 'ELEC-01' && !m.role.toLowerCase().includes('senior')
+      return registeredRoster.filter(
+        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
       );
     }
     if (role === 'SENIOR_MECHANIC') {
-      return FACTORY_MECHANICS_ROSTER.filter((m) => m.trade === 'MECHANIC');
+      return registeredRoster.filter((m) => m.trade === 'MECHANIC');
     }
-    return FACTORY_MECHANICS_ROSTER;
-  }, [role]);
+    return registeredRoster;
+  }, [role, registeredRoster]);
 
   useEffect(() => {
     const unsubR = subscribeRepairs((data) => setRepairs(data));
@@ -110,14 +185,14 @@ export default function MechanicRosterPage() {
     setSelectedDate(toDateKey(new Date()));
   };
 
-  // Filter tasks for this selected date
-  const dayRepairs = repairs.filter((r) => {
+  // Filter tasks for this selected date (scoped to plant unit)
+  const dayRepairs = scopedRepairs.filter((r) => {
     const repDate = r.reportedAt?.slice(0, 10);
     const resDate = r.resolvedAt?.slice(0, 10);
     return repDate === selectedDate || resDate === selectedDate;
   });
 
-  const dayPpms = ppmSchedules.filter((p) => p.nextDue?.slice(0, 10) === selectedDate);
+  const dayPpms = scopedPpm.filter((p) => p.nextDue?.slice(0, 10) === selectedDate);
 
   const unassignedRepairs = dayRepairs.filter(
     (r) => !r.attendedBy || r.attendedBy.trim() === ''
@@ -130,9 +205,8 @@ export default function MechanicRosterPage() {
     );
 
     const assignedPpm = dayPpms.filter((p) => {
-      if (mech.id === 'MEC-04') return true;
-      if (mech.id === 'MEC-01' && dayPpms.length > 2) return true;
-      return false;
+      if (!p.assignedTo) return false;
+      return p.assignedTo.toLowerCase().includes(mech.name.toLowerCase());
     });
 
     const completedCount = assignedTickets.filter((t) => t.status === 'COMPLETED').length;
@@ -297,6 +371,24 @@ export default function MechanicRosterPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Facility Unit Scope Control */}
+          {isAdmin ? (
+            <select
+              value={selectedUnit}
+              onChange={(e) => setSelectedUnit(e.target.value)}
+              className="text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-2.5 py-1.5 text-slate-800 outline-none cursor-pointer"
+            >
+              <option value="ALL">All Plants</option>
+              <option value="UNIT - 1">UNIT - 1</option>
+              <option value="UNIT-2">UNIT-2</option>
+            </select>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs font-bold text-indigo-700">
+              <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+              <span>{effectiveUnit}</span>
+            </div>
+          )}
+
           <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition">
             <input
               type="checkbox"
@@ -387,7 +479,7 @@ export default function MechanicRosterPage() {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Technicians on Duty</div>
-            <div className="text-xl font-extrabold text-slate-900 mt-0.5">5 On Floor</div>
+            <div className="text-xl font-extrabold text-slate-900 mt-0.5">{relevantTechnicians.length} On Floor</div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
             <Users className="w-5 h-5" />
@@ -438,20 +530,36 @@ export default function MechanicRosterPage() {
       </div>
 
       {/* Main Roster Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {mechanicWorkData
-          .filter(
-            (item) =>
-              (selectedMechanicFilter === 'ALL' || item.mechanic.name === selectedMechanicFilter) &&
-              (!hideUnassigned || item.totalJobs > 0)
-          )
-          .map(({ mechanic, tickets, ppms, totalJobs, completedCount }) => (
-            <div
-              key={mechanic.id}
-              className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between ${
-                totalJobs === 0 ? 'print:hidden' : ''
-              }`}
-            >
+      {relevantTechnicians.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center shadow-xs">
+          <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800">No Technical Staff Registered Yet</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
+            Add mechanics or electricians in User Management to assign breakdown tickets, track shift duties, and allocate floor tasks.
+          </p>
+          <Link
+            href="/dashboard/users"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+          >
+            <Users className="w-4 h-4" />
+            <span>Go to User Management</span>
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {mechanicWorkData
+            .filter(
+              (item) =>
+                (selectedMechanicFilter === 'ALL' || item.mechanic.name === selectedMechanicFilter) &&
+                (!hideUnassigned || item.totalJobs > 0)
+            )
+            .map(({ mechanic, tickets, ppms, totalJobs, completedCount }) => (
+              <div
+                key={mechanic.id}
+                className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between ${
+                  totalJobs === 0 ? 'print:hidden' : ''
+                }`}
+              >
               {/* Header */}
               <div className="p-5 bg-slate-50/90 border-b border-slate-200">
                 <div className="flex items-center justify-between">
@@ -765,7 +873,8 @@ export default function MechanicRosterPage() {
               </div>
             </div>
           ))}
-      </div>
+        </div>
+      )}
 
       {/* Printed Roster Sign-Off Footer */}
       <div className="hidden print:grid grid-cols-3 gap-8 pt-8 mt-8 border-t-2 border-slate-900 text-xs print-break-inside-avoid">

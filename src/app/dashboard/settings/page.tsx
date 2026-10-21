@@ -38,9 +38,12 @@ import {
   Lock,
   Layers,
   ChevronDown,
+  Trash2,
+  Pencil,
 } from 'lucide-react';
 import { UserProfile, UserRole, RepairTicket, Machine } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
+import { FACTORY_UNITS, getUnitBadgeInfo, matchesUnit } from '@/lib/constants/units';
 import { subscribeRepairs, subscribeMachines } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -80,6 +83,7 @@ interface WorkerKpiData {
 export default function AdminSettingsPage() {
   const { user: currentUser, role: currentRole, loginAsRole } = useAuth();
   const { showToast } = useToast();
+  const isAdmin = currentRole === 'ADMIN' || currentUser?.role === 'ADMIN';
 
   // Active Settings Tab
   const [activeTab, setActiveTab] = useState<'KPI' | 'USERS'>('KPI');
@@ -101,6 +105,7 @@ export default function AdminSettingsPage() {
   // Filters for User Management
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<string>('ALL');
+  const [userUnitFilter, setUserUnitFilter] = useState<string>('ALL');
 
   // Add User Modal State
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
@@ -116,6 +121,21 @@ export default function AdminSettingsPage() {
   const [newPhone, setNewPhone] = useState('');
   const [newEmployeeId, setNewEmployeeId] = useState(`EMP-${Math.floor(100 + Math.random() * 900)}`);
   const [newPassword, setNewPassword] = useState('');
+  const [newUnit, setNewUnit] = useState<string>('All Units');
+
+  // Edit User Modal State
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('MECHANIC');
+  const [editTitle, setEditTitle] = useState('');
+  const [editDepartment, setEditDepartment] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmployeeId, setEditEmployeeId] = useState('');
+  const [editUnit, setEditUnit] = useState<string>('All Units');
+  const [editStatus, setEditStatus] = useState<string>('ACTIVE');
+  const [editPassword, setEditPassword] = useState('');
+  const [isUpdatingUser, setIsUpdatingUser] = useState(false);
 
   // Password Reset Modal State
   const [passwordModalUser, setPasswordModalUser] = useState<UserProfile | null>(null);
@@ -221,6 +241,7 @@ export default function AdminSettingsPage() {
           phone: newPhone.trim(),
           employeeId: newEmployeeId.trim(),
           password: newPassword.trim(),
+          unit: newUnit,
         }),
       });
 
@@ -237,6 +258,7 @@ export default function AdminSettingsPage() {
       setNewEmail('');
       setNewPassword('');
       setNewPhone('');
+      setNewUnit('All Units');
       setNewEmployeeId(`EMP-${Math.floor(100 + Math.random() * 900)}`);
       fetchUsers();
     } catch (err: unknown) {
@@ -283,6 +305,96 @@ export default function AdminSettingsPage() {
       showToast(`Error: ${msg}`, 'error');
     } finally {
       setIsUpdatingPassword(false);
+    }
+  };
+
+  // Open Edit User Modal
+  const handleOpenEditUser = (u: UserProfile) => {
+    setEditingUser(u);
+    setEditName(u.name || '');
+    setEditEmail(u.email || '');
+    setEditRole(u.role || 'MECHANIC');
+    setEditTitle(u.title || '');
+    setEditDepartment(u.department || '');
+    setEditPhone(u.phone || '');
+    setEditEmployeeId(u.employeeId || '');
+    setEditUnit(u.unit || 'All Units');
+    setEditStatus(u.status || 'ACTIVE');
+    setEditPassword('');
+  };
+
+  // Submit Edit User Form
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setIsUpdatingUser(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentRole || 'ADMIN',
+        },
+        body: JSON.stringify({
+          uid: editingUser.uid,
+          name: editName,
+          email: editEmail,
+          role: editRole,
+          title: editTitle,
+          department: editDepartment,
+          phone: editPhone,
+          employeeId: editEmployeeId,
+          unit: editUnit,
+          status: editStatus,
+          password: editPassword.trim() ? editPassword.trim() : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update user profile');
+      }
+
+      showToast(`User profile for ${editName} updated successfully!`, 'success');
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Update failed: ${msg}`, 'error');
+    } finally {
+      setIsUpdatingUser(false);
+    }
+  };
+
+  // Delete Member (Admin Only)
+  const handleDeleteUser = async (u: UserProfile) => {
+    if (!isAdmin) {
+      showToast('Access restricted: Only Administrators can delete personnel accounts', 'error');
+      return;
+    }
+    if (u.role === 'ADMIN' || u.email === 'admin@sahana.com') {
+      showToast('Primary Administrator account cannot be deleted', 'error');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to remove member ${u.name} (${u.email})? This action is permanent.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/users?email=${encodeURIComponent(u.email)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': currentRole || 'ADMIN',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete member');
+      }
+      showToast(`Member ${u.name} removed successfully`, 'success');
+      fetchUsers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Delete failed: ${msg}`, 'error');
     }
   };
 
@@ -535,12 +647,14 @@ export default function AdminSettingsPage() {
         u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
         u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
         (u.employeeId && u.employeeId.toLowerCase().includes(userSearchQuery.toLowerCase())) ||
-        (u.department && u.department.toLowerCase().includes(userSearchQuery.toLowerCase()));
+        (u.department && u.department.toLowerCase().includes(userSearchQuery.toLowerCase())) ||
+        (u.unit && u.unit.toLowerCase().includes(userSearchQuery.toLowerCase()));
 
       const matchesRole = userRoleFilter === 'ALL' || u.role === userRoleFilter;
-      return matchesSearch && matchesRole;
+      const matchesUnitFilter = userUnitFilter === 'ALL' || matchesUnit(u.unit, userUnitFilter);
+      return matchesSearch && matchesRole && matchesUnitFilter;
     });
-  }, [users, userSearchQuery, userRoleFilter]);
+  }, [users, userSearchQuery, userRoleFilter, userUnitFilter]);
 
   const userStats = useMemo(() => {
     const total = users.length;
@@ -1005,6 +1119,17 @@ export default function AdminSettingsPage() {
                 ))}
               </div>
 
+              <select
+                value={userUnitFilter}
+                onChange={(e) => setUserUnitFilter(e.target.value)}
+                className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-800 outline-none cursor-pointer shrink-0"
+              >
+                <option value="ALL">All Units</option>
+                <option value="All Units">Plant-wide (All)</option>
+                <option value="UNIT - 1">UNIT - 1</option>
+                <option value="UNIT-2">UNIT-2</option>
+              </select>
+
               <button
                 onClick={fetchUsers}
                 disabled={isLoadingUsers}
@@ -1038,7 +1163,7 @@ export default function AdminSettingsPage() {
                   <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[10px] uppercase tracking-wider">
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">User</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Role</th>
-                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Department</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Assigned Unit</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Contact</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Default Pass</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-center">Status</th>
@@ -1054,7 +1179,9 @@ export default function AdminSettingsPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((u) => (
+                    filteredUsers.map((u) => {
+                      const unitBadge = getUnitBadgeInfo(u.unit);
+                      return (
                       <tr key={u.uid} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
                         {/* User Profile */}
                         <td className="py-2 px-3 border-r border-b border-slate-200">
@@ -1076,11 +1203,15 @@ export default function AdminSettingsPage() {
                           </span>
                         </td>
 
-                        {/* Department */}
+                        {/* Assigned Unit */}
                         <td className="py-2 px-3 border-r border-b border-slate-200">
-                          <span className="text-slate-600 text-xs block">{u.department || 'Plant Operations'}</span>
-                          <span className="text-[11px] text-slate-400">{u.title}</span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border ${unitBadge.color}`}>
+                            <Building className="w-3 h-3" />
+                            <span>{unitBadge.label}</span>
+                          </span>
                         </td>
+
+
 
                         {/* Contact */}
                         <td className="py-2 px-3 border-r border-b border-slate-200">
@@ -1128,12 +1259,35 @@ export default function AdminSettingsPage() {
                               <Zap className="w-3 h-3" />
                               <span>Switch</span>
                             </button>
+
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleOpenEditUser(u)}
+                                className="px-2 py-1 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition flex items-center gap-1 cursor-pointer"
+                                title="Edit user profile (Admin only)"
+                              >
+                                <Pencil className="w-3 h-3 text-amber-600" />
+                                <span>Edit</span>
+                              </button>
+                            )}
+
+                            {isAdmin && u.role !== 'ADMIN' && u.email !== 'admin@sahana.com' && (
+                              <button
+                                onClick={() => handleDeleteUser(u)}
+                                className="px-2 py-1 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded transition flex items-center gap-1 cursor-pointer"
+                                title="Delete user (Admin only)"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
+                    );
+                  })
+                )}
+              </tbody>
               </table>
             </div>
           </div>
@@ -1180,8 +1334,6 @@ export default function AdminSettingsPage() {
                   <option value="SENIOR_MECHANIC">🔧 Senior Master Technician & PPM Lead</option>
                   <option value="SENIOR_ELECTRICIAN">⚡ Senior Plant Electrician & Power Lead</option>
                   <option value="STORE_PERSON">📦 Tool Crib & Inventory Custodian</option>
-                  <option value="ADMIN">🛡️ Plant Administrator & Asset Director</option>
-                  <option value="ASSET_MANAGER">🏢 Asset Manager</option>
                 </select>
               </div>
 
@@ -1215,30 +1367,22 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
 
-              {/* Title & Department */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Job Title / Designation
-                  </label>
-                  <input
-                    type="text"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Department / Line
-                  </label>
-                  <input
-                    type="text"
-                    value={newDepartment}
-                    onChange={(e) => setNewDepartment(e.target.value)}
-                    className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                  />
-                </div>
+              {/* Assigned Factory Unit */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Assigned Factory Unit <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={newUnit}
+                  onChange={(e) => setNewUnit(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-bold"
+                >
+                  {FACTORY_UNITS.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Employee ID & Phone */}
@@ -1497,6 +1641,196 @@ export default function AdminSettingsPage() {
                 Close Sheet
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: EDIT USER (SETTINGS)                                    */}
+      {/* ============================================================== */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-amber-50/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Edit User Profile: {editingUser.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    {editingUser.email} &bull; {editingUser.employeeId || editingUser.uid}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Full Name */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                  />
+                </div>
+
+                {/* Email Address */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    disabled={editingUser.email === 'admin@sahana.com'}
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 font-mono"
+                  />
+                </div>
+
+                {/* System Role */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    System Role *
+                  </label>
+                  <select
+                    disabled={editingUser.email === 'admin@sahana.com'}
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as UserRole)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 cursor-pointer"
+                  >
+                    <option value="MECHANIC">MECHANIC (Sewing Floor)</option>
+                    <option value="SENIOR_MECHANIC">SENIOR_MECHANIC (Shift Lead)</option>
+                    <option value="ELECTRICIAN">ELECTRICIAN (Power & Servo)</option>
+                    <option value="SENIOR_ELECTRICIAN">SENIOR_ELECTRICIAN (Lead Electrician)</option>
+                    <option value="STORE_PERSON">STORE_PERSON (Inventory Crib)</option>
+                    <option value="ASSET_MANAGER">ASSET_MANAGER (Equipment Director)</option>
+                    <option value="CEO">CEO (Executive Overseer)</option>
+                    <option value="ADMIN">ADMIN (Full Plant Administrator)</option>
+                  </select>
+                </div>
+
+
+
+                {/* Assigned Factory Unit */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Assigned Factory Unit *
+                  </label>
+                  <select
+                    value={editUnit}
+                    onChange={(e) => setEditUnit(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    {FACTORY_UNITS.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Employee ID */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Employee ID / Token
+                  </label>
+                  <input
+                    type="text"
+                    value={editEmployeeId}
+                    onChange={(e) => setEditEmployeeId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+
+                {/* Phone Number */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Phone / Extension
+                  </label>
+                  <input
+                    type="text"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Account Status */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Account Status
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="ACTIVE">ACTIVE (Normal Access)</option>
+                    <option value="ON_LEAVE">ON_LEAVE (Temporary Absence)</option>
+                    <option value="INACTIVE">INACTIVE (Deactivated)</option>
+                  </select>
+                </div>
+
+                {/* Optional New Password */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Reset Password (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    placeholder="Leave blank to keep current"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingUser}
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  {isUpdatingUser ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

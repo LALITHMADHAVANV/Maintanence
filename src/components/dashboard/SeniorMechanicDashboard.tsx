@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Wrench,
@@ -45,7 +45,7 @@ import {
   PartRequisition,
   RepairUrgency,
 } from '@/types/cmms';
-import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
+import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 import {
   createBreakdownTicket,
   assignRepairTicket,
@@ -142,13 +142,33 @@ export function SeniorMechanicDashboard({
     setDrillDownState((prev) => ({ ...prev, isOpen: false }));
   };
 
+  const [registeredTechs, setRegisteredTechs] = useState<MechanicDuty[]>([]);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const techs = data.users.filter((u: any) =>
+            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+          );
+          if (techs.length > 0) {
+            setRegisteredTechs(techs.map(userToMechanicDuty));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
+
   // ─── Filtered Roster ────────────────────────────────────────────────────
   const roster = useMemo(() => {
-    return FACTORY_MECHANICS_ROSTER.filter((m) => {
+    return activeStaffRoster.filter((m) => {
       if (rosterTradeFilter === 'ALL') return true;
       return m.trade === rosterTradeFilter;
     });
-  }, [rosterTradeFilter]);
+  }, [activeStaffRoster, rosterTradeFilter]);
 
   // ─── Active Floor Breakdowns ──────────────────────────────────────────
   const activeBreakdowns = useMemo(() => {
@@ -181,7 +201,7 @@ export function SeniorMechanicDashboard({
     );
     const ppmOverdue = ppmSchedules.filter((p) => p.status === 'OVERDUE');
 
-    const onDutyMechanics = FACTORY_MECHANICS_ROSTER.filter((m) => m.status === 'ON_DUTY').length;
+    const onDutyMechanics = activeStaffRoster.filter((m) => m.status === 'ON_DUTY').length;
 
     // Assigned active tasks across mechanics
     const activeTasksCount = openTickets.filter((r) => !!r.attendedBy).length;
@@ -1347,7 +1367,7 @@ export function SeniorMechanicDashboard({
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">Leave Unassigned (Floor Queue)</option>
-                  {FACTORY_MECHANICS_ROSTER.map((m) => (
+                  {activeStaffRoster.map((m) => (
                     <option key={m.id} value={m.name}>
                       {m.name} — {m.role} ({m.assignedLines})
                     </option>
@@ -1429,7 +1449,7 @@ export function SeniorMechanicDashboard({
                         className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 font-semibold"
                       >
                         <option value="">Leave Unassigned (Floor Queue)</option>
-                        {FACTORY_MECHANICS_ROSTER.map((m) => (
+                        {activeStaffRoster.map((m) => (
                           <option key={m.id} value={m.name}>
                             {m.name} — {m.role} ({m.trade} • {m.assignedLines})
                           </option>
@@ -1510,7 +1530,7 @@ export function SeniorMechanicDashboard({
                   required
                 >
                   <option value="">Choose technician...</option>
-                  {FACTORY_MECHANICS_ROSTER.map((m) => (
+                  {activeStaffRoster.map((m) => (
                     <option key={m.id} value={m.name}>
                       {m.name} ({m.trade} • {m.assignedLines})
                     </option>

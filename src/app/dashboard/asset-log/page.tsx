@@ -32,7 +32,10 @@ import {
   ShieldCheck,
   Radio,
   Plus,
+  Pencil,
+  Building2,
 } from 'lucide-react';
+import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { Machine, MachineStatus, AssetLogEntry, FloorLine } from '@/types/cmms';
 import {
   subscribeMachines,
@@ -49,11 +52,14 @@ import {
   subscribeAssetLogs,
   toggleMachineActiveIdle,
   assignMachineZoneLine,
+  setMachineStatusWithLog,
+  addExtraMachineToZone,
 } from '@/lib/services/assetLogService';
 import { LineAvailabilityWidget } from '@/components/dashboard/LineAvailabilityWidget';
 import { CameraScannerModal } from '@/components/scan/CameraScannerModal';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 
 function AssetLogContent() {
   const { user, role } = useAuth();
@@ -66,6 +72,7 @@ function AssetLogContent() {
 
   // Quick Enter Input State
   const [scanInput, setScanInput] = useState<string>('');
+  const [scanActionTarget, setScanActionTarget] = useState<'ACTIVE' | 'IDLE'>('ACTIVE');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [lastToggledResult, setLastToggledResult] = useState<{
     machineId: string;
@@ -80,10 +87,41 @@ function AssetLogContent() {
 
   // Filter State
   const [activeTab, setActiveTab] = useState<'LEDGER' | 'REPORT' | 'LOGS'>('LEDGER');
+  const isAdmin = isUserAdmin(role);
+  const [selectedUnit, setSelectedUnit] = useState<string>(() => {
+    if (isUserAdmin(role)) return 'ALL';
+    return getUserScopedUnit(user, role);
+  });
+  const effectiveUnit = getUserScopedUnit(user, role, selectedUnit === 'ALL' ? null : selectedUnit);
   const [selectedZone, setSelectedZone] = useState<ClientZone | 'ALL'>('ALL');
   const [selectedLine, setSelectedLine] = useState<ClientLine | 'ALL'>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<MachineStatus | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  useEffect(() => {
+    if (!isUserAdmin(role)) {
+      setSelectedUnit(getUserScopedUnit(user, role));
+    } else if (user?.unit && user.unit !== 'All Units') {
+      setSelectedUnit(user.unit);
+    }
+  }, [user, role]);
+
+  // Base machines filtered by unit scope (locked to mechanic's unit for non-admins)
+  const baseMachines = useMemo(() => {
+    if (isAdmin && selectedUnit === 'ALL') return machines;
+    return machines.filter((m) => matchesUnit(m.unit, effectiveUnit));
+  }, [machines, isAdmin, selectedUnit, effectiveUnit]);
+
+  // Scoped asset logs filtered by unit scope
+  const scopedAssetLogs = useMemo(() => {
+    if (isAdmin && selectedUnit === 'ALL') return assetLogs;
+    const validIds = new Set(baseMachines.map((m) => m.id.toUpperCase()));
+    return assetLogs.filter((log) => {
+      if (log.machineId && validIds.has(log.machineId.toUpperCase())) return true;
+      if (log.machineUnit && matchesUnit(log.machineUnit, effectiveUnit)) return true;
+      return false;
+    });
+  }, [assetLogs, baseMachines, isAdmin, selectedUnit, effectiveUnit]);
 
   // Batch Selection State
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
@@ -94,6 +132,20 @@ function AssetLogContent() {
   const [reassignZone, setReassignZone] = useState<ClientZone>('Zone 1');
   const [reassignLine, setReassignLine] = useState<ClientLine>('Line 01');
   const [reassignStation, setReassignStation] = useState<string>('Station 01');
+
+  // Edit Asset Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+  const [machineToEdit, setMachineToEdit] = useState<Machine | null>(null);
+
+  // Add Extra Machine Modal State
+  const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState<boolean>(false);
+  const [extraZone, setExtraZone] = useState<ClientZone>('Zone 1');
+  const [extraLine, setExtraLine] = useState<ClientLine>('Line 01');
+  const [extraMachineId, setExtraMachineId] = useState<string>('');
+  const [extraMachineBrand, setExtraMachineBrand] = useState<string>('Juki');
+  const [extraMachineType, setExtraMachineType] = useState<string>('Single Needle Lockstitch');
+  const [extraMachineModel, setExtraMachineModel] = useState<string>('DDL-9000C');
+  const [extraMachineStatus, setExtraMachineStatus] = useState<MachineStatus>('ACTIVE');
 
   // Input ref for auto-focus
   const scanInputRef = useRef<HTMLInputElement | null>(null);
@@ -159,16 +211,7 @@ function AssetLogContent() {
 
     const unsubMachines = subscribeMachines((data) => {
       if (!isSubscribed) return;
-      if (!data || data.length === 0) {
-        // Seed default client fleet across 8 zones x 8 lines if empty
-        const initialFleet = generateClientFleet();
-        setMachines(initialFleet);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('textech_machines', JSON.stringify(initialFleet));
-        }
-      } else {
-        setMachines(data);
-      }
+      setMachines(data || []);
       setIsLoading(false);
     });
 
@@ -184,14 +227,30 @@ function AssetLogContent() {
     };
   }, []);
 
-  // ─── Handler: Toggle Machine on [Enter] key ───
-  const handleScanSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanId = scanInput.trim();
+  // Matched machine lookup for fast live preview in the dispatch bar (unit scoped)
+  const matchedMachine = useMemo(() => {
+    if (!scanInput.trim()) return null;
+    const q = scanInput.trim().toUpperCase();
+    return baseMachines.find((m) => m.id.toUpperCase() === q);
+  }, [scanInput, baseMachines]);
+
+  // ─── Handler: Direct Dispatch by ID ("Move to active" or "idle") ───
+  const handleDispatchById = async (targetId: string, status: 'ACTIVE' | 'IDLE') => {
+    const cleanId = targetId.trim();
     if (!cleanId) return;
 
+    // Unit-boundary check: non-admins cannot dispatch machines from other units
+    if (!isAdmin) {
+      const existsInUnit = baseMachines.some((m) => m.id.toUpperCase() === cleanId.toUpperCase());
+      if (!existsInUnit) {
+        playAudioTone('ERROR');
+        showToast(`Machine ${cleanId} is not in your assigned plant (${effectiveUnit || 'your unit'}).`, 'error');
+        return;
+      }
+    }
+
     const changedByName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic');
-    const result = await toggleMachineActiveIdle(cleanId, changedByName);
+    const result = await setMachineStatusWithLog(cleanId, status, changedByName);
 
     if (result.success && result.machine && result.previousStatus && result.newStatus) {
       playAudioTone(result.newStatus === 'ACTIVE' ? 'ACTIVE' : 'IDLE');
@@ -206,8 +265,15 @@ function AssetLogContent() {
       setScanInput('');
     } else {
       playAudioTone('ERROR');
-      showToast(result.message, 'error');
+      showToast(result.message || 'Machine ID not found or could not be updated.', 'error');
     }
+  };
+
+  // ─── Handler: Dispatch Machine on [Enter] key ───
+  const handleScanSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!scanInput.trim()) return;
+    await handleDispatchById(scanInput, scanActionTarget);
   };
 
   // ─── Handler: Direct 1-Click Toggle Switch from Row ───
@@ -226,6 +292,59 @@ function AssetLogContent() {
       });
     } else {
       showToast(result.message, 'error');
+    }
+  };
+
+  // ─── Handler: Dropdown Status Selection ("idle" or "Move to active") ───
+  const handleStatusChange = async (machine: Machine, targetStatus: 'ACTIVE' | 'IDLE') => {
+    if (machine.status === targetStatus) return;
+    const changedByName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic');
+    const result = await setMachineStatusWithLog(machine.id, targetStatus, changedByName);
+    if (result.success && result.machine && result.previousStatus && result.newStatus) {
+      playAudioTone(result.newStatus === 'ACTIVE' ? 'ACTIVE' : 'IDLE');
+      showToast(result.message, result.newStatus === 'ACTIVE' ? 'success' : 'info');
+      setLastToggledResult({
+        machineId: result.machine.id,
+        prevStatus: result.previousStatus,
+        newStatus: result.newStatus,
+        timestamp: new Date(),
+        machineName: result.machine.name,
+      });
+    } else {
+      showToast(result.message || 'Failed to update machine status', 'error');
+    }
+  };
+
+  // ─── Handler: Add Extra Machine to Zone (increments zone total & active count) ───
+  const handleAddExtraMachineSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = (
+      extraMachineId.trim() ||
+      `MC-${extraZone.replace('Zone ', 'Z0')}-${extraLine.replace('Line ', 'L')}-EXT${Math.floor(
+        Math.random() * 899 + 100
+      )}`
+    ).toUpperCase();
+    const changedByName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic');
+
+    const result = await addExtraMachineToZone({
+      machineId: cleanId,
+      brand: extraMachineBrand,
+      type: extraMachineType,
+      model: extraMachineModel,
+      zone: extraZone,
+      line: extraLine,
+      status: extraMachineStatus,
+      unit: selectedUnit !== 'ALL' ? selectedUnit : user?.unit || 'Unit 1',
+      changedBy: changedByName,
+    });
+
+    if (result.success) {
+      playAudioTone(extraMachineStatus === 'ACTIVE' ? 'ACTIVE' : 'IDLE');
+      showToast(result.message, 'success');
+      setIsAddExtraModalOpen(false);
+      setExtraMachineId('');
+    } else {
+      showToast('Failed to add extra machine', 'error');
     }
   };
 
@@ -279,7 +398,7 @@ function AssetLogContent() {
 
   // ─── Filtered Machines List ───
   const filteredMachines = useMemo(() => {
-    return machines.filter((m) => {
+    return baseMachines.filter((m) => {
       const mZone = getMachineZone(m);
       const mLine = getMachineLine(m);
 
@@ -313,13 +432,13 @@ function AssetLogContent() {
 
       return true;
     });
-  }, [machines, selectedZone, selectedLine, selectedStatus, searchQuery]);
+  }, [baseMachines, selectedZone, selectedLine, selectedStatus, searchQuery]);
 
   // Overall counts
-  const totalCount = machines.length;
-  const activeCount = machines.filter((m) => m.status === 'ACTIVE').length;
-  const idleCount = machines.filter((m) => m.status === 'IDLE' || m.status === 'BUFFER').length;
-  const breakdownCount = machines.filter(
+  const totalCount = baseMachines.length;
+  const activeCount = baseMachines.filter((m) => m.status === 'ACTIVE').length;
+  const idleCount = baseMachines.filter((m) => m.status === 'IDLE' || m.status === 'BUFFER').length;
+  const breakdownCount = baseMachines.filter(
     (m) => m.status === 'BREAKDOWN' || m.status === 'UNDER_MAINTENANCE'
   ).length;
 
@@ -364,6 +483,19 @@ function AssetLogContent() {
 
           <button
             type="button"
+            onClick={() => {
+              if (selectedZone !== 'ALL') setExtraZone(selectedZone);
+              if (selectedLine !== 'ALL') setExtraLine(selectedLine);
+              setIsAddExtraModalOpen(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Extra Machine</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsCameraModalOpen(true)}
             className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
           >
@@ -373,22 +505,33 @@ function AssetLogContent() {
         </div>
       </div>
 
-      {/* ─── 2. INSTANT SCAN / ENTER TOGGLE BAR (FULFILLS "from idle to active and active to idle as enter") ─── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 p-5 text-white shadow-lg shadow-indigo-950/20">
-        <div className="relative z-10 space-y-3">
+      {/* ─── 2. INSTANT MACHINE DISPATCH STATION (REPLACED TOGGLE WITH DUAL DISPATCH & ACTION SELECTOR) ─── */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 text-white shadow-xl shadow-indigo-950/25 border border-indigo-500/20">
+        <div className="relative z-10 space-y-3.5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <h2 className="text-sm sm:text-base font-bold tracking-tight">
-                Quick Status Switcher (Active ⇋ Idle on Enter)
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
+              <h2 className="text-sm sm:text-base font-extrabold tracking-tight">
+                Instant Machine Dispatch Station
               </h2>
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/20">
+                Direct Dispatch
+              </span>
             </div>
-            <span className="text-[11px] text-indigo-200/80">
-              Type or Scan Machine Barcode / QR ID &amp; press <kbd className="px-1.5 py-0.5 bg-white/10 rounded font-mono text-[10px] text-white">Enter ↵</kbd>
-            </span>
+            <div className="flex items-center gap-2 text-[11px] text-indigo-200/80">
+              <span>Action on <kbd className="px-1.5 py-0.5 bg-white/10 rounded font-mono text-[10px] text-white">Enter ↵</kbd>:</span>
+              <select
+                value={scanActionTarget}
+                onChange={(e) => setScanActionTarget(e.target.value as 'ACTIVE' | 'IDLE')}
+                className="bg-white/10 hover:bg-white/15 border border-white/20 rounded-lg px-2.5 py-1 text-xs font-bold text-white outline-none cursor-pointer focus:ring-2 focus:ring-indigo-400"
+              >
+                <option value="ACTIVE" className="bg-slate-900 text-emerald-400 font-bold">🟢 Move to active</option>
+                <option value="IDLE" className="bg-slate-900 text-amber-400 font-bold">🟡 idle</option>
+              </select>
+            </div>
           </div>
 
-          <form onSubmit={handleScanSubmit} className="flex items-center gap-2">
+          <form onSubmit={handleScanSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <div className="relative flex-1">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-indigo-300">
                 <QrCode className="w-5 h-5" />
@@ -398,30 +541,98 @@ function AssetLogContent() {
                 type="text"
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
-                placeholder="Scan QR or Enter Machine ID (e.g. MC-Zone1-L01-101) & press Enter..."
+                placeholder="Scan QR or Enter Machine ID (e.g. MC-Zone1-L01-101)..."
                 autoFocus
                 autoComplete="off"
                 className="w-full pl-11 pr-24 py-3 bg-white/10 hover:bg-white/15 focus:bg-white text-white focus:text-slate-900 placeholder:text-indigo-200/60 rounded-xl border border-white/20 focus:border-white focus:ring-4 focus:ring-indigo-500/30 outline-none text-sm font-mono font-bold transition shadow-inner"
               />
               <div className="absolute inset-y-0 right-0 pr-2 flex items-center">
                 <span className="px-2 py-1 rounded-md text-[10px] font-extrabold bg-indigo-500/40 text-indigo-100 border border-indigo-400/30 pointer-events-none">
-                  ↵ Enter
+                  ↵ Enter ({scanActionTarget === 'ACTIVE' ? 'Active' : 'Idle'})
                 </span>
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={!scanInput.trim()}
-              className="px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs transition shadow-md shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              <ArrowRightLeft className="w-4 h-4" />
-              <span>Toggle Status</span>
-            </button>
+            {/* Direct Dual Action Buttons replacing the old Toggle button */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={!scanInput.trim()}
+                onClick={() => handleDispatchById(scanInput, 'ACTIVE')}
+                title="Immediately move this machine to active production"
+                className="flex-1 sm:flex-initial px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition shadow-md shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Move to active</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={!scanInput.trim()}
+                onClick={() => handleDispatchById(scanInput, 'IDLE')}
+                title="Immediately set this machine to idle standby"
+                className="flex-1 sm:flex-initial px-4 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-black text-xs transition shadow-md shadow-amber-400/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <PauseCircle className="w-4 h-4" />
+                <span>idle</span>
+              </button>
+            </div>
           </form>
 
-          {/* Last Toggled Flash Confirmation Banner */}
-          {lastToggledResult && (
+          {/* Machine Live Match Preview Chip */}
+          {scanInput.trim() && (
+            <div className="text-xs">
+              {matchedMachine ? (
+                <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 flex flex-wrap items-center justify-between gap-2 animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-white text-xs px-2 py-0.5 rounded bg-white/10">
+                      {matchedMachine.id}
+                    </span>
+                    <span className="text-indigo-200 font-medium text-xs">
+                      {matchedMachine.name || `${matchedMachine.brand} ${matchedMachine.typeName || matchedMachine.type}`}
+                    </span>
+                    <span className="text-[11px] text-slate-300">
+                      ({getMachineZone(matchedMachine)} • {getMachineLine(matchedMachine)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-300">Current:</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        matchedMachine.status === 'ACTIVE'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                          : matchedMachine.status === 'IDLE' || matchedMachine.status === 'BUFFER'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'
+                      }`}
+                    >
+                      {matchedMachine.status}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex flex-wrap items-center justify-between gap-2 text-slate-300 animate-fade-in">
+                  <span className="text-xs">
+                    Machine ID <span className="font-mono font-bold text-white">"{scanInput.trim()}"</span> is not currently registered.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtraMachineId(scanInput.trim().toUpperCase());
+                      setIsAddExtraModalOpen(true);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add as Extra Machine to Zone</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Last Dispatched Confirmation Flash Banner */}
+          {lastToggledResult && !scanInput.trim() && (
             <div className="p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 flex items-center justify-between gap-3 text-xs animate-fade-in">
               <div className="flex items-center gap-2.5">
                 <div
@@ -438,11 +649,7 @@ function AssetLogContent() {
                     {lastToggledResult.machineId}
                   </span>
                   <span className="text-slate-300">
-                    switched from{' '}
-                    <span className="font-bold text-slate-200">
-                      {lastToggledResult.prevStatus}
-                    </span>{' '}
-                    →{' '}
+                    dispatched to{' '}
                     <span
                       className={`font-black ${
                         lastToggledResult.newStatus === 'ACTIVE'
@@ -450,8 +657,13 @@ function AssetLogContent() {
                           : 'text-amber-300'
                       }`}
                     >
-                      {lastToggledResult.newStatus}
+                      {lastToggledResult.newStatus === 'ACTIVE' ? 'Active' : 'Idle'}
                     </span>
+                    {lastToggledResult.prevStatus && (
+                      <span className="text-slate-400 ml-1.5">
+                        (was {lastToggledResult.prevStatus})
+                      </span>
+                    )}
                   </span>
                 </div>
               </div>
@@ -465,7 +677,7 @@ function AssetLogContent() {
 
       {/* ─── 3. THE 8-ZONE × 8-LINE AVAILABILITY REPORT WIDGET ─── */}
       <LineAvailabilityWidget
-        machines={machines}
+        machines={baseMachines}
         selectedZone={selectedZone === 'ALL' ? 'Zone 1' : selectedZone}
         selectedLine={selectedLine}
         onSelectZoneLine={(zone, line) => {
@@ -473,8 +685,13 @@ function AssetLogContent() {
           setSelectedLine(line);
         }}
         onQuickToggleMachine={(id) => {
-          const mach = machines.find((m) => m.id === id);
+          const mach = baseMachines.find((m) => m.id === id);
           if (mach) handleRowToggle(mach);
+        }}
+        onAddExtraMachine={(zone) => {
+          setExtraZone(zone);
+          if (selectedLine !== 'ALL') setExtraLine(selectedLine);
+          setIsAddExtraModalOpen(true);
         }}
       />
 
@@ -505,12 +722,34 @@ function AssetLogContent() {
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              <span>Status Activity Logs ({assetLogs.length})</span>
+              <span>Status Activity Logs ({scopedAssetLogs.length})</span>
             </button>
           </div>
 
           {/* Quick Filters / Search */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Unit / Plant Scope Control */}
+            {isAdmin ? (
+              <select
+                value={selectedUnit}
+                onChange={(e) => setSelectedUnit(e.target.value)}
+                className="px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                title="Admin facility switcher"
+              >
+                <option value="ALL">All Plants</option>
+                <option value="UNIT - 1">UNIT - 1</option>
+                <option value="UNIT-2">UNIT-2</option>
+              </select>
+            ) : (
+              <div
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs font-bold text-indigo-700"
+                title="Your assigned facility unit"
+              >
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>{effectiveUnit || user?.unit || 'Assigned Plant'}</span>
+              </div>
+            )}
+
             {/* Zone Filter */}
             <select
               value={selectedZone}
@@ -627,7 +866,7 @@ function AssetLogContent() {
                   <th className="py-3 px-3">Zone &amp; Line</th>
                   <th className="py-3 px-3">Brand &amp; Type</th>
                   <th className="py-3 px-3">Current Status</th>
-                  <th className="py-3 px-3 text-center">Toggle (Active ⇋ Idle)</th>
+                  <th className="py-3 px-3 text-center">Status Action (Idle / Move to active)</th>
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -734,38 +973,73 @@ function AssetLogContent() {
                           )}
                         </td>
 
-                        {/* One-Click Quick Toggle Switch */}
+                        {/* Status Dropdown: "idle" and "Move to active" */}
                         <td className="py-3 px-3 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => handleRowToggle(machine)}
-                            title={`Click to switch status to ${isActive ? 'IDLE' : 'ACTIVE'}`}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition shadow-2xs cursor-pointer border ${
-                              isActive
-                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
-                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
-                            }`}
-                          >
-                            <ArrowRightLeft className="w-3.5 h-3.5" />
-                            <span>{isActive ? 'Switch to Idle' : 'Switch to Active'}</span>
-                          </button>
+                          <div className="inline-flex items-center justify-center">
+                            <div className="relative inline-block text-left">
+                              <select
+                                value={isActive ? 'ACTIVE' : isIdle ? 'IDLE' : machine.status}
+                                onChange={async (e) => {
+                                  const val = e.target.value as 'ACTIVE' | 'IDLE';
+                                  await handleStatusChange(machine, val);
+                                }}
+                                aria-label={`Select status for machine ${machine.id}`}
+                                className={`appearance-none pl-3 pr-8 py-1.5 rounded-xl text-xs font-black border transition cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs font-sans ${
+                                  isActive
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400'
+                                    : isBreakdown
+                                    ? 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100 hover:border-rose-400'
+                                    : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
+                                }`}
+                              >
+                                <option value="ACTIVE" className="bg-white text-slate-900 font-bold py-1">
+                                  Move to active
+                                </option>
+                                <option value="IDLE" className="bg-white text-slate-900 font-bold py-1">
+                                  idle
+                                </option>
+                                {isBreakdown && (
+                                  <option value={machine.status} disabled className="bg-white text-rose-600 font-bold py-1">
+                                    Breakdown ({machine.status})
+                                  </option>
+                                )}
+                              </select>
+                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </div>
+                            </div>
+                          </div>
                         </td>
 
                         {/* Row Actions */}
                         <td className="py-3 px-3 text-right whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTargetMachineForReassign(machine);
-                              setReassignZone(zone);
-                              setReassignLine(line);
-                              setReassignStation(machine.stationNo || 'Station 01');
-                              setIsReassignModalOpen(true);
-                            }}
-                            className="px-2.5 py-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg text-xs font-semibold transition cursor-pointer"
-                          >
-                            Move / Reassign
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMachineToEdit(machine);
+                                setIsEditModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                              title={`Edit asset specifications for ${machine.id}`}
+                            >
+                              <Pencil className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTargetMachineForReassign(machine);
+                                setReassignZone(zone);
+                                setReassignLine(line);
+                                setReassignStation(machine.stationNo || 'Station 01');
+                                setIsReassignModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            >
+                              Move / Reassign
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -783,17 +1057,17 @@ function AssetLogContent() {
                   Recent Machine Status Change Ledger
                 </h3>
                 <span className="text-xs text-slate-500 font-medium">
-                  Showing latest {assetLogs.length} logged events
+                  Showing latest {scopedAssetLogs.length} logged events
                 </span>
               </div>
 
-              {assetLogs.length === 0 ? (
+              {scopedAssetLogs.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs">
-                  No status change logs recorded yet. Toggle a machine above to create the first log entry!
+                  No status change logs recorded yet for {effectiveUnit || 'your facility'}. Toggle a machine above to create the first log entry!
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {assetLogs.map((log) => {
+                  {scopedAssetLogs.map((log) => {
                     const isToActive = log.action === 'IDLE_TO_ACTIVE';
                     const isToIdle = log.action === 'ACTIVE_TO_IDLE';
 
@@ -965,6 +1239,197 @@ function AssetLogContent() {
         isOpen={isCameraModalOpen}
         onClose={() => setIsCameraModalOpen(false)}
       />
+
+      {/* ─── EDIT ASSET MODAL ─── */}
+      <EditAssetModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setMachineToEdit(null);
+        }}
+        asset={machineToEdit}
+        onSave={(updated) => {
+          setMachines((prev) =>
+            prev.map((m) => (m.id === updated.id || m.id === machineToEdit?.id ? updated : m))
+          );
+        }}
+      />
+
+      {/* ─── MODAL: ADD EXTRA MACHINE TO ZONE ─── */}
+      {isAddExtraModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-white">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Add Extra Machine to Zone
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Adds extra machine capacity directly to the zone total &amp; active count
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddExtraModalOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddExtraMachineSubmit} className="p-5 space-y-4">
+              <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 text-xs text-indigo-900 flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                <div>
+                  When added with status <strong className="text-emerald-700">Move to active</strong>, it automatically increments both the <strong>total machine count</strong> and <strong>active machine count</strong> for the designated zone.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Target Zone *
+                  </label>
+                  <select
+                    value={extraZone}
+                    onChange={(e) => setExtraZone(e.target.value as ClientZone)}
+                    className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {CLIENT_ZONES.map((z) => (
+                      <option key={z} value={z}>
+                        {z}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Target Line *
+                  </label>
+                  <select
+                    value={extraLine}
+                    onChange={(e) => setExtraLine(e.target.value as ClientLine)}
+                    className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {CLIENT_LINES.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Machine / Asset ID (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={extraMachineId}
+                    onChange={(e) => setExtraMachineId(e.target.value)}
+                    placeholder={`e.g. MC-${extraZone.replace('Zone ', 'Z0')}-${extraLine.replace('Line ', 'L')}-EXT01`}
+                    className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Leave blank to auto-generate unique ID
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Initial Status *
+                  </label>
+                  <select
+                    value={extraMachineStatus}
+                    onChange={(e) => setExtraMachineStatus(e.target.value as MachineStatus)}
+                    className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="ACTIVE">🟢 Move to active (Increments Active Count)</option>
+                    <option value="IDLE">🟡 idle (Increments Idle Count)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Brand / Manufacturer *
+                  </label>
+                  <select
+                    value={extraMachineBrand}
+                    onChange={(e) => setExtraMachineBrand(e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {['Juki', 'Jack', 'Brother', 'Yamato', 'Pegasus', 'Siruba', 'Singer', 'Supreme'].map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Machine Model
+                  </label>
+                  <input
+                    type="text"
+                    value={extraMachineModel}
+                    onChange={(e) => setExtraMachineModel(e.target.value)}
+                    placeholder="e.g. DDL-9000C, AZ-8000G"
+                    className="w-full px-3 py-2 text-xs font-medium bg-white border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Machine Type *
+                </label>
+                <select
+                  value={extraMachineType}
+                  onChange={(e) => setExtraMachineType(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="Single Needle Lockstitch">Single Needle Lockstitch (SNLS)</option>
+                  <option value="4-Thread High Speed Overlock">4-Thread High Speed Overlock (O/L)</option>
+                  <option value="Cylinder Bed Interlock Flatlock">Cylinder Bed Interlock Flatlock (F/L)</option>
+                  <option value="Electronic Buttonhole Indexer">Electronic Buttonhole Indexer (Kaja)</option>
+                  <option value="Electronic Bartack Direct-Drive">Electronic Bartack Direct-Drive</option>
+                  <option value="Twin Needle Lockstitch">Twin Needle Lockstitch (DNLS)</option>
+                  <option value="Button Sewing Machine">Button Sewing Machine</option>
+                  <option value="Feed-Off-The-Arm Flatlock">Feed-Off-The-Arm Flatlock</option>
+                </select>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddExtraModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Extra Machine to {extraZone}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
