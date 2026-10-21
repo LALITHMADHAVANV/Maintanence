@@ -173,13 +173,21 @@ export type PartCategory =
   | 'Hooks & Loopers'
   | 'Feed & Plates'
   | 'Motors & Electrical'
-  | 'Fluids & Consumables';
+  | 'Fluids & Consumables'
+  | 'Knives & Cutters'
+  | 'Pressure Feet'
+  | 'Tension & Guides'
+  | 'Mechanical & Fittings'
+  | 'General'
+  | (string & {});
 
 export interface SparePart {
-  partId: string; // e.g., "PRT-01"
-  sku: string; // e.g., "NDL-DBX1-14"
-  name: string; // e.g., "Organ Needles DBx1 (#14/90)"
+  sNo?: number;
+  partId: string; // e.g., "SP-001"
+  sku: string; // e.g., "FLT-NAV-001"
+  name: string; // e.g., "NAVE SET"
   category: PartCategory;
+  machineType?: string; // e.g., "FLATLOCK", "OVERLOCK", "SNLS", "GENERAL", etc.
   compat: string; // description of compatibility
   stock: number;
   minStock: number; // threshold for low-stock warning

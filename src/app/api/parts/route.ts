@@ -4,15 +4,29 @@ import { SparePart } from '@/types/cmms';
 
 
 
+import factorySparesSeed from '@/data/factorySparesSeed.json';
+
 export async function GET() {
   try {
     const db = await getDatabase();
-    const parts = await db.collection<SparePart>('spare_parts').find({}).toArray();
+    const col = db.collection<SparePart>('spare_parts');
+    let parts = await col.find({}).toArray();
+
+    if (!parts || parts.length === 0) {
+      try {
+        await col.insertMany(factorySparesSeed as unknown as SparePart[]);
+        parts = await col.find({}).toArray();
+      } catch (seedErr) {
+        console.warn('Auto-seed parts failed, serving static seed:', seedErr);
+        return NextResponse.json({ success: true, data: factorySparesSeed });
+      }
+    }
+
     const cleanParts = parts.map(({ _id, ...p }: any) => p);
     return NextResponse.json({ success: true, data: cleanParts });
   } catch (err: unknown) {
-    console.error('Error fetching parts from MongoDB:', err);
-    return NextResponse.json({ success: false, error: 'Database error', data: [] }, { status: 500 });
+    console.error('Error fetching parts from MongoDB, using seed fallback:', err);
+    return NextResponse.json({ success: true, data: factorySparesSeed });
   }
 }
 

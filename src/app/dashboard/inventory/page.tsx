@@ -68,6 +68,7 @@ import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/li
 import { MechanicCustodyModal } from '@/components/mechanic/MechanicCustodyModal';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { FACTORY_MACHINE_CATEGORIES, detectMachineCategory, isSpareCompatibleWithMachine } from '@/lib/utils/spareMapping';
 
 export default function InventoryPage() {
   const { showToast } = useToast();
@@ -222,6 +223,7 @@ export default function InventoryPage() {
   // Search & filters for inventory
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+  const [machineTypeFilter, setMachineTypeFilter] = useState<string>('ALL');
   const [lowStockOnly, setLowStockOnly] = useState(false);
 
   // Search & filters for requisitions
@@ -376,17 +378,19 @@ export default function InventoryPage() {
       const isLow = p.stock <= p.minStock;
       if (lowStockOnly && !isLow) return false;
       if (categoryFilter !== 'ALL' && p.category !== categoryFilter) return false;
+      if (machineTypeFilter !== 'ALL' && (p.machineType || 'GENERAL') !== machineTypeFilter) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = p.name.toLowerCase().includes(q);
         const matchSku = p.sku.toLowerCase().includes(q);
         const matchCompat = p.compat.toLowerCase().includes(q);
-        if (!matchName && !matchSku && !matchCompat) return false;
+        const matchType = (p.machineType || '').toLowerCase().includes(q);
+        if (!matchName && !matchSku && !matchCompat && !matchType) return false;
       }
       return true;
     });
-  }, [parts, lowStockOnly, categoryFilter, searchQuery]);
+  }, [parts, lowStockOnly, categoryFilter, machineTypeFilter, searchQuery]);
 
   // Filtered requisitions list (scoped to displayed requisitions)
   const filteredRequisitions = useMemo(() => {
@@ -1426,6 +1430,31 @@ export default function InventoryPage() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* Machine Type Filter */}
+                  <select
+                    value={machineTypeFilter}
+                    onChange={(e) => setMachineTypeFilter(e.target.value)}
+                    className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 outline-none font-bold text-slate-800 cursor-pointer"
+                  >
+                    <option value="ALL">All Machine Types ({parts.length})</option>
+                    <option value="FLATLOCK">FLATLOCK (50)</option>
+                    <option value="OVERLOCK">OVERLOCK (49)</option>
+                    <option value="SNLS">SNLS (Single Needle) (65)</option>
+                    <option value="KAJA">KAJA (Buttonhole) (7)</option>
+                    <option value="BUTTON">BUTTON (Stitch) (3)</option>
+                    <option value="BARTACK">BARTACK (4)</option>
+                    <option value="RIB CUTTING">RIB CUTTING (2)</option>
+                    <option value="PICODING">PICODING (7)</option>
+                    <option value="TRIMMER M/C">TRIMMER M/C (3)</option>
+                    <option value="CUTTER M/C">CUTTER M/C (9)</option>
+                    <option value="BAND KNIFE">BAND KNIFE (1)</option>
+                    <option value="PATTERN TAKER">PATTERN TAKER (3)</option>
+                    <option value="DOUBLE NEEDLE">DOUBLE NEEDLE (1)</option>
+                    <option value="IRONING">IRONING (1)</option>
+                    <option value="IOT DEVICE">IOT DEVICE (2)</option>
+                    <option value="GENERAL">GENERAL (Universal) (53)</option>
+                  </select>
+
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
@@ -1435,8 +1464,13 @@ export default function InventoryPage() {
                     <option value="Needles">Needles &amp; Pins</option>
                     <option value="Hooks & Loopers">Rotary Hooks &amp; Loopers</option>
                     <option value="Feed & Plates">Feed Dogs &amp; Plates</option>
+                    <option value="Knives & Cutters">Knives &amp; Cutters</option>
+                    <option value="Pressure Feet">Pressure Feet</option>
+                    <option value="Tension & Guides">Tension &amp; Guides</option>
+                    <option value="Mechanical & Fittings">Mechanical &amp; Fittings</option>
                     <option value="Motors & Electrical">Electronics &amp; Motors</option>
                     <option value="Fluids & Consumables">Fluids &amp; Consumables</option>
+                    <option value="General">General</option>
                   </select>
 
                   <button
@@ -1520,9 +1554,18 @@ export default function InventoryPage() {
                         <tr key={part.partId} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
                           {/* Part SKU & Specs */}
                           <td className="py-2.5 px-3 border-r border-b border-slate-200">
-                            <div className="font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <div className="font-mono font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                               <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/70 text-[11px]">
                                 {part.sku}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border ${
+                                  part.machineType === 'GENERAL'
+                                    ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                              >
+                                {part.machineType || 'GENERAL'}
                               </span>
                               {part.vendor && (
                                 <span
@@ -2881,9 +2924,22 @@ export default function InventoryPage() {
                   type="text"
                   value={issueTargetMachine}
                   onChange={(e) => setIssueTargetMachine(e.target.value)}
-                  placeholder="e.g. SNLS-04 or OVK-02"
+                  placeholder="e.g. SNLS-04, OVK-02, FLATLOCK-01..."
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-slate-800"
                 />
+                {issueTargetMachine.trim() && (
+                  <div className="mt-1.5 text-[11px] font-medium">
+                    {isSpareCompatibleWithMachine(activeIssuePart, issueTargetMachine) ? (
+                      <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-flex items-center gap-1">
+                        ✓ Verified compatible with {detectMachineCategory(issueTargetMachine) || 'target machine'}
+                      </span>
+                    ) : (
+                      <span className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 inline-flex items-center gap-1">
+                        ⚠️ Part is categorized for {activeIssuePart.machineType}, whereas machine is {detectMachineCategory(issueTargetMachine)}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Old Broken Part Scrap Return Toggle */}

@@ -1,6 +1,6 @@
 import { MongoClient, Db } from 'mongodb';
 
-const primaryUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/textech_cmms';
+const defaultCloudUri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0';
 const localUri = 'mongodb://127.0.0.1:27017/textech_cmms';
 
 declare global {
@@ -9,7 +9,8 @@ declare global {
 }
 
 async function connectClient(): Promise<MongoClient> {
-  const options = { serverSelectionTimeoutMS: 2000 };
+  const primaryUri = (process.env.MONGODB_URI || defaultCloudUri).trim();
+  const options = { serverSelectionTimeoutMS: 4000 };
   try {
     const client = new MongoClient(primaryUri, options);
     await client.connect();
@@ -44,14 +45,15 @@ if (process.env.NODE_ENV === 'development') {
 export default clientPromise;
 
 export async function getDatabase(dbName?: string): Promise<Db> {
+  const targetDb = (dbName || process.env.MONGODB_DB_NAME || 'textech_cmms').trim();
   try {
     const client = await clientPromise;
-    return client.db(dbName || process.env.MONGODB_DB_NAME || 'textech_cmms');
+    return client.db(targetDb);
   } catch (err) {
     console.warn('Cached clientPromise failed, connecting directly...');
     const fresh = await connectClient();
     global._mongoClientPromise = Promise.resolve(fresh);
     clientPromise = global._mongoClientPromise;
-    return fresh.db(dbName || process.env.MONGODB_DB_NAME || 'textech_cmms');
+    return fresh.db(targetDb);
   }
 }

@@ -49,6 +49,7 @@ import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/uni
 import { TeamScheduleModal } from '@/components/calendar/TeamScheduleModal';
 import { MaintenanceMilestonesAndTasks } from '@/components/dashboard/MaintenanceMilestonesAndTasks';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
+import { filterSparesForMachine, detectMachineCategory } from '@/lib/utils/spareMapping';
 
 // Helper to format Date to 'YYYY-MM-DD'
 function toDateKey(d: Date): string {
@@ -149,6 +150,7 @@ export default function CalendarPage() {
   const [actionTaken, setActionTaken] = useState<string>('');
   const [selectedPartId, setSelectedPartId] = useState<string>('');
   const [selectedPartQty, setSelectedPartQty] = useState<number>(1);
+  const [showAllSparesOverride, setShowAllSparesOverride] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // New PPM Schedule modal state
@@ -201,6 +203,21 @@ export default function CalendarPage() {
 
   // Map of scoped machines by ID
   const machineMap = useMemo(() => new Map(displayMachines.map((m) => [m.id, m])), [displayMachines]);
+
+  const targetMachineForResolve = useMemo(() => {
+    if (!selectedTicket) return null;
+    return displayMachines.find((m) => m.id === selectedTicket.machineId) || null;
+  }, [selectedTicket, displayMachines]);
+
+  const detectedMachineCategory = useMemo(() => {
+    if (!selectedTicket) return '';
+    return detectMachineCategory(targetMachineForResolve || selectedTicket.machineType || selectedTicket.machineId);
+  }, [selectedTicket, targetMachineForResolve]);
+
+  const compatibleSparesForResolve = useMemo(() => {
+    if (!selectedTicket || showAllSparesOverride) return spareParts;
+    return filterSparesForMachine(spareParts, targetMachineForResolve || selectedTicket.machineType || selectedTicket.machineId);
+  }, [selectedTicket, showAllSparesOverride, spareParts, targetMachineForResolve]);
 
   const [registeredTechs, setRegisteredTechs] = useState<MechanicDuty[]>([]);
 
@@ -531,6 +548,7 @@ export default function CalendarPage() {
     setActionTaken('');
     setSelectedPartId('');
     setSelectedPartQty(1);
+    setShowAllSparesOverride(false);
     setIsResolveOpen(true);
   };
 
@@ -1327,13 +1345,29 @@ export default function CalendarPage() {
               </div>
 
               <div className="border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Spare Parts Consumed
-                  </label>
-                  <span className="text-[10px] text-indigo-600 font-semibold">
-                    Auto-decrements Inventory
-                  </span>
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Spare Parts Consumed
+                    </label>
+                    {detectedMachineCategory && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        🎯 {detectedMachineCategory} Spares
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllSparesOverride(!showAllSparesOverride)}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold hover:underline cursor-pointer"
+                    >
+                      {showAllSparesOverride ? `Filtered (${compatibleSparesForResolve.length})` : `Show all (${spareParts.length})`}
+                    </button>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      Auto-decrements Inventory
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-12 gap-2">
@@ -1341,12 +1375,12 @@ export default function CalendarPage() {
                     <select
                       value={selectedPartId}
                       onChange={(e) => setSelectedPartId(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800"
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 font-medium"
                     >
                       <option value="">None / No parts replaced</option>
-                      {spareParts.map((p) => (
+                      {compatibleSparesForResolve.map((p) => (
                         <option key={p.partId} value={p.partId}>
-                          {p.name} (Stock: {p.stock} {p.unit})
+                          [{p.machineType || 'GENERAL'}] {p.name} (Stock: {p.stock} {p.unit})
                         </option>
                       ))}
                     </select>

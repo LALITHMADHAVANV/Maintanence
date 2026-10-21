@@ -43,6 +43,7 @@ import {
   stopPPMTask,
   completePPMTask,
 } from '@/lib/services/cmmsService';
+import { filterSparesForMachine, detectMachineCategory } from '@/lib/utils/spareMapping';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
@@ -169,7 +170,23 @@ export function MechanicDeskDashboard({
   const [repairProofImage, setRepairProofImage] = useState<string | null>(null);
   const [selectedPartId, setSelectedPartId] = useState<string>('');
   const [selectedPartQty, setSelectedPartQty] = useState<number>(1);
+  const [showAllSparesOverride, setShowAllSparesOverride] = useState(false);
   const [isSubmittingResolve, setIsSubmittingResolve] = useState(false);
+
+  const targetMachineForResolve = useMemo(() => {
+    if (!selectedTicketToResolve) return null;
+    return machines.find((m) => m.id === selectedTicketToResolve.machineId) || null;
+  }, [selectedTicketToResolve, machines]);
+
+  const detectedMachineCategory = useMemo(() => {
+    if (!selectedTicketToResolve) return '';
+    return detectMachineCategory(targetMachineForResolve || selectedTicketToResolve.machineType || selectedTicketToResolve.machineId);
+  }, [selectedTicketToResolve, targetMachineForResolve]);
+
+  const compatibleSpares = useMemo(() => {
+    if (!selectedTicketToResolve || showAllSparesOverride) return parts;
+    return filterSparesForMachine(parts, targetMachineForResolve || selectedTicketToResolve.machineType || selectedTicketToResolve.machineId);
+  }, [selectedTicketToResolve, showAllSparesOverride, parts, targetMachineForResolve]);
 
   // ─── Accept & Start Repair Ticket ─────────────────────────────────
   const handleStartRepair = async (ticket: RepairTicket) => {
@@ -937,20 +954,36 @@ export function MechanicDeskDashboard({
 
               {/* Section 4: Spare Parts Consumed */}
               <div className="space-y-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Package className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Spare Parts Consumed (Optional)</span>
-                  </label>
-                  {selectedPartId && (
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Spare Parts Consumed</span>
+                    </label>
+                    {detectedMachineCategory && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        🎯 {detectedMachineCategory} Spares
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => handlePartSelect('')}
-                      className="text-[10px] text-rose-600 hover:underline cursor-pointer"
+                      onClick={() => setShowAllSparesOverride(!showAllSparesOverride)}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold hover:underline cursor-pointer"
                     >
-                      Clear Part
+                      {showAllSparesOverride ? `Filtered (${compatibleSpares.length})` : `Show all (${parts.length})`}
                     </button>
-                  )}
+                    {selectedPartId && (
+                      <button
+                        type="button"
+                        onClick={() => handlePartSelect('')}
+                        className="text-[10px] text-rose-600 hover:underline cursor-pointer font-semibold"
+                      >
+                        Clear Part
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -961,9 +994,9 @@ export function MechanicDeskDashboard({
                       className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                     >
                       <option value="">-- No spare parts used (Labor only) --</option>
-                      {parts.map((p) => (
+                      {compatibleSpares.map((p) => (
                         <option key={p.partId} value={p.partId}>
-                          {p.name} ({p.sku}) — ₹{p.unitCost} (Stock: {p.stock})
+                          [{p.machineType || 'GENERAL'}] {p.name} ({p.sku}) — ₹{p.unitCost} (Stock: {p.stock})
                         </option>
                       ))}
                     </select>

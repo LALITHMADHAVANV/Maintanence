@@ -11,6 +11,7 @@ import {
   AppNotification,
 } from '@/types/cmms';
 import plantAssetsSeed from '@/data/plantAssetsSeed.json';
+import factorySparesSeed from '@/data/factorySparesSeed.json';
 
 // Local storage keys for offline/immediate UI responsiveness
 const STORAGE_KEYS = {
@@ -77,6 +78,13 @@ export function initLocalSeedData(): void {
   const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   if (!currentMachines || currentMachines.length === 0) {
     setLocal(STORAGE_KEYS.MACHINES, plantAssetsSeed as unknown as Machine[]);
+  }
+
+  const sparesCacheVer = 'cmms_spares_v260_mapped';
+  if (localStorage.getItem('cmms_spares_cache_ver') !== sparesCacheVer) {
+    localStorage.removeItem(STORAGE_KEYS.PARTS);
+    localStorage.setItem('cmms_spares_cache_ver', sparesCacheVer);
+    setLocal(STORAGE_KEYS.PARTS, factorySparesSeed as unknown as SparePart[]);
   }
 }
 
