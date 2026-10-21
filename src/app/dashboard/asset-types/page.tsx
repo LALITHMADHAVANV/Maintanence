@@ -32,20 +32,41 @@ import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
 
 // Actual Machine Types (Varieties) directly from both Plant Sheets (PDF 1 & PDF 2)
+// "O/L" is categorized as "OVERLOCK" and "F/L" variants are categorized as "FLATLOCK"
+export function canonicalMachineType(type?: string | null): string {
+  if (!type) return 'SNLS';
+  const t = type.trim().toUpperCase();
+  if (
+    t === 'O/L' ||
+    t.includes('OVERLOCK') ||
+    t.includes('OVER LOCK') ||
+    t === 'LFC O/L' ||
+    t === 'RIP OVER LOCK'
+  ) {
+    return 'OVERLOCK';
+  }
+  if (
+    t === 'F/L' ||
+    t.includes('FLATLOCK') ||
+    t.includes('FLAT LOCK') ||
+    t.includes('H.F/L') ||
+    t.includes('FB.F/L') ||
+    t.includes('PULLER. F/L')
+  ) {
+    return 'FLATLOCK';
+  }
+  return t;
+}
+
 export const PDF_MACHINE_TYPES = [
   'SNLS',
-  'O/L',
   'OVERLOCK',
-  'FB.F/L',
   'FLATLOCK',
-  'H.F/L',
-  'PULLER. F/L',
   'S/N EDGE CUTTER',
   'SMALL FUSHING',
   'BIG FUSHING',
-  'LFC O/L',
+  'MEDIUM FUSHING',
   'MINI TEMPLATE',
-  'RIP OVER LOCK',
   'PIC',
   'BUTTON',
   'BUTTON HOLE',
@@ -55,7 +76,6 @@ export const PDF_MACHINE_TYPES = [
   'KAJA',
   'MULTI NEEDLE',
   'DOUBLE NEEDLE',
-  'MEDIUM FUSHING',
   'PATTERN TAKER',
   'TEMPLATE M/C',
 ] as const;
@@ -199,7 +219,8 @@ function AssetsPageContent() {
 
       const sNo = (m as any).sNo || idx + 1;
       const mcNo = (m as any).mcNo || m.id;
-      const machineType = (m as any).machineType || m.typeName || m.type || 'SNLS';
+      const rawType = (m as any).machineType || m.typeName || m.type || 'SNLS';
+      const machineType = canonicalMachineType(rawType);
       const machineMake = (m as any).machineMake || m.brand || 'JUKI';
       const model = m.model && m.model !== '—' && m.model !== machineType ? m.model : '—';
       const year = (m as any).year || (m.purchaseDate ? new Date(m.purchaseDate).getFullYear() : '—');
@@ -253,7 +274,7 @@ function AssetsPageContent() {
     const map = new Map<string, number>();
     for (const item of unitScopedItems) {
       if (item.category === 'MACHINE') {
-        const t = item.machineType.toUpperCase();
+        const t = canonicalMachineType(item.machineType);
         map.set(t, (map.get(t) || 0) + 1);
       }
     }
@@ -304,8 +325,12 @@ function AssetsPageContent() {
         return false;
       }
       // 3. Machine Type (Variety from PDF)
-      if (selectedType !== 'ALL' && item.machineType.toUpperCase() !== selectedType.toUpperCase()) {
-        return false;
+      if (selectedType !== 'ALL') {
+        const selNorm = canonicalMachineType(selectedType);
+        const itemNorm = canonicalMachineType(item.machineType);
+        if (selNorm !== itemNorm) {
+          return false;
+        }
       }
       // 4. Machine Make
       if (selectedMake !== 'ALL' && item.machineMake.toUpperCase() !== selectedMake.toUpperCase()) {

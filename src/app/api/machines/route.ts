@@ -3,6 +3,9 @@ import { getDatabase } from '@/lib/mongodb';
 import { Machine } from '@/types/cmms';
 import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const db = await getDatabase();

@@ -306,9 +306,11 @@ function parseLines() {
   console.log(`First item:`, JSON.stringify(items[0], null, 2));
   console.log(`246th item:`, JSON.stringify(items[items.length - 1], null, 2));
 
-  // Save to file
-  fs.writeFileSync('src/data/plantAssetsSeed.json', JSON.stringify(items, null, 2));
-  console.log('Saved to src/data/plantAssetsSeed.json');
+  // Save to file only if not already containing full plant assets
+  if (!fs.existsSync('src/data/plantAssetsSeed.json')) {
+    fs.writeFileSync('src/data/plantAssetsSeed.json', JSON.stringify(items, null, 2));
+    console.log('Saved to src/data/plantAssetsSeed.json');
+  }
 }
 
 if (require.main === module) {

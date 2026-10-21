@@ -69,7 +69,7 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
  */
 export function initLocalSeedData(): void {
   if (typeof window === 'undefined') return;
-  const cacheVersion = 'cmms_v11_plant_495_unit2_full';
+  const cacheVersion = 'cmms_v12_categorized_ol_fl';
   if (localStorage.getItem('cmms_cache_ver') !== cacheVersion) {
     localStorage.removeItem(STORAGE_KEYS.MACHINES);
     localStorage.removeItem(STORAGE_KEYS.SEEDED);

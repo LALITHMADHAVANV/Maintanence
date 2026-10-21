@@ -759,9 +759,26 @@ export function getAssetSubtypeMeta(type: MachineType): AssetSubtypeDef | undefi
 }
 
 export function getCategoryForType(type: MachineType): MachineCategoryGroup {
-  if (type.startsWith('OVERLOCK')) return 'OVERLOCK';
-  if (type.startsWith('FLATLOCK')) return 'FLATLOCK';
-  if (type.startsWith('SN_BROTHER') || type === 'SNLS' || type === 'BARTACK' || type === 'BUTTONHOLE')
+  const norm = (type || '').toUpperCase();
+  if (
+    norm.startsWith('OVERLOCK') ||
+    norm === 'O/L' ||
+    norm.includes('O/L') ||
+    norm.includes('OVER LOCK') ||
+    norm.includes('OVERLOCK')
+  ) {
+    return 'OVERLOCK';
+  }
+  if (
+    norm.startsWith('FLATLOCK') ||
+    norm === 'F/L' ||
+    norm.includes('F/L') ||
+    norm.includes('FLAT LOCK') ||
+    norm.includes('FLATLOCK')
+  ) {
+    return 'FLATLOCK';
+  }
+  if (norm.startsWith('SN_BROTHER') || norm === 'SNLS' || norm === 'BARTACK' || norm === 'BUTTONHOLE')
     return 'SINGLE_NEEDLE';
   return 'SINGLE_NEEDLE';
 }
