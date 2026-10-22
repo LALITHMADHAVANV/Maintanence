@@ -242,18 +242,31 @@ export default function CalendarPage() {
 
   const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
 
-  // For Senior Electrician, ONLY show junior electricians; for Senior Mechanic, show mechanics
+  // Floor technicians available for assignment (supervisor assigns technicians, NOT himself)
   const relevantTechnicians = useMemo(() => {
+    const currentName = (user?.name || '').trim().toLowerCase();
+    const isFloorCandidate = (m: MechanicDuty) => {
+      const lower = m.role.toLowerCase();
+      const mName = m.name.trim().toLowerCase();
+      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
+      const isSeniorOrAdmin =
+        lower.includes('senior') ||
+        lower.includes('admin') ||
+        lower.includes('supervisor') ||
+        lower.includes('director') ||
+        lower.includes('manager');
+      return !isSelf && !isSeniorOrAdmin;
+    };
+
     if (role === 'SENIOR_ELECTRICIAN') {
-      return activeStaffRoster.filter(
-        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
-      );
+      return activeStaffRoster.filter((m) => m.trade === 'ELECTRICIAN' && isFloorCandidate(m));
     }
     if (role === 'SENIOR_MECHANIC') {
-      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC');
+      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC' && isFloorCandidate(m));
     }
-    return activeStaffRoster;
-  }, [role, activeStaffRoster]);
+    // For Admin / General: show all floor mechanics and electricians, excluding self and supervisors
+    return activeStaffRoster.filter((m) => isFloorCandidate(m));
+  }, [role, activeStaffRoster, user?.name]);
 
   // Set default machine for PPM and inline dispatch once machines load
   useEffect(() => {
@@ -609,11 +622,8 @@ export default function CalendarPage() {
       const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
       const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
       await assignRepairTicket(ticketId, targetMechanicName, assignerName);
-      const isSelf = targetMechanicName.toLowerCase().includes((user?.name || 'ramesh').toLowerCase());
       showToast(
-        isSelf
-          ? `Work Order #${ticketId} assigned directly to yourself (${targetMechanicName})!`
-          : `Work Order #${ticketId} assigned directly to ${targetMechanicName}!`,
+        `Work Order #${ticketId} dispatched directly to ${targetMechanicName}!`,
         'success'
       );
     } catch (err) {
@@ -636,7 +646,8 @@ export default function CalendarPage() {
     try {
       const targetMachine = machines.find((m) => m.id === targetMachineId);
       const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
-      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
+      const assignerName = `${user?.name || 'Plant Administrator & Supervisor'} (${assignedByTitle})`;
+      const targetAssignee = inlineAssignee || (relevantTechnicians[0]?.name || 'Floor Mechanic');
       const ticketId = await assignMechanicTask({
         machineId: targetMachineId,
         machineType: targetMachine?.typeName || targetMachine?.type || 'Sewing Machine',
@@ -644,17 +655,14 @@ export default function CalendarPage() {
         taskTitle: taskText,
         faultDetails: `Direct dispatch from ${assignedByTitle}. Scheduled for ${selectedDate}.`,
         urgency: inlineUrgency,
-        assignedTo: inlineAssignee || user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'),
+        assignedTo: targetAssignee,
         assignedBy: assignerName,
         scheduledDate: selectedDate,
         shift: 'Shift A (07:00 - 15:30)',
       });
 
-      const isSelf = (inlineAssignee || '').toLowerCase().includes((user?.name || 'ramesh').toLowerCase());
       showToast(
-        isSelf
-          ? `Work Order #${ticketId} created & assigned to yourself!`
-          : `Work Order #${ticketId} created & dispatched to ${inlineAssignee}!`,
+        `Work Order #${ticketId} created & dispatched to ${targetAssignee}!`,
         'success'
       );
       setInlineTaskTitle('');
@@ -1170,30 +1178,8 @@ export default function CalendarPage() {
 
                               {canSchedulePPM && !isDone && (
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  {/* 1. Move to Myself Button */}
-                                  {(() => {
-                                    const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
-                                    const isSelf = r.attendedBy?.toLowerCase().includes(selfName.toLowerCase());
-                                    return (
-                                      <button
-                                        onClick={() => handleDirectMoveTask(r.id, selfName)}
-                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                          isSelf
-                                            ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
-                                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                        }`}
-                                        title="Assign task directly to myself"
-                                      >
-                                        <UserCheck className="w-3 h-3" />
-                                        <span>{isSelf ? '✓ With Myself' : 'Assign to Myself'}</span>
-                                      </button>
-                                    );
-                                  })()}
-
-                                  {/* 2. Move to Someone Else Buttons */}
-                                  {relevantTechnicians.filter(
-                                    (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
-                                  ).map((mech) => {
+                                  {/* Direct Move to Floor Technicians */}
+                                  {relevantTechnicians.map((mech) => {
                                     const isCurrent = r.attendedBy?.toLowerCase().includes(mech.name.toLowerCase());
                                     const firstName = mech.name.split(' ')[0];
 
@@ -1806,11 +1792,7 @@ export default function CalendarPage() {
                         const targetAssignee =
                           moveAssigneeMap[ticket.id] ||
                           relevantTechnicians[0]?.name ||
-                          'Ramesh Kumar';
-
-                        const isSelf = (ticket.attendedBy || '')
-                          .toLowerCase()
-                          .includes((user?.name || 'ramesh').toLowerCase());
+                          'Floor Mechanic';
 
                         return (
                           <div
@@ -1851,22 +1833,7 @@ export default function CalendarPage() {
                               <span>{ticket.faultDetails}</span>
                             </div>
 
-                            <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDirectMoveTask(
-                                    ticket.id,
-                                    user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')
-                                  )
-                                }
-                                disabled={isSelf}
-                                className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                title="Assign this task directly to yourself"
-                              >
-                                {isSelf ? '✓ Assigned to You' : '⚡ Assign to Myself'}
-                              </button>
-
+                            <div className="pt-2 border-t border-slate-200/80 flex items-center justify-end gap-2 flex-wrap">
                               <div className="flex items-center gap-1.5 ml-auto">
                                 <select
                                   value={targetAssignee}
@@ -1889,7 +1856,7 @@ export default function CalendarPage() {
                                   onClick={() => handleDirectMoveTask(ticket.id, targetAssignee)}
                                   className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition shadow-xs cursor-pointer"
                                 >
-                                  Move Task
+                                  Dispatch to Technician
                                 </button>
                               </div>
                             </div>

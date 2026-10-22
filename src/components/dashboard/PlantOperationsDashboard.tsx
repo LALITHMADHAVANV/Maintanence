@@ -44,6 +44,12 @@ import {
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition } from '@/types/cmms';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
+import { LineAvailabilityWidget } from './LineAvailabilityWidget';
+import { MaintenanceMilestonesAndTasks } from './MaintenanceMilestonesAndTasks';
+import { SupervisorFloorWorkspace } from './SupervisorFloorWorkspace';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { completePPMTask } from '@/lib/services/cmmsService';
 
 interface WorkflowStage {
   key: string;
@@ -131,6 +137,20 @@ export function PlantOperationsDashboard({
   isLoading = false,
 }: PlantOperationsDashboardProps) {
   const router = useRouter();
+  const { user, role } = useAuth();
+  const { showToast } = useToast();
+  const [isLogBreakdownModalOpen, setIsLogBreakdownModalOpen] = useState(false);
+
+  const handleQuickCompletePPM = async (ppmId: string, machineId: string) => {
+    try {
+      await completePPMTask(ppmId, user?.name || 'Plant Administrator');
+      showToast(`PPM Inspection on ${machineId} marked completed!`, 'success');
+      onRefresh();
+    } catch {
+      showToast('Failed to complete PPM task', 'error');
+    }
+  };
+
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
   const [activeCostCategory, setActiveCostCategory] = useState<string | null>(null);
   const [cardMode, setCardMode] = useState<'cost' | 'risk'>('cost');
@@ -683,11 +703,11 @@ export function PlantOperationsDashboard({
           </button>
 
           <button
-            onClick={() => router.push('/dashboard/calendar')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-xs cursor-pointer"
+            onClick={() => setIsLogBreakdownModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition shadow-xs cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>New Ticket</span>
+            <span>Log Breakdown</span>
           </button>
         </div>
       </div>
@@ -805,6 +825,47 @@ export function PlantOperationsDashboard({
             {metrics.operationalPct}% operational
           </div>
         </div>
+      </div>
+
+      {/* ================================================================= */}
+      {/* 2.5 SENIOR SUPERVISOR ADD-ONS: LINE AVAILABILITY, WORK ORDERS & ROSTER */}
+      {/* ================================================================= */}
+      <div className="space-y-4">
+        {/* 8-Zone × 8-Line Machine Availability & Floor Status */}
+        <LineAvailabilityWidget
+          machines={machines}
+          onSelectZoneLine={(zone, line) => {
+            router.push(`/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
+          }}
+        />
+
+        {/* Milestones & Task Dispatch Grid */}
+        <MaintenanceMilestonesAndTasks
+          repairs={repairs}
+          ppmSchedules={ppmSchedules}
+          machines={machines}
+          userName={user?.name || 'Plant Administrator'}
+          role={role || 'ADMIN'}
+          compact={true}
+          hideAttendance={true}
+          onOpenResolve={(t) => {
+            router.push(`/dashboard/calendar?action=dispatch&ticket=${t.id}`);
+          }}
+          onCompletePPM={(ppmId, machineId) => handleQuickCompletePPM(ppmId, machineId)}
+          onOpenCalendarDate={(dStr) => router.push(`/dashboard/calendar?date=${dStr}`)}
+        />
+
+        {/* Floor Ticket Queue & Attendance/Shift Duty Roster */}
+        <SupervisorFloorWorkspace
+          machines={machines}
+          repairs={repairs}
+          ppmSchedules={ppmSchedules}
+          userName={user?.name || 'Plant Administrator'}
+          role={role || 'ADMIN'}
+          onRefresh={onRefresh}
+          isExternalNewTicketOpen={isLogBreakdownModalOpen}
+          onCloseExternalNewTicket={() => setIsLogBreakdownModalOpen(false)}
+        />
       </div>
 
       {/* ================================================================= */}

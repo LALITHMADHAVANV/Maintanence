@@ -85,18 +85,32 @@ export function TeamScheduleModal({
 
   const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
 
-  // Filter technicians based on role
+  // Filter technicians based on role - strictly floor technicians (never self or senior/admin)
   const relevantTechnicians = React.useMemo(() => {
+    const currentName = (user?.name || '').trim().toLowerCase();
+    const isFloorCandidate = (m: MechanicDuty) => {
+      const lower = m.role.toLowerCase();
+      const mName = m.name.trim().toLowerCase();
+      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
+      const isSeniorOrAdmin =
+        lower.includes('senior') ||
+        lower.includes('admin') ||
+        lower.includes('supervisor') ||
+        lower.includes('director') ||
+        lower.includes('manager');
+      return !isSelf && !isSeniorOrAdmin;
+    };
+
     if (role === 'SENIOR_ELECTRICIAN') {
       return activeStaffRoster.filter(
-        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
+        (m) => m.trade === 'ELECTRICIAN' && isFloorCandidate(m)
       );
     }
     if (role === 'SENIOR_MECHANIC') {
-      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC');
+      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC' && isFloorCandidate(m));
     }
-    return activeStaffRoster;
-  }, [role, activeStaffRoster]);
+    return activeStaffRoster.filter((m) => isFloorCandidate(m));
+  }, [role, activeStaffRoster, user?.name]);
 
   if (!isOpen) return null;
 
@@ -350,7 +364,7 @@ export function TeamScheduleModal({
                 </span>
               </div>
               <span className="text-[11px] font-bold text-rose-700">
-                Move directly to a mechanic or yourself:
+                Dispatch directly to a floor technician:
               </span>
             </div>
 
@@ -364,24 +378,16 @@ export function TeamScheduleModal({
                   <span className="font-bold text-rose-800">{r.machineId}</span>
                   <span className="text-slate-500">({r.faultCategory})</span>
                   <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-                    <button
-                      onClick={() => handleReassign(r.id, user?.name || 'Technician')}
-                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                      title="Assign task directly to myself"
-                    >
-                      <UserCheck className="w-3 h-3" />
-                      <span>Assign to Myself</span>
-                    </button>
-                    {relevantTechnicians.filter((m) => !m.name.toLowerCase().includes((user?.name || '').toLowerCase())).map((mech) => {
+                    {relevantTechnicians.map((mech) => {
                       const firstName = mech.name.split(' ')[0];
                       return (
                         <button
                           key={mech.id}
                           onClick={() => handleReassign(r.id, mech.name)}
                           className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer hover:text-slate-900"
-                          title={`Move task directly to ${mech.name}`}
+                          title={`Dispatch task directly to ${mech.name}`}
                         >
-                          Move to {firstName}
+                          Dispatch to {firstName}
                         </button>
                       );
                     })}
@@ -644,34 +650,9 @@ export function TeamScheduleModal({
                                       )}
                                     </div>
 
-                                    {/* Direct 1-Click Move Buttons (Myself + Mechanics) */}
+                                    {/* Direct 1-Click Move Buttons (Floor Mechanics) */}
                                     <div className="flex flex-wrap items-center gap-1.5">
-                                      {/* 1. Move to Myself Button */}
-                                      {(() => {
-                                        const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
-                                        const isSelf = mechanic.name.toLowerCase().includes(selfName.toLowerCase());
-                                        return (
-                                          <button
-                                            onClick={() => handleReassign(t.id, selfName)}
-                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                              isSelf
-                                                ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold cursor-default'
-                                                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                            }`}
-                                            title="Assign task directly to myself"
-                                          >
-                                            <UserCheck className="w-3 h-3" />
-                                            <span>
-                                              {isSelf ? '✓ With Myself' : 'Assign to Myself'}
-                                            </span>
-                                          </button>
-                                        );
-                                      })()}
-
-                                      {/* 2. Move to Someone Else Buttons */}
-                                      {relevantTechnicians.filter(
-                                        (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
-                                      ).map((mech) => {
+                                      {relevantTechnicians.map((mech) => {
                                         const isCurrent = mechanic.name.toLowerCase().includes(mech.name.toLowerCase());
                                         const firstName = mech.name.split(' ')[0];
 

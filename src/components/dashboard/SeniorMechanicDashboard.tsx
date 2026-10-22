@@ -162,7 +162,22 @@ export function SeniorMechanicDashboard({
 
   const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
 
-  // ─── Filtered Roster ────────────────────────────────────────────────────
+  // Floor technicians available for task dispatch (supervisor assigns floor technicians, NEVER himself)
+  const assignableTechnicians = useMemo(() => {
+    const currentName = (user?.name || '').trim().toLowerCase();
+    return activeStaffRoster.filter((m) => {
+      const lower = m.role.toLowerCase();
+      const mName = m.name.trim().toLowerCase();
+      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
+      const isSeniorOrAdmin =
+        lower.includes('senior') ||
+        lower.includes('admin') ||
+        lower.includes('supervisor') ||
+        lower.includes('director') ||
+        lower.includes('manager');
+      return !isSelf && !isSeniorOrAdmin;
+    });
+  }, [activeStaffRoster, user?.name]);
   const roster = useMemo(() => {
     return activeStaffRoster.filter((m) => {
       if (rosterTradeFilter === 'ALL') return true;
@@ -1359,7 +1374,7 @@ export function SeniorMechanicDashboard({
               {/* Immediate Assignee (Optional) */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Dispatch Mechanic (Optional)
+                  Dispatch Floor Mechanic (Optional)
                 </label>
                 <select
                   value={newAssignee}
@@ -1367,7 +1382,7 @@ export function SeniorMechanicDashboard({
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">Leave Unassigned (Floor Queue)</option>
-                  {activeStaffRoster.map((m) => (
+                  {assignableTechnicians.map((m) => (
                     <option key={m.id} value={m.name}>
                       {m.name} — {m.role} ({m.assignedLines})
                     </option>
@@ -1441,7 +1456,7 @@ export function SeniorMechanicDashboard({
 
                     <div className="space-y-1">
                       <label className="text-[11px] font-bold text-slate-700">
-                        Dispatch to Different Mechanic / Specialist
+                        Dispatch to Different Floor Mechanic / Specialist
                       </label>
                       <select
                         value={secondAssignee}
@@ -1449,7 +1464,7 @@ export function SeniorMechanicDashboard({
                         className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 font-semibold"
                       >
                         <option value="">Leave Unassigned (Floor Queue)</option>
-                        {activeStaffRoster.map((m) => (
+                        {assignableTechnicians.map((m) => (
                           <option key={m.id} value={m.name}>
                             {m.name} — {m.role} ({m.trade} • {m.assignedLines})
                           </option>
@@ -1530,7 +1545,7 @@ export function SeniorMechanicDashboard({
                   required
                 >
                   <option value="">Choose technician...</option>
-                  {activeStaffRoster.map((m) => (
+                  {assignableTechnicians.map((m) => (
                     <option key={m.id} value={m.name}>
                       {m.name} ({m.trade} • {m.assignedLines})
                     </option>

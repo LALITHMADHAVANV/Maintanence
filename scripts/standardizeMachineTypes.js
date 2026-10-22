@@ -16,6 +16,8 @@ const updatedMachines = machines.map((m) => {
   const origMachineType = (m.machineType || '').trim();
   const origName = (m.name || '').trim();
   const origModel = (m.model || '').trim();
+  const sNo = m.sNo || 0;
+  const brand = m.brand || m.machineMake || 'JUKI';
 
   // 1. OVERLOCK Categorization: "O/L", "LFC O/L", "RIP OVER LOCK", "OVERLOCK"
   if (
@@ -29,15 +31,32 @@ const updatedMachines = machines.map((m) => {
     origMachineType.toUpperCase() === 'OVERLOCK'
   ) {
     overlockCount++;
-    let subVariant = '';
-    if (origType === 'LFC O/L' || origMachineType === 'LFC O/L') subVariant = 'LFC';
-    else if (origType === 'RIP OVER LOCK' || origMachineType === 'RIP OVER LOCK') subVariant = 'RIB';
+    let variety = '4-Thread Overlock (O/L)';
+    let model = origModel && origModel !== '—' && origModel !== 'OVERLOCK' ? origModel : 'MO-6714DA';
 
-    const cleanModel = origModel && origModel !== 'O/L' && origModel !== '—' ? origModel : (subVariant || 'MO-6714DA');
-    const cleanName = origName
-      .replace(/\bO\/L\b/gi, 'OVERLOCK')
-      .replace(/\bRIP OVER LOCK\b/gi, 'RIB OVERLOCK')
-      .replace(/\bLFC OVERLOCK\b/gi, 'OVERLOCK (LFC)');
+    // Unit 1 Subtypes by serial and original label
+    if (sNo >= 226 && sNo <= 228) {
+      variety = 'Rib Attacher Overlock (RIP O/L)';
+      model = 'RIP OVER LOCK';
+    } else if (sNo >= 229 && sNo <= 230) {
+      variety = 'LFC Tape Feeder Overlock (LFC O/L)';
+      model = 'LFC O/L';
+    } else if (sNo >= 136 && sNo <= 225) {
+      variety = 'Standard 4-Thread Overlock (O/L)';
+      model = '4-Thread (O/L)';
+    } else {
+      // Unit 2 specific models
+      const upperModel = model.toUpperCase();
+      if (upperModel.includes('6814')) variety = 'Semi-Dry Head Overlock (MO-6814D)';
+      else if (upperModel.includes('6714')) variety = '4-Thread Overlock (MO-6714DA)';
+      else if (upperModel.includes('952')) variety = '4-Thread Overlock (M952-52H)';
+      else if (upperModel.includes('900')) variety = 'High-Speed Overlock (M900)';
+      else if (upperModel.includes('5114')) variety = 'Overlock (MX5114-03)';
+      else if (upperModel.includes('6125')) variety = 'Overlock (CZ-6125)';
+      else if (upperModel.includes('6914')) variety = 'High-Speed Overlock (MO-6914C)';
+      else if (upperModel.includes('762')) variety = 'Overlock (M762-BH)';
+      else variety = `Overlock (${model})`;
+    }
 
     return {
       ...m,
@@ -46,11 +65,12 @@ const updatedMachines = machines.map((m) => {
       machineClass: 'OVERLOCK',
       machineCategory: 'OVERLOCK',
       type: 'OVERLOCK',
-      typeName: subVariant ? `OVERLOCK (${subVariant})` : 'OVERLOCK',
+      typeName: variety,
+      variety: variety,
+      subType: variety,
       machineType: 'OVERLOCK',
-      subType: subVariant || m.subType || undefined,
-      model: cleanModel,
-      name: cleanName.includes('OVERLOCK') ? cleanName : `${m.brand || m.machineMake || 'JUKI'} OVERLOCK`,
+      model: model,
+      name: `${brand} ${variety}`,
     };
   }
 
@@ -62,17 +82,33 @@ const updatedMachines = machines.map((m) => {
     origMachineType.toUpperCase() === 'FLATLOCK'
   ) {
     flatlockCount++;
-    let subVariant = '';
-    if (origType.includes('H.F/L') || origMachineType.includes('H.F/L')) subVariant = 'Hemming (H.F/L)';
-    else if (origType.includes('FB.F/L') || origMachineType.includes('FB.F/L')) subVariant = 'Flat Bed (FB.F/L)';
-    else if (origType.includes('PULLER') || origMachineType.includes('PULLER')) subVariant = 'Puller';
+    let variety = 'Flatlock';
+    let model = origModel && origModel !== '—' && origModel !== 'FLATLOCK' ? origModel : 'MF-7223D';
 
-    const cleanModel = origModel && !origModel.includes('F/L') && origModel !== '—' ? origModel : (subVariant ? `MF-7223D (${subVariant})` : 'MF-7223D');
-    let cleanName = origName
-      .replace(/H\.F\/L\b/gi, 'FLATLOCK (Hemming)')
-      .replace(/FB\.F\/L\b/gi, 'FLATLOCK (Flat Bed)')
-      .replace(/PULLER\.\s*F\/L\b/gi, 'FLATLOCK (Puller)')
-      .replace(/\bF\/L\b/gi, 'FLATLOCK');
+    // Unit 1 Subtypes by serial and original label
+    if (sNo >= 108 && sNo <= 115) {
+      variety = 'Hemming Flatlock (H.F/L)';
+      model = 'H.F/L (Hemming)';
+    } else if (sNo >= 116 && sNo <= 130) {
+      variety = 'Flat Bed Flatlock (FB.F/L)';
+      model = 'FB.F/L (Flat Bed)';
+    } else if (sNo >= 131 && sNo <= 135) {
+      variety = 'Puller Flatlock (PULLER. F/L)';
+      model = 'PULLER. F/L';
+    } else {
+      // Unit 2 specific models
+      const upperModel = model.toUpperCase();
+      if (upperModel.includes('7223')) variety = 'Cylinder Bed Flatlock (MF-7223D)';
+      else if (upperModel.includes('7923')) variety = 'Cylinder Bed Flatlock (MF-7923D)';
+      else if (upperModel.includes('7523')) variety = 'Flat Bed Flatlock (MF-7523D)';
+      else if (upperModel.includes('W264')) variety = 'Cylinder Bed Flatlock (W264HP)';
+      else if (upperModel.includes('W662')) variety = 'Flat Bed Flatlock (W662PCH)';
+      else if (upperModel.includes('W562')) variety = 'Flat Bed Flatlock (W562PC)';
+      else if (upperModel.includes('W652')) variety = 'Flat Bed Flatlock (W652PC)';
+      else if (upperModel.includes('VE2713')) variety = 'Cylinder Bed Flatlock (VE2713)';
+      else if (upperModel.includes('CF230')) variety = 'Cylinder Bed Flatlock (CF230UT)';
+      else variety = `Flatlock (${model})`;
+    }
 
     return {
       ...m,
@@ -81,11 +117,12 @@ const updatedMachines = machines.map((m) => {
       machineClass: 'FLATLOCK',
       machineCategory: 'FLATLOCK',
       type: 'FLATLOCK',
-      typeName: subVariant ? `FLATLOCK (${subVariant})` : 'FLATLOCK',
+      typeName: variety,
+      variety: variety,
+      subType: variety,
       machineType: 'FLATLOCK',
-      subType: subVariant || m.subType || undefined,
-      model: cleanModel,
-      name: cleanName.includes('FLATLOCK') ? cleanName : `${m.brand || m.machineMake || 'JUKI'} FLATLOCK`,
+      model: model,
+      name: `${brand} ${variety}`,
     };
   }
 

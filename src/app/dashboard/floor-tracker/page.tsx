@@ -1384,6 +1384,14 @@ export default function FloorTrackerPage() {
                                   <span className="font-semibold text-slate-600 truncate">{m.stationNo}</span>
                                   <span>•</span>
                                   <span className="font-mono font-medium text-slate-500">₹{(m.cost || 0).toLocaleString('en-IN')}</span>
+                                  {m.variety && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="inline-flex items-center text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded shrink-0">
+                                        {m.variety}
+                                      </span>
+                                    </>
+                                  )}
                                   {m.previousLine && (
                                     <>
                                       <span>•</span>

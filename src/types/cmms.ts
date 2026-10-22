@@ -118,6 +118,8 @@ export interface Machine {
   machineClass?: MachineClass; // 'OVERLOCK' | 'FLATLOCK' | 'SINGLE_NEEDLE'
   type: MachineType;
   typeName?: string; // e.g. "4 Thread Overlock"
+  variety?: string; // Specific subtype/variety, e.g. "Hemming Flatlock (H.F/L)", "Rib Attacher (RIP O/L)", "4-Thread Overlock (MO-6714DA)"
+  subType?: string;
   motorType?: MotorType;
   purchaseDate: string; // ISO format or YYYY-MM-DD
   cost: number; // INR (₹)

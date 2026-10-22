@@ -142,12 +142,36 @@ export function Sidebar() {
       },
     ];
   } else if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
-    // 🛡️ Admin & Asset Manager: Admin Dashboard, Asset Registration, Assets, Allowance, History
+    // 🛡️ Admin & Senior Supervisor: Full Plant Management & Floor Supervisor Add-ons
     navItems = [
       {
         label: 'Admin Dashboard',
         href: '/dashboard',
         icon: LayoutDashboard,
+      },
+      {
+        label: 'Asset Log',
+        href: '/dashboard/asset-log',
+        icon: ClipboardList,
+      },
+      {
+        label: 'Mechanic Calendar',
+        href: '/dashboard/calendar',
+        icon: CalendarCheck,
+        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
+        badgeColor: 'bg-rose-500 text-white',
+      },
+      {
+        label: 'Mechanic Roster',
+        href: '/dashboard/mechanic-roster',
+        icon: Users,
+      },
+      {
+        label: 'Group Indent',
+        href: '/dashboard/inventory',
+        icon: Package,
+        badge: lowStockCount > 0 ? lowStockCount : null,
+        badgeColor: 'bg-amber-500 text-slate-900',
       },
       {
         label: 'Asset Registration',
@@ -168,6 +192,11 @@ export function Sidebar() {
         label: 'History',
         href: '/dashboard/history',
         icon: History,
+      },
+      {
+        label: 'Factory Users',
+        href: '/dashboard/users',
+        icon: UserPlus,
       },
       {
         label: 'Settings',

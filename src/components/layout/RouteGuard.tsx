@@ -31,15 +31,11 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 2. Admin User: Restricted from Mechanic Calendar, Team Roster, and Store Indents
+    // 2. Admin User: Has full access to Admin tools and Senior Mechanic supervisor add-ons (Calendar, Roster, Asset Log, Indent)
     if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
-      if (
-        pathname.startsWith('/dashboard/calendar') ||
-        pathname.startsWith('/dashboard/mechanic-roster') ||
-        pathname.startsWith('/dashboard/store-inbox')
-      ) {
-        showToast('Admin does not have access to Mechanic Calendar, Team Roster, or Store Indents.', 'warning');
-        router.replace('/dashboard/machines');
+      if (pathname.startsWith('/dashboard/store-inbox')) {
+        showToast('Monthly Store Inbound is managed by the Tool Crib & Store In-Charge.', 'info');
+        router.replace('/dashboard');
       }
       return;
     }
@@ -96,18 +92,16 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Prevent flash of forbidden pages for Admin
+  // Prevent flash of forbidden pages for Admin (Store inbox is for Tool Crib In-charge)
   if (
     (role === 'ADMIN' || role === 'ASSET_MANAGER') &&
-    (pathname.startsWith('/dashboard/calendar') ||
-      pathname.startsWith('/dashboard/mechanic-roster') ||
-      pathname.startsWith('/dashboard/store-inbox'))
+    pathname.startsWith('/dashboard/store-inbox')
   ) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-2">
           <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Redirecting to Machine Registry...</p>
+          <p className="text-sm font-semibold text-slate-600">Redirecting to Dashboard...</p>
         </div>
       </div>
     );

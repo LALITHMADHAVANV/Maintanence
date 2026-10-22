@@ -62,7 +62,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       await loginWithEmail('admin', 'admin123');
-      showToast('Signed in as Plant Administrator. Welcome!', 'success');
+      showToast('Signed in as Plant Administrator & Maintenance Supervisor. Senior Add-ons active!', 'success');
       router.push('/dashboard');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -159,7 +159,7 @@ export default function LoginPage() {
               )}
             </button>
 
-            {/* 1-Click Admin Sign In Button */}
+            {/* 1-Click Admin & Senior Supervisor Sign In Button */}
             <button
               type="button"
               onClick={handleQuickAdminLogin}
@@ -167,7 +167,7 @@ export default function LoginPage() {
               className="w-full py-2.5 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 text-indigo-700 border border-indigo-200/80 font-semibold text-xs rounded-xl transition duration-150 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Shield className="w-4 h-4 text-indigo-600" />
-              <span>1-Click Admin Sign In</span>
+              <span>1-Click Admin &amp; Senior Supervisor Sign In</span>
             </button>
 
             {/* Administrator Note */}
@@ -177,15 +177,15 @@ export default function LoginPage() {
                 setPassword('admin123');
               }}
               className="p-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl flex items-start gap-2.5 text-left mt-2 transition cursor-pointer"
-              title="Click to auto-fill Admin credentials"
+              title="Click to auto-fill Admin & Senior Supervisor credentials"
             >
               <Shield className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
               <div className="text-[11px] text-slate-600 leading-relaxed">
-                <span className="font-bold text-slate-800">Admin Account:</span>{' '}
+                <span className="font-bold text-slate-800">Admin Account (Senior Add-ons Included):</span>{' '}
                 <code className="text-indigo-600 font-semibold bg-indigo-50 px-1 py-0.5 rounded">admin</code> &bull; Password:{' '}
                 <code className="text-indigo-600 font-semibold bg-indigo-50 px-1 py-0.5 rounded">admin123</code>.
                 <p className="text-slate-400 text-[10px] mt-0.5">
-                  Click here or the button above to auto-fill credentials.
+                  Includes full Plant Admin tools plus Senior Mechanic Calendar, Team Roster, Asset Log, and Task Dispatching.
                 </p>
               </div>
             </div>

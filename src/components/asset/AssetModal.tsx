@@ -808,6 +808,11 @@ export function AssetModal({
                 >
                   {catStyle.label}
                 </span>
+                {currentAsset.variety && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {currentAsset.variety}
+                  </span>
+                )}
                 <div className="flex items-center gap-1.5 ml-1">
                   <span className={`w-2 h-2 rounded-full ${dotColor}`} />
                   <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${statusBadge}`}>

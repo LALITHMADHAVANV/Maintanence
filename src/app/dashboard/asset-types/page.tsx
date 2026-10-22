@@ -102,6 +102,7 @@ interface AssetItem {
   mcNo: string;
   name: string;
   machineType: string;
+  variety?: string;
   machineMake: string;
   model: string;
   year: number | string;
@@ -139,6 +140,7 @@ function AssetsPageContent() {
   const effectiveUnit = getUserScopedUnit(user, role, selectedPlant === 'ALL' ? null : selectedPlant);
   const [selectedLocation, setSelectedLocation] = useState<string>('ALL');
   const [selectedType, setSelectedType] = useState<string>('ALL');
+  const [selectedVariety, setSelectedVariety] = useState<string>('ALL');
   const [selectedMake, setSelectedMake] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -222,7 +224,8 @@ function AssetsPageContent() {
       const rawType = (m as any).machineType || m.typeName || m.type || 'SNLS';
       const machineType = canonicalMachineType(rawType);
       const machineMake = (m as any).machineMake || m.brand || 'JUKI';
-      const model = m.model && m.model !== '—' && m.model !== machineType ? m.model : '—';
+      const variety = (m as any).variety || (m as any).typeName || (m as any).subType || '';
+      const model = m.model && m.model !== '—' && m.model !== machineType ? m.model : (m as any).model || '—';
       const year = (m as any).year || (m.purchaseDate ? new Date(m.purchaseDate).getFullYear() : '—');
       const location = (m as any).location || m.area || 'NETHAJI';
       const zone = (m as any).zone || '';
@@ -232,8 +235,9 @@ function AssetsPageContent() {
         id: m.id,
         sNo,
         mcNo,
-        name: m.name || `${machineMake} ${machineType}`,
+        name: m.name || `${machineMake} ${variety || machineType}`,
         machineType,
+        variety: variety || (machineType === 'OVERLOCK' ? '4-Thread Overlock (O/L)' : machineType === 'FLATLOCK' ? 'Flatlock' : machineType),
         machineMake,
         model,
         year,
@@ -332,6 +336,10 @@ function AssetsPageContent() {
           return false;
         }
       }
+      // 3b. Specific Machine Variety (Sub-type: Hemming, Flat Bed, Puller, Rib, LFC, etc.)
+      if (selectedVariety !== 'ALL' && item.variety !== selectedVariety) {
+        return false;
+      }
       // 4. Machine Make
       if (selectedMake !== 'ALL' && item.machineMake.toUpperCase() !== selectedMake.toUpperCase()) {
         return false;
@@ -351,6 +359,7 @@ function AssetsPageContent() {
           item.mcNo.toLowerCase().includes(q) ||
           item.id.toLowerCase().includes(q) ||
           item.machineType.toLowerCase().includes(q) ||
+          (item.variety && item.variety.toLowerCase().includes(q)) ||
           item.machineMake.toLowerCase().includes(q) ||
           item.model.toLowerCase().includes(q) ||
           String(item.year).toLowerCase().includes(q) ||
@@ -368,11 +377,30 @@ function AssetsPageContent() {
     selectedCategory,
     selectedLocation,
     selectedType,
+    selectedVariety,
     selectedMake,
     selectedYear,
     selectedStatus,
     searchQuery,
   ]);
+
+  // Sub-varieties for the active machine type filter
+  const availableVarietiesForSelectedType = useMemo(() => {
+    if (selectedType === 'ALL') return [];
+    const map = new Map<string, number>();
+    for (const item of unitScopedItems) {
+      if (
+        item.category === 'MACHINE' &&
+        canonicalMachineType(item.machineType) === canonicalMachineType(selectedType)
+      ) {
+        const v = item.variety || 'Standard';
+        map.set(v, (map.get(v) || 0) + 1);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [unitScopedItems, selectedType]);
 
   const resetAllFilters = () => {
     setSelectedCategory('ALL');
@@ -625,7 +653,10 @@ function AssetsPageContent() {
                   <button
                     key={type}
                     type="button"
-                    onClick={() => setSelectedType(isSelected ? 'ALL' : type)}
+                    onClick={() => {
+                      setSelectedType(isSelected ? 'ALL' : type);
+                      setSelectedVariety('ALL');
+                    }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
                       isSelected
                         ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
@@ -644,6 +675,44 @@ function AssetsPageContent() {
                 );
               })}
           </div>
+
+          {/* Sub-variety filter row when a specific Machine Type (like OVERLOCK or FLATLOCK) is selected */}
+          {availableVarietiesForSelectedType.length > 1 && (
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold text-slate-500 mr-1">
+                {selectedType} Varieties:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedVariety('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                  selectedVariety === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                All {selectedType === 'OVERLOCK' ? 'Overlocks' : selectedType === 'FLATLOCK' ? 'Flatlocks' : selectedType}
+              </button>
+              {availableVarietiesForSelectedType.map((v) => {
+                const isVarSelected = selectedVariety === v.name;
+                return (
+                  <button
+                    key={v.name}
+                    type="button"
+                    onClick={() => setSelectedVariety(isVarSelected ? 'ALL' : v.name)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer border ${
+                      isVarSelected
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                        : 'bg-white hover:bg-indigo-50/70 text-slate-700 border-slate-200 hover:border-indigo-300'
+                    }`}
+                  >
+                    <span>{v.name}</span>
+                    <span className="text-[10px] opacity-80 font-mono ml-1">({v.count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -794,7 +863,7 @@ function AssetsPageContent() {
                 <tr>
                   <th className="py-2.5 px-3 text-center border-r border-slate-300 w-14">S.No</th>
                   <th className="py-2.5 px-3 border-r border-slate-300">M/C No (Asset ID)</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300">Machine Type</th>
+                  <th className="py-2.5 px-3 border-r border-slate-300 min-w-[210px]">Machine Type & Variety</th>
                   <th className="py-2.5 px-3 border-r border-slate-300">Machine Make</th>
                   <th className="py-2.5 px-3 border-r border-slate-300">M/C Model</th>
                   <th className="py-2.5 px-3 text-center border-r border-slate-300 w-16">Year</th>
@@ -837,11 +906,38 @@ function AssetsPageContent() {
                         </button>
                       </td>
 
-                      {/* 3. Machine Type */}
+                      {/* 3. Machine Type & Specific Variety */}
                       <td className="py-2.5 px-3.5 border-r border-slate-200">
-                        <span className="font-bold text-slate-900 group-hover:text-indigo-700">
-                          {item.machineType}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-900 group-hover:text-indigo-700 text-xs">
+                              {item.machineType}
+                            </span>
+                            {item.machineType === 'OVERLOCK' && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black bg-purple-50 text-purple-700 border border-purple-200 uppercase tracking-wider">
+                                Overlock
+                              </span>
+                            )}
+                            {item.machineType === 'FLATLOCK' && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                                Flatlock
+                              </span>
+                            )}
+                          </div>
+                          {item.variety && (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border w-fit ${
+                                item.machineType === 'FLATLOCK'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : item.machineType === 'OVERLOCK'
+                                  ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                  : 'bg-slate-50 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {item.variety}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 4. Machine Make */}
@@ -852,8 +948,10 @@ function AssetsPageContent() {
                       </td>
 
                       {/* 5. M/C Model */}
-                      <td className="py-2.5 px-3 border-r border-slate-200 text-slate-600 font-mono text-xs">
-                        {item.model && item.model !== '—' && item.model !== item.machineType ? item.model : '—'}
+                      <td className="py-2.5 px-3 border-r border-slate-200">
+                        <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100/90 px-2 py-0.5 rounded border border-slate-200 inline-block">
+                          {item.model && item.model !== '—' && item.model !== item.machineType ? item.model : item.variety || '—'}
+                        </span>
                       </td>
 
                       {/* 6. Year */}

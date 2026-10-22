@@ -272,12 +272,36 @@ export function Navbar() {
       },
     ];
   } else {
-    // ADMIN / ASSET_MANAGER
+    // ADMIN / ASSET_MANAGER with Senior Supervisor Add-ons
     navTabs = [
       {
         label: 'Admin Dashboard',
         href: '/dashboard',
         icon: LayoutDashboard,
+      },
+      {
+        label: 'Asset Log',
+        href: '/dashboard/asset-log',
+        icon: ClipboardList,
+      },
+      {
+        label: 'Mechanic Calendar',
+        href: '/dashboard/calendar',
+        icon: CalendarCheck,
+        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
+        badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
+      },
+      {
+        label: 'Mechanic Roster',
+        href: '/dashboard/mechanic-roster',
+        icon: Users,
+      },
+      {
+        label: 'Group Indent',
+        href: '/dashboard/inventory',
+        icon: Package,
+        badge: lowStockCount > 0 ? lowStockCount : null,
+        badgeColor: 'bg-rose-500 text-white',
       },
       {
         label: 'Asset Registration',

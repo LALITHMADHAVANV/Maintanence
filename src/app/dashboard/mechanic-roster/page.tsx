@@ -38,6 +38,7 @@ import { useAuth } from '@/context/AuthContext';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import {
   FACTORY_MECHANICS_ROSTER,
+  MechanicDuty,
   userToMechanicDuty,
 } from '@/lib/constants/mechanics';
 
@@ -135,18 +136,32 @@ export default function MechanicRosterPage() {
     return technicalStaff.map(userToMechanicDuty);
   }, [techUsers, isAdmin, selectedUnit, effectiveUnit]);
 
-  // For Senior Electrician, ONLY show junior electricians; for Senior Mechanic, show mechanics
+  // Floor technicians available for assignment (supervisor assigns technicians, NOT himself)
   const relevantTechnicians = React.useMemo(() => {
+    const currentName = (user?.name || '').trim().toLowerCase();
+    const isFloorCandidate = (m: MechanicDuty) => {
+      const lower = m.role.toLowerCase();
+      const mName = m.name.trim().toLowerCase();
+      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
+      const isSeniorOrAdmin =
+        lower.includes('senior') ||
+        lower.includes('admin') ||
+        lower.includes('supervisor') ||
+        lower.includes('director') ||
+        lower.includes('manager');
+      return !isSelf && !isSeniorOrAdmin;
+    };
+
     if (role === 'SENIOR_ELECTRICIAN') {
       return registeredRoster.filter(
-        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
+        (m) => m.trade === 'ELECTRICIAN' && isFloorCandidate(m)
       );
     }
     if (role === 'SENIOR_MECHANIC') {
-      return registeredRoster.filter((m) => m.trade === 'MECHANIC');
+      return registeredRoster.filter((m) => m.trade === 'MECHANIC' && isFloorCandidate(m));
     }
-    return registeredRoster;
-  }, [role, registeredRoster]);
+    return registeredRoster.filter((m) => isFloorCandidate(m));
+  }, [role, registeredRoster, user?.name]);
 
   useEffect(() => {
     const unsubR = subscribeRepairs((data) => setRepairs(data));
@@ -432,7 +447,7 @@ export default function MechanicRosterPage() {
               </span>
             </div>
             <span className="text-[11px] font-bold text-rose-700">
-              Move directly to a technician or yourself:
+              Dispatch directly to a floor technician:
             </span>
           </div>
 
@@ -446,14 +461,6 @@ export default function MechanicRosterPage() {
                 <span className="font-bold text-rose-800">{r.machineId}</span>
                 <span className="text-slate-500">({r.faultCategory})</span>
                 <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-                  <button
-                    onClick={() => handleReassign(r.id, user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'))}
-                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                    title="Assign task directly to myself"
-                  >
-                    <UserCheck className="w-3 h-3" />
-                    <span>Assign to Myself</span>
-                  </button>
                   {relevantTechnicians.map((mech) => {
                     const firstName = mech.name.split(' ')[0];
                     return (
@@ -463,7 +470,7 @@ export default function MechanicRosterPage() {
                         className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer hover:text-slate-900"
                         title={`Move task directly to ${mech.name}`}
                       >
-                        Move to {firstName}
+                        Dispatch to {firstName}
                       </button>
                     );
                   })}
@@ -771,30 +778,8 @@ export default function MechanicRosterPage() {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-1.5">
-                              {/* 1. Move to Myself Button */}
-                              {(() => {
-                                const selfName = user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar');
-                                const isSelf = mechanic.name.toLowerCase().includes(selfName.toLowerCase());
-                                return (
-                                  <button
-                                    onClick={() => handleReassign(t.id, selfName)}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                      isSelf
-                                        ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 font-extrabold'
-                                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                    }`}
-                                    title="Assign task directly to myself"
-                                  >
-                                    <UserCheck className="w-3 h-3" />
-                                    <span>{isSelf ? '✓ With Myself' : 'Assign to Myself'}</span>
-                                  </button>
-                                );
-                              })()}
-
-                              {/* 2. Move to Someone Else Buttons */}
-                              {relevantTechnicians.filter(
-                                (m) => !m.name.toLowerCase().includes((user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')).toLowerCase())
-                              ).map((mech) => {
+                              {/* Move to Floor Technicians */}
+                              {relevantTechnicians.map((mech) => {
                                 const isCurrent = mechanic.name.toLowerCase().includes(mech.name.toLowerCase());
                                 const firstName = mech.name.split(' ')[0];
 
@@ -802,12 +787,12 @@ export default function MechanicRosterPage() {
                                   <button
                                     key={mech.id}
                                     onClick={() => handleReassign(t.id, mech.name)}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
                                       isCurrent
-                                        ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-500 font-extrabold'
+                                        ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-500 font-extrabold cursor-default'
                                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 hover:text-slate-900'
                                     }`}
-                                    title={`Move task directly to ${mech.name} (${mech.role})`}
+                                    title={`Reassign task directly to ${mech.name}`}
                                   >
                                     <span>{isCurrent ? `✓ ${firstName}` : `Move to ${firstName}`}</span>
                                   </button>
