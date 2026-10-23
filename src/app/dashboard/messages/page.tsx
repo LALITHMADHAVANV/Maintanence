@@ -1,1165 +1,1738 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
+  Bell,
   AlertTriangle,
+  Clock,
+  Flame,
+  ShieldAlert,
+  Wrench,
   CheckCircle2,
   XCircle,
-  Clock,
-  Crown,
-  ShieldAlert,
-  IndianRupee,
-  FileText,
-  CheckCheck,
-  Info,
-  Table as TableIcon,
-  LayoutGrid,
-  Search,
-  Download,
-  Filter,
-  SlidersHorizontal,
-  ChevronRight,
   User,
-  Factory,
+  Layers,
+  Search,
+  Filter,
+  RotateCw,
+  Volume2,
+  VolumeX,
+  ArrowRight,
+  ExternalLink,
+  Package,
+  Calendar,
+  ChevronRight,
+  Sparkles,
   Check,
   X,
-  ExternalLink,
-  MessageSquare,
-  Sparkles,
-  ArrowUpDown,
+  ChevronDown,
+  Building2,
+  Activity,
+  Boxes,
+  Phone,
+  Radio,
+  FileText,
+  IndianRupee,
+  ArrowRightLeft,
+  ShieldCheck,
+  Crown,
+  Zap,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { PartRequisition, RequisitionStatus } from '@/types/cmms';
 import {
+  RepairTicket,
+  PPMSchedule,
+  SparePart,
+  Machine,
+  PartRequisition,
+  AppNotification,
+  AssetLogEntry,
+  UserRole,
+} from '@/types/cmms';
+import {
+  subscribeRepairs,
+  subscribePPMSchedules,
+  subscribeParts,
+  subscribeMachines,
   subscribeRequisitions,
+  subscribeNotifications,
+  assignRepairTicket,
+  startRepairTicket,
+  acknowledgeAppNotification,
   approveRequisition,
   rejectRequisition,
 } from '@/lib/services/cmmsService';
+import { subscribeAssetLogs } from '@/lib/services/assetLogService';
+import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { normalizeRole } from '@/lib/constants/roles';
 
-export default function CeoMessagesPage() {
-  const router = useRouter();
+// Available factory technicians with assigned plant units for smart unit-targeted dispatch
+export interface TechnicianRosterItem {
+  name: string;
+  role: string;
+  phone: string;
+  trade: 'MECHANIC' | 'ELECTRICIAN';
+  unit: string;
+}
+
+const TECHNICIAN_ROSTER: TechnicianRosterItem[] = [
+  { name: 'ROBERT', role: 'Line Sewing Mechanic', phone: '+91 98421 11001', trade: 'MECHANIC', unit: 'UNIT - 1' },
+  { name: 'Viknesh_kumar', role: 'Line Sewing Mechanic', phone: '+91 96384 76232', trade: 'MECHANIC', unit: 'UNIT - 1' },
+  { name: 'Sabarinathan', role: 'Line Sewing Mechanic', phone: '+91 98421 11002', trade: 'MECHANIC', unit: 'UNIT-2' },
+  { name: 'Anand Kumar', role: 'Plant Electrician Lead', phone: '+91 98421 11003', trade: 'ELECTRICIAN', unit: 'UNIT - 1' },
+  { name: 'Suresh M', role: 'Senior Overlock Specialist', phone: '+91 98421 11004', trade: 'MECHANIC', unit: 'UNIT - 1' },
+  { name: 'Karthik S', role: 'Line Maintenance Tech', phone: '+91 98421 11005', trade: 'MECHANIC', unit: 'UNIT - 1' },
+  { name: 'Rajesh M', role: 'PPM Overhaul Specialist', phone: '+91 98421 11006', trade: 'MECHANIC', unit: 'UNIT-2' },
+  { name: 'P. Arumugam', role: 'Floor In-Charge Mechanic', phone: '+91 98421 11007', trade: 'MECHANIC', unit: 'UNIT - 1' },
+  { name: 'K. Balakrishnan', role: 'Floor In-Charge Mechanic', phone: '+91 98422 67890', trade: 'MECHANIC', unit: 'UNIT-2' },
+];
+
+export type NotificationCategory =
+  | 'ALL'
+  | 'UNATTENDED_5M'
+  | 'BREAKDOWN_WARNING'
+  | 'ASSET_ACTIONS'
+  | 'PPM_OVERDUE'
+  | 'LOW_STOCK'
+  | 'APPROVALS';
+
+export type RoleScope =
+  | 'MY_ROLE'
+  | 'ALL_ROLES'
+  | 'ROLE_MECHANIC'
+  | 'ROLE_ELECTRICIAN'
+  | 'ROLE_STORE'
+  | 'ROLE_SUPERVISOR'
+  | 'ROLE_EXECUTIVE';
+
+export interface UnifiedNotificationItem {
+  id: string;
+  category: 'UNATTENDED_5M' | 'BREAKDOWN_WARNING' | 'ASSET_ACTION' | 'PPM_OVERDUE' | 'LOW_STOCK' | 'APPROVAL' | 'GENERAL';
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  title: string;
+  message: string;
+  timestamp: string; // ISO
+  machineId?: string;
+  machineName?: string;
+  line?: string;
+  stationNo?: string;
+  unit?: string;
+  faultCategory?: string;
+  attendedBy?: string | null;
+  previousStatus?: string;
+  newStatus?: string;
+  assetActionType?: string;
+  elapsedMinutes: number;
+  elapsedSeconds: number;
+  isUnattended5Mins: boolean;
+  targetRoles: UserRole[] | 'ALL';
+  targetTrade?: 'MECHANIC' | 'ELECTRICIAN' | 'ALL';
+  rawRepair?: RepairTicket;
+  rawPpm?: PPMSchedule;
+  rawPart?: SparePart;
+  rawReq?: PartRequisition;
+  rawNotif?: AppNotification;
+  rawAssetLog?: AssetLogEntry;
+  acknowledged?: boolean;
+}
+
+export default function NotificationsPage() {
   const { user, role } = useAuth();
   const { showToast } = useToast();
 
+  const currentRole = useMemo(() => {
+    return normalizeRole(user?.role || role);
+  }, [user?.role, role]);
+
+  const userAssignedUnit = useMemo(() => {
+    return user?.unit && user.unit.trim().length > 0 ? user.unit.trim() : 'All Units';
+  }, [user?.unit]);
+
+  const isAdmin = currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER' || currentRole === 'CEO';
+
+  // Live real-time tick (updates every 1000ms for live stopwatch on unattended issues)
+  const [nowMs, setNowMs] = useState<number>(Date.now());
   useEffect(() => {
-    if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
-      router.replace('/dashboard/allowance');
-    }
-  }, [role, router]);
-
-  const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
-  const [viewMode, setViewMode] = useState<'TABLE' | 'CARDS'>('TABLE');
-  const [filter, setFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [lineFilter, setLineFilter] = useState<string>('ALL');
-  const [remarksMap, setRemarksMap] = useState<Record<string, string>>({});
-  const [expandedInfoMap, setExpandedInfoMap] = useState<Record<string, boolean>>({});
-
-  // Dossier Modal State for comprehensive review & custom remarks
-  const [selectedReqForDossier, setSelectedReqForDossier] = useState<PartRequisition | null>(null);
-  const [customRemark, setCustomRemark] = useState('');
-
-  const toggleInfo = (id: string) => {
-    setExpandedInfoMap((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const isCeoOrAdmin = role === 'CEO' || role === 'ADMIN' || role === 'ASSET_MANAGER';
-
-  useEffect(() => {
-    const unsub = subscribeRequisitions((reqs) => {
-      // Filter for requisitions requiring CEO approval or marked as critical
-      const ceoMessages = reqs.filter(
-        (r) =>
-          r.type === 'CRITICAL_CEO' ||
-          r.requiresCeoApproval ||
-          r.urgency === 'CRITICAL_CEO_APPROVAL'
-      );
-      setRequisitions(ceoMessages);
-    });
-
-    return () => unsub();
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  const pendingCount = requisitions.filter((r) => r.status === 'PENDING_CEO_APPROVAL').length;
-  const approvedCount = requisitions.filter((r) => r.status === 'APPROVED_BY_CEO').length;
-  const rejectedCount = requisitions.filter((r) => r.status === 'REJECTED').length;
-  const totalCapexRequested = requisitions.reduce((acc, r) => acc + (r.estimatedCost || 0), 0);
+  // Raw subscriptions
+  const [repairs, setRepairs] = useState<RepairTicket[]>([]);
+  const [ppmSchedules, setPpmSchedules] = useState<PPMSchedule[]>([]);
+  const [parts, setParts] = useState<SparePart[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
+  const [appNotifs, setAppNotifs] = useState<AppNotification[]>([]);
+  const [assetLogs, setAssetLogs] = useState<AssetLogEntry[]>([]);
 
-  // Extract unique lines for the line filter dropdown
-  const availableLines = useMemo(() => {
-    const lines = new Set<string>();
-    requisitions.forEach((r) => {
-      if (r.targetLine) lines.add(r.targetLine);
+  // User UI controls
+  const [activeTab, setActiveTab] = useState<NotificationCategory>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUnit, setSelectedUnit] = useState<string>('ALL');
+  const [selectedRoleScope, setSelectedRoleScope] = useState<RoleScope>('MY_ROLE');
+  const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
+  const [isMuted, setIsMuted] = useState(false);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+
+  // Assign Mechanic Modal state
+  const [assigningItem, setAssigningItem] = useState<UnifiedNotificationItem | null>(null);
+  const [selectedMechanic, setSelectedMechanic] = useState<string>(TECHNICIAN_ROSTER[0].name);
+
+  // Subscribe to CMMS and Asset Log streams
+  useEffect(() => {
+    const unsubRepairs = subscribeRepairs((data) => setRepairs(data));
+    const unsubPpm = subscribePPMSchedules((data) => setPpmSchedules(data));
+    const unsubParts = subscribeParts((data) => setParts(data));
+    const unsubMachines = subscribeMachines((data) => setMachines(data));
+    const unsubReqs = subscribeRequisitions((data) => setRequisitions(data));
+    const unsubNotifs = subscribeNotifications((data) => setAppNotifs(data));
+    const unsubAssetLogs = subscribeAssetLogs((data) => setAssetLogs(data));
+
+    return () => {
+      unsubRepairs();
+      unsubPpm();
+      unsubParts();
+      unsubMachines();
+      unsubReqs();
+      unsubNotifs();
+      unsubAssetLogs();
+    };
+  }, []);
+
+  // Effective unit scoping:
+  // If user is non-admin and marked for a specific unit (e.g. "UNIT - 1" or "UNIT-2"),
+  // they are strictly locked to their unit.
+  // Admins & CEOs can toggle selectedUnit freely.
+  const effectiveUnit = useMemo(() => {
+    if (isAdmin) {
+      return selectedUnit;
+    }
+    if (userAssignedUnit && userAssignedUnit !== 'All Units' && userAssignedUnit !== 'ALL') {
+      return userAssignedUnit;
+    }
+    return selectedUnit;
+  }, [isAdmin, userAssignedUnit, selectedUnit]);
+
+  // Baseline seed alerts for rich demonstration across both Unit 1 and Unit 2
+  const seedNotifications: UnifiedNotificationItem[] = useMemo(() => {
+    return [
+      {
+        id: 'SEED-ALERT-01',
+        category: 'UNATTENDED_5M',
+        severity: 'CRITICAL',
+        title: '🚨 SLA Breach: Breakdown Unattended for > 5 Minutes',
+        message: 'MC-SNLS-102 on Line 02 reported Needle Collision & Hook Jam. Awaiting floor technician arrival.',
+        timestamp: new Date(nowMs - 7 * 60 * 1000 - 32 * 1000).toISOString(),
+        machineId: 'MC-SNLS-102',
+        machineName: 'JUKI DDL-9000C Lockstitch',
+        line: 'Line 02',
+        stationNo: 'Station 04',
+        unit: 'UNIT - 1',
+        faultCategory: 'Needle Jam & Hook Collision',
+        attendedBy: null,
+        elapsedMinutes: 7,
+        elapsedSeconds: 7 * 60 + 32,
+        isUnattended5Mins: true,
+        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
+        targetTrade: 'MECHANIC',
+      },
+      {
+        id: 'SEED-ALERT-02',
+        category: 'UNATTENDED_5M',
+        severity: 'CRITICAL',
+        title: '🚨 SLA Breach: Breakdown Unattended for > 5 Minutes',
+        message: 'MC-FLAT-104 on Line 01 reported Cylinder Bed Oil Leak & Looper Misalignment on active export run.',
+        timestamp: new Date(nowMs - 12 * 60 * 1000 - 15 * 1000).toISOString(),
+        machineId: 'MC-FLAT-104',
+        machineName: 'Pegasus W500 Flatlock',
+        line: 'Line 01',
+        stationNo: 'Station 08',
+        unit: 'UNIT - 1',
+        faultCategory: 'Severe Oil Leak & Stalling',
+        attendedBy: null,
+        elapsedMinutes: 12,
+        elapsedSeconds: 12 * 60 + 15,
+        isUnattended5Mins: true,
+        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
+        targetTrade: 'MECHANIC',
+      },
+      {
+        id: 'SEED-ALERT-02-U2',
+        category: 'UNATTENDED_5M',
+        severity: 'CRITICAL',
+        title: '🚨 SLA Breach: Unit 2 Breakdown Unattended for > 5 Minutes',
+        message: 'MC-OVER-201 on PEACOCK 2 reported Knife Blade Shatter & Differential Feed Jam. Export line stalled.',
+        timestamp: new Date(nowMs - 9 * 60 * 1000 - 45 * 1000).toISOString(),
+        machineId: 'MC-OVER-201',
+        machineName: 'Yamato 4-Thread Overlock',
+        line: 'PEACOCK 2',
+        stationNo: 'Station 03',
+        unit: 'UNIT-2',
+        faultCategory: 'Cutter Blade Shatter',
+        attendedBy: null,
+        elapsedMinutes: 9,
+        elapsedSeconds: 9 * 60 + 45,
+        isUnattended5Mins: true,
+        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
+        targetTrade: 'MECHANIC',
+      },
+      {
+        id: 'SEED-ALERT-03',
+        category: 'BREAKDOWN_WARNING',
+        severity: 'WARNING',
+        title: '⚠️ Line Breakdown Warning: Running Downtime Exceeding 25m',
+        message: 'MC-OVER-101 on Line 03 has been under active repair for 28 mins. Thread tension drift causing stitch skipping on collar join.',
+        timestamp: new Date(nowMs - 28 * 60 * 1000).toISOString(),
+        machineId: 'MC-OVER-101',
+        machineName: 'JUKI MO-6814S Overlock',
+        line: 'Line 03',
+        stationNo: 'Station 02',
+        unit: 'UNIT - 1',
+        faultCategory: 'Thread Tension Drift',
+        attendedBy: 'ROBERT',
+        elapsedMinutes: 28,
+        elapsedSeconds: 28 * 60,
+        isUnattended5Mins: false,
+        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
+        targetTrade: 'MECHANIC',
+      },
+      {
+        id: 'SEED-ALERT-03-ELEC',
+        category: 'BREAKDOWN_WARNING',
+        severity: 'CRITICAL',
+        title: '⚡ Electrical Breakdown: Servo Drive Error Code E-07',
+        message: 'MC-FUSING-01 in Cutting Bay reported Servo Motor Inverter Overcurrent Trip. High temperature alarm.',
+        timestamp: new Date(nowMs - 15 * 60 * 1000).toISOString(),
+        machineId: 'MC-FUSING-01',
+        machineName: 'Hashima Continuous Fusing Press',
+        line: 'Cutting Bay 01',
+        stationNo: 'Station 01',
+        unit: 'UNIT - 1',
+        faultCategory: 'Servo Drive Overcurrent',
+        attendedBy: null,
+        elapsedMinutes: 15,
+        elapsedSeconds: 15 * 60,
+        isUnattended5Mins: true,
+        targetRoles: ['ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'ADMIN', 'ASSET_MANAGER'],
+        targetTrade: 'ELECTRICIAN',
+      },
+      {
+        id: 'SEED-ALERT-04',
+        category: 'ASSET_ACTION',
+        severity: 'INFO',
+        title: '⚡ Asset Activated: MC-SNLS-101 deployed to Line 01',
+        message: 'Machine moved from IDLE to ACTIVE. Positioned at Station 03 for upcoming sportswear collar run. Added to active line capacity.',
+        timestamp: new Date(nowMs - 14 * 60 * 1000).toISOString(),
+        machineId: 'MC-SNLS-101',
+        machineName: 'JUKI Single Needle Lockstitch DDL-9000C',
+        line: 'Line 01',
+        stationNo: 'Station 03',
+        unit: 'UNIT - 1',
+        attendedBy: 'P. Arumugam',
+        previousStatus: 'IDLE',
+        newStatus: 'ACTIVE',
+        assetActionType: 'IDLE_TO_ACTIVE',
+        elapsedMinutes: 14,
+        elapsedSeconds: 14 * 60,
+        isUnattended5Mins: false,
+        targetRoles: ['ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC', 'CEO'],
+        targetTrade: 'ALL',
+      },
+      {
+        id: 'SEED-ALERT-05',
+        category: 'ASSET_ACTION',
+        severity: 'INFO',
+        title: '🔄 Asset Relocation: MC-OVER-104 reallocated to Line 02',
+        message: 'Transferred from Line 04 (Station 12) to Line 02 (Station 07) for 4-thread overlock seam balancing. Zone and Line registry updated.',
+        timestamp: new Date(nowMs - 35 * 60 * 1000).toISOString(),
+        machineId: 'MC-OVER-104',
+        machineName: 'Siruba 747K 4-Thread Overlock',
+        line: 'Line 02',
+        stationNo: 'Station 07',
+        unit: 'UNIT - 1',
+        attendedBy: 'Anand Kumar',
+        previousStatus: 'ACTIVE',
+        newStatus: 'ACTIVE',
+        assetActionType: 'ZONE_LINE_CHANGE',
+        elapsedMinutes: 35,
+        elapsedSeconds: 35 * 60,
+        isUnattended5Mins: false,
+        targetRoles: ['ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC', 'CEO'],
+        targetTrade: 'ALL',
+      },
+      {
+        id: 'SEED-ALERT-07',
+        category: 'PPM_OVERDUE',
+        severity: 'WARNING',
+        title: '⏱️ Overdue Preventive Maintenance Service',
+        message: 'Weekly Looper Timing & Oil Wick Service for Line 04 (MC-SNLS-105) is overdue by 2 days.',
+        timestamp: new Date(nowMs - 48 * 60 * 60 * 1000).toISOString(),
+        machineId: 'MC-SNLS-105',
+        machineName: 'Brother S-7250A Lockstitch',
+        line: 'Line 04',
+        stationNo: 'Station 05',
+        unit: 'UNIT - 1',
+        faultCategory: 'PPM Service Overdue',
+        attendedBy: 'R.Saravanan',
+        elapsedMinutes: 2880,
+        elapsedSeconds: 2880 * 60,
+        isUnattended5Mins: false,
+        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
+        targetTrade: 'MECHANIC',
+      },
+      {
+        id: 'SEED-ALERT-08',
+        category: 'LOW_STOCK',
+        severity: 'WARNING',
+        title: '📦 Low Stock Warning: Critical Spare Parts Below Minimum',
+        message: 'FLATLOCK NAVE SET (SKU: FLT-NAV-001) stock has dropped to 2 units (Min safety stock: 5 units). Reorder indent required.',
+        timestamp: new Date(nowMs - 2 * 60 * 60 * 1000).toISOString(),
+        unit: 'UNIT - 1',
+        faultCategory: 'Spare Parts Reorder Level',
+        elapsedMinutes: 120,
+        elapsedSeconds: 120 * 60,
+        isUnattended5Mins: false,
+        targetRoles: ['STORE_PERSON', 'ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC'],
+        targetTrade: 'ALL',
+      },
+      {
+        id: 'SEED-ALERT-08-U2',
+        category: 'LOW_STOCK',
+        severity: 'WARNING',
+        title: '📦 Unit 2 Crib: Pegasus Looper Set Below Safety Level',
+        message: 'PEGASUS LOWER LOOPER (SKU: PEG-LL-204) at Unit 2 Perundurai crib is at 1 unit (Min: 6). Indent dispatch needed.',
+        timestamp: new Date(nowMs - 3 * 60 * 60 * 1000).toISOString(),
+        unit: 'UNIT-2',
+        faultCategory: 'Unit 2 Crib Reorder Level',
+        elapsedMinutes: 180,
+        elapsedSeconds: 180 * 60,
+        isUnattended5Mins: false,
+        targetRoles: ['STORE_PERSON', 'ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC'],
+        targetTrade: 'ALL',
+      },
+    ];
+  }, [nowMs]);
+
+  // Helper to determine if a defect is electrical
+  const isElectricalDefect = (faultCategory?: string, faultDetails?: string, machineType?: string) => {
+    const text = `${faultCategory || ''} ${faultDetails || ''} ${machineType || ''}`.toLowerCase();
+    return (
+      text.includes('motor') ||
+      text.includes('elec') ||
+      text.includes('power') ||
+      text.includes('fuse') ||
+      text.includes('sensor') ||
+      text.includes('switch') ||
+      text.includes('inverter') ||
+      text.includes('servo') ||
+      text.includes('circuit') ||
+      text.includes('wire') ||
+      text.includes('cable') ||
+      text.includes('display') ||
+      text.includes('panel')
+    );
+  };
+
+  // Build unified notification items from live streams & seeds
+  const allNotifications = useMemo(() => {
+    const list: UnifiedNotificationItem[] = [];
+
+    // 1. Process Live Repairs (Machine Breakdowns & Defect Reports)
+    repairs.forEach((rep) => {
+      if (rep.status === 'COMPLETED') return;
+
+      const reportedTime = rep.reportedAt ? new Date(rep.reportedAt).getTime() : nowMs;
+      const elapsedMs = Math.max(0, nowMs - reportedTime);
+      const elapsedSec = Math.floor(elapsedMs / 1000);
+      const elapsedMin = Math.floor(elapsedSec / 60);
+
+      const hasAttendant = Boolean(
+        rep.attendedBy &&
+        rep.attendedBy.trim() !== '' &&
+        rep.attendedBy.toLowerCase() !== 'unassigned'
+      );
+      const isUnattended = !hasAttendant && rep.status === 'PENDING';
+      const isOver5Mins = isUnattended && elapsedMin >= 5;
+
+      const matchingMachine = machines.find(
+        (m) => m.id.toLowerCase() === (rep.machineId || '').toLowerCase()
+      );
+      const machineName = matchingMachine?.name || matchingMachine?.typeName || rep.machineType || 'Industrial Machine';
+      const line = rep.line || matchingMachine?.currentLine || 'Line 01';
+      const stationNo = matchingMachine?.stationNo || 'Station 01';
+
+      // Scoped Unit of the broken machine
+      const machineUnit = rep.unit || matchingMachine?.unit || (rep as any).unit || 'UNIT - 1';
+
+      // Trade determination
+      const isElec = isElectricalDefect(rep.faultCategory, rep.faultDetails, rep.machineType);
+      const targetTrade: 'ELECTRICIAN' | 'MECHANIC' = isElec ? 'ELECTRICIAN' : 'MECHANIC';
+      const targetRoles: UserRole[] = isElec
+        ? ['ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'ADMIN', 'ASSET_MANAGER']
+        : ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'];
+
+      if (isOver5Mins) {
+        list.push({
+          id: `NOTIF-UNATTENDED-${rep.id}`,
+          category: 'UNATTENDED_5M',
+          severity: 'CRITICAL',
+          title: `🚨 SLA Breach: Breakdown Unattended for > 5 Minutes`,
+          message: `${rep.machineId} on ${line} (${stationNo}) has been waiting unattended for ${elapsedMin}m ${elapsedSec % 60}s. Fault: ${rep.faultCategory || rep.faultDetails}`,
+          timestamp: rep.reportedAt || new Date().toISOString(),
+          machineId: rep.machineId,
+          machineName,
+          line,
+          stationNo,
+          unit: machineUnit,
+          faultCategory: rep.faultCategory,
+          attendedBy: null,
+          elapsedMinutes: elapsedMin,
+          elapsedSeconds: elapsedSec,
+          isUnattended5Mins: true,
+          targetRoles,
+          targetTrade,
+          rawRepair: rep,
+        });
+      } else {
+        const isCriticalUrgency = rep.urgency === 'CRITICAL' || elapsedMin > 30;
+        list.push({
+          id: `NOTIF-BREAKDOWN-${rep.id}`,
+          category: 'BREAKDOWN_WARNING',
+          severity: isCriticalUrgency ? 'CRITICAL' : 'WARNING',
+          title: isCriticalUrgency
+            ? `🔥 Critical Breakdown Warning: ${rep.machineId}`
+            : `⚠️ Breakdown Ticket Active: ${rep.machineId}`,
+          message: `${line} (${stationNo}): ${rep.faultCategory || 'Defect'} - ${rep.faultDetails}. Attended by: ${rep.attendedBy || 'Awaiting assignment'}.`,
+          timestamp: rep.reportedAt || new Date().toISOString(),
+          machineId: rep.machineId,
+          machineName,
+          line,
+          stationNo,
+          unit: machineUnit,
+          faultCategory: rep.faultCategory,
+          attendedBy: rep.attendedBy,
+          elapsedMinutes: elapsedMin,
+          elapsedSeconds: elapsedSec,
+          isUnattended5Mins: false,
+          targetRoles,
+          targetTrade,
+          rawRepair: rep,
+        });
+      }
     });
-    return Array.from(lines).sort();
-  }, [requisitions]);
 
-  const handleApprove = async (id: string, customNote?: string) => {
-    const note =
-      customNote ||
-      remarksMap[id] ||
-      'Emergency purchase approved under executive maintenance contingency reserve.';
-    try {
-      await approveRequisition(
-        id,
-        user?.name ? `${user.name} (CEO)` : 'Dr. K. Ramanathan (CEO)',
-        note,
-        'APPROVED_BY_CEO'
-      );
+    // 2. Process Actions Done on Assets (from AssetLogEntry stream)
+    assetLogs.forEach((log) => {
+      const logTime = log.changedAt ? new Date(log.changedAt).getTime() : nowMs;
+      const elapsedMs = Math.max(0, nowMs - logTime);
+      const elapsedSec = Math.floor(elapsedMs / 1000);
+      const elapsedMin = Math.floor(elapsedSec / 60);
 
-      // Also update local state for instant UI responsiveness
-      setRequisitions((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? {
-                ...r,
-                status: 'APPROVED_BY_CEO',
-                reviewedBy: user?.name ? `${user.name} (CEO)` : 'Dr. K. Ramanathan (CEO)',
-                reviewedAt: new Date().toISOString(),
-                reviewNotes: note,
-              }
-            : r
-        )
-      );
+      let title = `🛠️ Asset Action: ${log.machineId}`;
+      let severity: 'CRITICAL' | 'WARNING' | 'INFO' = 'INFO';
 
-      showToast('Executive authorization granted! Purchase order dispatched to Tool Crib & Floor.', 'success');
-      setRemarksMap((prev) => ({ ...prev, [id]: '' }));
-      if (selectedReqForDossier?.id === id) {
-        setSelectedReqForDossier(null);
+      if (log.action === 'IDLE_TO_ACTIVE' || log.newStatus === 'ACTIVE') {
+        title = `⚡ Asset Activated: ${log.machineId} moved to ACTIVE on ${log.line || 'Line'}`;
+        severity = 'INFO';
+      } else if (log.action === 'ACTIVE_TO_IDLE' || log.newStatus === 'IDLE') {
+        title = `⏸️ Asset Set to Standby: ${log.machineId} placed on IDLE (${log.line || 'Floor'})`;
+        severity = 'WARNING';
+      } else if (log.action === 'ZONE_LINE_CHANGE') {
+        title = `🔄 Asset Relocated: ${log.machineId} assigned to ${log.zone || ''} • ${log.line || ''} (${log.stationNo || 'Station'})`;
+        severity = 'INFO';
+      } else if (log.newStatus === 'BREAKDOWN') {
+        title = `🚨 Asset Breakdown Logged: ${log.machineId} transitioned to BREAKDOWN`;
+        severity = 'CRITICAL';
+      } else if (log.action === 'STATUS_CHANGE') {
+        title = `🏷️ Asset Status: ${log.machineId} changed from ${log.previousStatus} ➔ ${log.newStatus}`;
+        severity = log.newStatus === 'UNDER_MAINTENANCE' ? 'WARNING' : 'INFO';
       }
-    } catch (e) {
-      showToast('Error approving critical request', 'error');
-      console.error(e);
+
+      list.push({
+        id: `NOTIF-ASSET-${log.id}`,
+        category: 'ASSET_ACTION',
+        severity,
+        title,
+        message: `${log.notes || `Asset ${log.machineName || log.machineId} status transitioned to ${log.newStatus}`}. Logged by ${log.changedBy || 'Technician'} (${log.shift || 'Shift A'}).`,
+        timestamp: log.changedAt || new Date().toISOString(),
+        machineId: log.machineId,
+        machineName: log.machineName,
+        line: log.line,
+        stationNo: log.stationNo,
+        unit: log.unit || log.machineUnit || 'UNIT - 1',
+        attendedBy: log.changedBy,
+        previousStatus: log.previousStatus,
+        newStatus: log.newStatus,
+        assetActionType: log.action,
+        elapsedMinutes: elapsedMin,
+        elapsedSeconds: elapsedSec,
+        isUnattended5Mins: false,
+        targetRoles: ['ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN', 'CEO'],
+        targetTrade: 'ALL',
+        rawAssetLog: log,
+      });
+    });
+
+    // 3. Process Overdue PPMs
+    ppmSchedules.forEach((ppm) => {
+      if (ppm.status === 'OVERDUE' || (ppm.status === 'PENDING' && new Date(ppm.nextDue).getTime() < nowMs)) {
+        const matchingMachine = machines.find(
+          (m) => m.id.toLowerCase() === (ppm.machineId || '').toLowerCase()
+        );
+        const machineName = matchingMachine?.name || matchingMachine?.typeName || 'Sewing Machine';
+        const line = matchingMachine?.currentLine || 'Line 01';
+        const stationNo = matchingMachine?.stationNo || 'Station 01';
+        const unit = ppm.unit || matchingMachine?.unit || 'UNIT - 1';
+
+        const isElec = ppm.task?.toLowerCase().includes('elec') || ppm.task?.toLowerCase().includes('motor');
+        const targetTrade: 'ELECTRICIAN' | 'MECHANIC' = isElec ? 'ELECTRICIAN' : 'MECHANIC';
+        const targetRoles: UserRole[] = isElec
+          ? ['ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'ADMIN', 'ASSET_MANAGER']
+          : ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'];
+
+        list.push({
+          id: `NOTIF-PPM-${ppm.id}`,
+          category: 'PPM_OVERDUE',
+          severity: 'WARNING',
+          title: `⏱️ PPM Overdue: ${ppm.machineId} (${ppm.frequency})`,
+          message: `${ppm.task} on ${line} (${stationNo}) was due on ${ppm.nextDue}. Machine requires immediate calibration & servicing.`,
+          timestamp: ppm.nextDue,
+          machineId: ppm.machineId,
+          machineName,
+          line,
+          stationNo,
+          unit,
+          faultCategory: 'Preventive Maintenance Service',
+          elapsedMinutes: 60,
+          elapsedSeconds: 3600,
+          isUnattended5Mins: false,
+          targetRoles,
+          targetTrade,
+          rawPpm: ppm,
+        });
+      }
+    });
+
+    // 4. Process Low Stock alerts
+    parts.forEach((part) => {
+      if (part.stock <= part.minStock) {
+        list.push({
+          id: `NOTIF-STOCK-${part.partId || (part as any).id || Math.random()}`,
+          category: 'LOW_STOCK',
+          severity: part.stock === 0 ? 'CRITICAL' : 'WARNING',
+          title: part.stock === 0 ? `🚨 Out of Stock: ${part.name}` : `📦 Low Stock Alert: ${part.name}`,
+          message: `${part.name} (${part.sku}) inventory at ${part.stock} ${part.unit} (Safety min: ${part.minStock}). Reorder indent required immediately.`,
+          timestamp: new Date().toISOString(),
+          unit: part.unit || ((part as any).location?.includes('UNIT-2') ? 'UNIT-2' : 'UNIT - 1'),
+          faultCategory: 'Spare Parts Reorder Level',
+          elapsedMinutes: 10,
+          elapsedSeconds: 600,
+          isUnattended5Mins: false,
+          targetRoles: ['STORE_PERSON', 'ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC'],
+          targetTrade: 'ALL',
+          rawPart: part,
+        });
+      }
+    });
+
+    // 5. Process Capex Requisitions requiring CEO/Executive approval
+    requisitions.forEach((req) => {
+      if (req.status === 'PENDING_CEO_APPROVAL') {
+        const matchingMachine = machines.find((m) => m.id === req.targetMachineId);
+        const reqUnit = req.unit || matchingMachine?.unit || 'UNIT - 1';
+
+        list.push({
+          id: `NOTIF-REQ-${req.id}`,
+          category: 'APPROVAL',
+          severity: 'CRITICAL',
+          title: `👑 Executive Approval Required: ₹${(req.estimatedCost || 0).toLocaleString()} Capex Indent`,
+          message: `Emergency purchase request for "${req.partName}" on ${req.targetMachineId || req.targetLine}. Justification: ${req.justification || 'Critical floor maintenance'}. Requested by ${req.requestedBy}.`,
+          timestamp: req.createdAt || new Date().toISOString(),
+          machineId: req.targetMachineId,
+          line: req.targetLine,
+          unit: reqUnit,
+          faultCategory: 'Capex Requisition Approval',
+          elapsedMinutes: 30,
+          elapsedSeconds: 1800,
+          isUnattended5Mins: false,
+          targetRoles: ['CEO', 'ADMIN', 'ASSET_MANAGER'],
+          targetTrade: 'ALL',
+          rawReq: req,
+        });
+      }
+    });
+
+    // 6. Process In-App Broadcast Notifications (sendAppNotification stream)
+    appNotifs.forEach((notif) => {
+      const elapsedMs = Math.max(0, nowMs - new Date(notif.createdAt).getTime());
+      const elapsedSec = Math.floor(elapsedMs / 1000);
+      const elapsedMin = Math.floor(elapsedSec / 60);
+
+      const notifUnit = notif.targetUnit || (notif as any).unit || notif.meta?.unit || 'All Units';
+      const notifTargetRoles: UserRole[] | 'ALL' = notif.targetRole && notif.targetRole !== 'ALL'
+        ? [notif.targetRole, 'ADMIN', 'ASSET_MANAGER']
+        : 'ALL';
+
+      list.push({
+        id: `NOTIF-APP-${notif.id}`,
+        category: notif.type === 'RESTOCK_ALERT' || notif.type === 'SPARE_ISSUE_RECEIPT'
+          ? 'LOW_STOCK'
+          : notif.type === 'CRITICAL_BREAKDOWN'
+          ? 'BREAKDOWN_WARNING'
+          : 'GENERAL',
+        severity: notif.type === 'CRITICAL_BREAKDOWN' ? 'CRITICAL' : notif.type === 'RESTOCK_ALERT' ? 'WARNING' : 'INFO',
+        title: notif.title,
+        message: notif.message,
+        timestamp: notif.createdAt,
+        unit: notifUnit,
+        elapsedMinutes: elapsedMin,
+        elapsedSeconds: elapsedSec,
+        isUnattended5Mins: false,
+        targetRoles: notifTargetRoles,
+        targetTrade: 'ALL',
+        rawNotif: notif,
+        acknowledged: notif.acknowledged,
+      });
+    });
+
+    // 7. Merge baseline seed items (ensuring no duplicate IDs)
+    const liveIds = new Set(list.map((item) => item.id));
+    const activeSeeds = seedNotifications.filter((s) => !liveIds.has(s.id));
+
+    return [...list, ...activeSeeds];
+  }, [repairs, assetLogs, ppmSchedules, parts, machines, requisitions, appNotifs, nowMs, seedNotifications]);
+
+  // Helper to match notification to target role scope
+  const matchesRoleScope = (item: UnifiedNotificationItem, scope: RoleScope): boolean => {
+    if (scope === 'ALL_ROLES') return true;
+
+    // MY_ROLE auto-scoping based on logged-in user
+    if (scope === 'MY_ROLE') {
+      if (isAdmin) return true; // Admins and Asset Managers see plant-wide alerts by default
+      if (currentRole === 'MECHANIC') {
+        return (
+          item.targetTrade === 'MECHANIC' ||
+          item.targetTrade === 'ALL' ||
+          (Array.isArray(item.targetRoles) && item.targetRoles.includes('MECHANIC')) ||
+          item.targetRoles === 'ALL'
+        );
+      }
+      if (currentRole === 'ELECTRICIAN') {
+        return (
+          item.targetTrade === 'ELECTRICIAN' ||
+          item.targetTrade === 'ALL' ||
+          (Array.isArray(item.targetRoles) && item.targetRoles.includes('ELECTRICIAN')) ||
+          item.targetRoles === 'ALL'
+        );
+      }
+      if (currentRole === 'STORE_PERSON') {
+        return (
+          item.category === 'LOW_STOCK' ||
+          (Array.isArray(item.targetRoles) && item.targetRoles.includes('STORE_PERSON')) ||
+          item.targetRoles === 'ALL'
+        );
+      }
+      if (currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN') {
+        return (
+          item.category === 'UNATTENDED_5M' ||
+          item.category === 'BREAKDOWN_WARNING' ||
+          item.category === 'ASSET_ACTION' ||
+          item.category === 'PPM_OVERDUE' ||
+          (Array.isArray(item.targetRoles) && (item.targetRoles.includes('SENIOR_MECHANIC') || item.targetRoles.includes('SENIOR_ELECTRICIAN')))
+        );
+      }
+      if (currentRole === 'CEO') {
+        return (
+          item.category === 'APPROVAL' ||
+          item.isUnattended5Mins ||
+          (Array.isArray(item.targetRoles) && item.targetRoles.includes('CEO'))
+        );
+      }
     }
+
+    if (scope === 'ROLE_MECHANIC') {
+      return (
+        item.targetTrade === 'MECHANIC' ||
+        (Array.isArray(item.targetRoles) && item.targetRoles.includes('MECHANIC'))
+      );
+    }
+    if (scope === 'ROLE_ELECTRICIAN') {
+      return (
+        item.targetTrade === 'ELECTRICIAN' ||
+        (Array.isArray(item.targetRoles) && item.targetRoles.includes('ELECTRICIAN'))
+      );
+    }
+    if (scope === 'ROLE_STORE') {
+      return (
+        item.category === 'LOW_STOCK' ||
+        (Array.isArray(item.targetRoles) && item.targetRoles.includes('STORE_PERSON'))
+      );
+    }
+    if (scope === 'ROLE_SUPERVISOR') {
+      return (
+        item.category === 'UNATTENDED_5M' ||
+        item.category === 'BREAKDOWN_WARNING' ||
+        item.category === 'ASSET_ACTION' ||
+        item.category === 'PPM_OVERDUE' ||
+        (Array.isArray(item.targetRoles) && (item.targetRoles.includes('SENIOR_MECHANIC') || item.targetRoles.includes('SENIOR_ELECTRICIAN')))
+      );
+    }
+    if (scope === 'ROLE_EXECUTIVE') {
+      return (
+        item.category === 'APPROVAL' ||
+        (Array.isArray(item.targetRoles) && item.targetRoles.includes('CEO'))
+      );
+    }
+
+    return true;
   };
 
-  const handleReject = async (id: string, customNote?: string) => {
-    const note =
-      customNote ||
-      remarksMap[id] ||
-      'Declined: Seek alternate floor machine cannibalization or buffer reserve.';
-    try {
-      await rejectRequisition(
-        id,
-        user?.name ? `${user.name} (CEO)` : 'Dr. K. Ramanathan (CEO)',
-        note
-      );
+  // Base list filtered strictly by Role Scope and Unit Assignment
+  const roleAndUnitScopedNotifications = useMemo(() => {
+    return allNotifications.filter((item) => {
+      if (dismissedIds.has(item.id)) return false;
 
-      // Update local state for immediate feedback
-      setRequisitions((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? {
-                ...r,
-                status: 'REJECTED',
-                reviewedBy: user?.name ? `${user.name} (CEO)` : 'Dr. K. Ramanathan (CEO)',
-                reviewedAt: new Date().toISOString(),
-                reviewNotes: note,
-              }
-            : r
-        )
-      );
-
-      showToast('Request returned with executive instructions.', 'info');
-      setRemarksMap((prev) => ({ ...prev, [id]: '' }));
-      if (selectedReqForDossier?.id === id) {
-        setSelectedReqForDossier(null);
+      // 1. Strict Unit Scoping:
+      // If effectiveUnit is "UNIT - 1", only show defects and alerts from "UNIT - 1" (or plant-wide "All Units")
+      if (effectiveUnit !== 'ALL' && effectiveUnit !== 'All Units') {
+        const itemUnit = item.unit || 'All Units';
+        const isPlantWide = itemUnit === 'All Units' || itemUnit === 'Plant-wide' || itemUnit === 'ALL';
+        if (!isPlantWide && !matchesUnit(itemUnit, effectiveUnit)) {
+          return false;
+        }
       }
-    } catch (e) {
-      showToast('Error declining request', 'error');
-      console.error(e);
-    }
-  };
 
-  // Filtered dataset according to Status, Search query, and Target Line
-  const filteredRequisitions = useMemo(() => {
-    return requisitions.filter((r) => {
-      // 1. Status Filter
-      if (filter === 'PENDING' && r.status !== 'PENDING_CEO_APPROVAL') return false;
-      if (filter === 'APPROVED' && r.status !== 'APPROVED_BY_CEO') return false;
-      if (filter === 'REJECTED' && r.status !== 'REJECTED') return false;
+      // 2. Strict Role Scoping
+      if (!matchesRoleScope(item, selectedRoleScope)) {
+        return false;
+      }
 
-      // 2. Line Filter
-      if (lineFilter !== 'ALL' && r.targetLine !== lineFilter) return false;
+      return true;
+    });
+  }, [allNotifications, effectiveUnit, selectedRoleScope, dismissedIds]);
 
-      // 3. Search Query
+  // Tab & secondary filtered notifications
+  const filteredNotifications = useMemo(() => {
+    return roleAndUnitScopedNotifications.filter((item) => {
+      // Tab Category filter
+      if (activeTab === 'UNATTENDED_5M' && !item.isUnattended5Mins) return false;
+      if (activeTab === 'BREAKDOWN_WARNING' && item.category !== 'BREAKDOWN_WARNING' && item.category !== 'UNATTENDED_5M') return false;
+      if (activeTab === 'ASSET_ACTIONS' && item.category !== 'ASSET_ACTION') return false;
+      if (activeTab === 'PPM_OVERDUE' && item.category !== 'PPM_OVERDUE') return false;
+      if (activeTab === 'LOW_STOCK' && item.category !== 'LOW_STOCK') return false;
+      if (activeTab === 'APPROVALS' && item.category !== 'APPROVAL') return false;
+
+      // Severity filter
+      if (selectedSeverity !== 'ALL' && item.severity !== selectedSeverity) return false;
+
+      // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchesId = r.id.toLowerCase().includes(q);
-        const matchesPart = r.partName?.toLowerCase().includes(q);
-        const matchesMachine = r.targetMachineId?.toLowerCase().includes(q);
-        const matchesLine = r.targetLine?.toLowerCase().includes(q);
-        const matchesSku = r.sku?.toLowerCase().includes(q);
-        const matchesRequester = r.requestedBy?.toLowerCase().includes(q);
-        const matchesJustification = r.justification?.toLowerCase().includes(q);
-        if (
-          !matchesId &&
-          !matchesPart &&
-          !matchesMachine &&
-          !matchesLine &&
-          !matchesSku &&
-          !matchesRequester &&
-          !matchesJustification
-        ) {
+        const matchesTitle = item.title.toLowerCase().includes(q);
+        const matchesMessage = item.message.toLowerCase().includes(q);
+        const matchesMachine = (item.machineId || '').toLowerCase().includes(q);
+        const matchesLine = (item.line || '').toLowerCase().includes(q);
+        const matchesTech = (item.attendedBy || '').toLowerCase().includes(q);
+        const matchesUnitField = (item.unit || '').toLowerCase().includes(q);
+        if (!matchesTitle && !matchesMessage && !matchesMachine && !matchesLine && !matchesTech && !matchesUnitField) {
           return false;
         }
       }
 
       return true;
     });
-  }, [requisitions, filter, lineFilter, searchQuery]);
+  }, [roleAndUnitScopedNotifications, activeTab, selectedSeverity, searchQuery]);
 
-  // Export Executive Approvals Report as formatted CSV
-  const handleExportReport = () => {
-    if (filteredRequisitions.length === 0) {
-      showToast('No requisitions match current filters to export.', 'info');
-      return;
-    }
+  // Counts for tabs & badges dynamically reflecting active role and unit scopes
+  const unattended5MCount = useMemo(() => {
+    return roleAndUnitScopedNotifications.filter((n) => n.isUnattended5Mins).length;
+  }, [roleAndUnitScopedNotifications]);
 
-    const headers = [
-      'Sl No',
-      'Requisition ID',
-      'Created Date',
-      'Created Time',
-      'Target Machine',
-      'Factory Line',
-      'Part Name',
-      'SKU',
-      'Quantity',
-      'Unit',
-      'Estimated CapEx (INR)',
-      'Requested By',
-      'Role',
-      'Technical Justification',
-      'Approval Status',
-      'Reviewed By',
-      'Reviewed Date',
-      'Executive Notes',
-    ];
+  const breakdownWarningCount = useMemo(() => {
+    return roleAndUnitScopedNotifications.filter((n) => n.category === 'BREAKDOWN_WARNING' || n.category === 'UNATTENDED_5M').length;
+  }, [roleAndUnitScopedNotifications]);
 
-    const rows = filteredRequisitions.map((req, idx) => {
-      const d = new Date(req.createdAt);
-      const dateStr = d.toLocaleDateString('en-IN');
-      const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const statusLabel =
-        req.status === 'PENDING_CEO_APPROVAL'
-          ? 'Needs Action (Pending)'
-          : req.status === 'APPROVED_BY_CEO'
-          ? 'Executive Authorized'
-          : req.status === 'REJECTED'
-          ? 'Declined'
-          : req.status;
+  const assetActionsCount = useMemo(() => {
+    return roleAndUnitScopedNotifications.filter((n) => n.category === 'ASSET_ACTION').length;
+  }, [roleAndUnitScopedNotifications]);
 
-      return [
-        idx + 1,
-        `"${req.id}"`,
-        `"${dateStr}"`,
-        `"${timeStr}"`,
-        `"${req.targetMachineId || 'Plant Core'}"`,
-        `"${req.targetLine || 'Factory Floor'}"`,
-        `"${(req.partName || '').replace(/"/g, '""')}"`,
-        `"${req.sku || 'N/A'}"`,
-        req.quantity || 1,
-        `"${req.unit || 'units'}"`,
-        req.estimatedCost || 0,
-        `"${(req.requestedBy || '').replace(/"/g, '""')}"`,
-        `"${req.requestedByRole || ''}"`,
-        `"${(req.justification || '').replace(/"/g, '""')}"`,
-        `"${statusLabel}"`,
-        `"${(req.reviewedBy || '').replace(/"/g, '""')}"`,
-        `"${req.reviewedAt ? new Date(req.reviewedAt).toLocaleDateString('en-IN') : ''}"`,
-        `"${(req.reviewNotes || '').replace(/"/g, '""')}"`,
-      ].join(',');
-    });
+  const ppmOverdueCount = useMemo(() => {
+    return roleAndUnitScopedNotifications.filter((n) => n.category === 'PPM_OVERDUE').length;
+  }, [roleAndUnitScopedNotifications]);
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const todayStr = new Date().toISOString().slice(0, 10);
-    link.setAttribute('download', `CEO_Executive_Approvals_Report_${todayStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const lowStockCount = useMemo(() => {
+    return roleAndUnitScopedNotifications.filter((n) => n.category === 'LOW_STOCK').length;
+  }, [roleAndUnitScopedNotifications]);
 
-    showToast(`Exported ${filteredRequisitions.length} approval records to CSV.`, 'success');
+  const approvalsCount = useMemo(() => {
+    return roleAndUnitScopedNotifications.filter((n) => n.category === 'APPROVAL').length;
+  }, [roleAndUnitScopedNotifications]);
+
+  // Handlers
+  const handleDismiss = (id: string) => {
+    setDismissedIds((prev) => new Set([...prev, id]));
+    showToast('Notification cleared from active queue', 'info');
   };
 
-  const filteredCapexSum = useMemo(
-    () => filteredRequisitions.reduce((acc, r) => acc + (r.estimatedCost || 0), 0),
-    [filteredRequisitions]
-  );
+  const handleClearAll = () => {
+    const ids = filteredNotifications.map((n) => n.id);
+    setDismissedIds((prev) => new Set([...prev, ...ids]));
+    showToast(`Cleared ${ids.length} notifications`, 'info');
+  };
+
+  // Role checks: Admin and Senior Mechanic supervise and assign
+  const isSupervisorOrAdmin =
+    currentRole === 'ADMIN' ||
+    currentRole === 'SENIOR_MECHANIC' ||
+    currentRole === 'SENIOR_ELECTRICIAN' ||
+    currentRole === 'CEO' ||
+    currentRole === 'ASSET_MANAGER';
+
+  // Only line floor mechanics & electricians can attend directly on the floor
+  const canAttendDirectly = currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN';
+
+  // Immediate "Attend Work Myself" handler (field technicians only)
+  const handleAttendNow = async (item: UnifiedNotificationItem) => {
+    try {
+      const technicianName = user?.name || (currentRole === 'ELECTRICIAN' ? 'Plant Electrician' : 'Line Mechanic');
+      if (item.rawRepair) {
+        await startRepairTicket(item.rawRepair.id, technicianName);
+      }
+      setDismissedIds((prev) => new Set([...prev, item.id]));
+      showToast(`Work claimed! ${item.machineId || 'Machine'} assigned to ${technicianName}`, 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('Error claiming repair task', 'error');
+    }
+  };
+
+  // Open Assign Modal with pre-filtered unit roster
+  const handleOpenAssignModal = (item: UnifiedNotificationItem) => {
+    setAssigningItem(item);
+    const candidateMechs = TECHNICIAN_ROSTER.filter((m) =>
+      item.unit ? matchesUnit(m.unit, item.unit) : true
+    );
+    setSelectedMechanic(candidateMechs[0]?.name || TECHNICIAN_ROSTER[0].name);
+  };
+
+  // Submit Assign Dispatch
+  const handleConfirmAssign = async () => {
+    if (!assigningItem) return;
+
+    try {
+      const assignerName = user?.name || (currentRole === 'ADMIN' ? 'Plant Administrator' : 'Senior Master Mechanic');
+      if (assigningItem.rawRepair) {
+        await assignRepairTicket(assigningItem.rawRepair.id, selectedMechanic, assignerName);
+      }
+      setDismissedIds((prev) => new Set([...prev, assigningItem.id]));
+      showToast(
+        `Dispatched! ${selectedMechanic} assigned by ${assignerName} to ${assigningItem.machineId || 'Issue'} on ${assigningItem.line || 'Floor'}.`,
+        'success'
+      );
+      setAssigningItem(null);
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to assign technician', 'error');
+    }
+  };
+
+  // Format stopwatch string
+  const formatTimer = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
+  };
+
+  const getRoleScopeLabel = (scope: RoleScope) => {
+    switch (scope) {
+      case 'MY_ROLE':
+        return `My Role (${currentRole.replace(/_/g, ' ')})`;
+      case 'ALL_ROLES':
+        return 'All Roles (Plant-wide)';
+      case 'ROLE_MECHANIC':
+        return 'Line Mechanics (Sewing)';
+      case 'ROLE_ELECTRICIAN':
+        return 'Plant Electricians (Electrical)';
+      case 'ROLE_STORE':
+        return 'Tool Crib & Central Stores';
+      case 'ROLE_SUPERVISOR':
+        return 'Supervisors & In-Charges';
+      case 'ROLE_EXECUTIVE':
+        return 'Executive & Directorate';
+      default:
+        return scope;
+    }
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* Sleek Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-              <Crown className="w-4 h-4" />
+    <div className="space-y-6 pt-0 font-sans text-slate-800">
+      {/* ─── 1. PAGE HEADER & ALERT STATUS BAR ─────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="relative">
+            <span className="p-2.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs flex items-center justify-center">
+              <Bell className="w-5 h-5" />
             </span>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-              Executive Approvals &amp; Report Table
-            </h1>
+            {unattended5MCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-600 text-[8px] font-bold text-white items-center justify-center">
+                  !
+                </span>
+              </span>
+            )}
           </div>
-          <p className="text-xs text-slate-500 mt-1 pl-10">
-            Critical equipment spare requisitions, emergency capital expenditures, and official CEO authorization audit ledger
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                Plant Alerts &amp; Notifications Center
+              </h1>
+              {unattended5MCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse">
+                  {unattended5MCount} Unattended SLA Alerts
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live floor broadcast categorized by <strong>role specialization</strong> and strictly filtered to <strong>designated factory units</strong>.
+            </p>
+          </div>
         </div>
 
-        {/* View Switcher: Table Report vs Cards */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setViewMode('TABLE')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
-                viewMode === 'TABLE'
-                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Official Spreadsheet / Excel Table"
-            >
-              <TableIcon className="w-3.5 h-3.5" />
-              <span>Report Table</span>
-            </button>
-            <button
-              onClick={() => setViewMode('CARDS')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer ${
-                viewMode === 'CARDS'
-                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Executive Card Grid"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Cards View</span>
-            </button>
-          </div>
+        {/* Action controls */}
+        <div className="flex items-center gap-2 self-start md:self-auto no-print">
+          <button
+            type="button"
+            onClick={() => setIsMuted(!isMuted)}
+            className={`p-2 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              isMuted
+                ? 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+            }`}
+            title={isMuted ? 'Alert sounds muted' : 'Alert sound alerts active'}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4 text-slate-500" /> : <Volume2 className="w-4 h-4 text-emerald-700" />}
+            <span className="hidden sm:inline">{isMuted ? 'Muted' : 'Audio Live'}</span>
+          </button>
 
           <button
-            onClick={handleExportReport}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition cursor-pointer"
-            title="Download CSV spreadsheet of current CEO report"
+            type="button"
+            onClick={() => showToast('Synced latest floor notifications and timers', 'info')}
+            className="p-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl transition shadow-2xs cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+            title="Refresh stream"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export Report (.csv)</span>
+            <RotateCw className="w-4 h-4 text-slate-600" />
+            <span className="hidden sm:inline">Sync Now</span>
           </button>
+
+          {filteredNotifications.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Mark View Read</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Role Authority Advisory Banner */}
-      {!isCeoOrAdmin && (
-        <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-xl flex items-center justify-between text-xs text-amber-900 shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold shrink-0">
-              <Crown className="w-4 h-4" />
+      {/* ─── 2. ACTIVE SCOPING CONTEXT BANNER ─────────────────────────────── */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-slate-700">
+            <Filter className="w-4 h-4 text-indigo-600" />
+            <span>Active Feed Scope:</span>
+          </div>
+
+          {/* Role Scope Pill */}
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold">
+            <User className="w-3.5 h-3.5" />
+            <span>{getRoleScopeLabel(selectedRoleScope)}</span>
+          </span>
+
+          {/* Unit Scope Pill */}
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
+            <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>
+              {effectiveUnit === 'ALL' || effectiveUnit === 'All Units'
+                ? 'All Plant Units (Plant-wide)'
+                : effectiveUnit === 'UNIT - 1'
+                ? 'Plant Unit 1 — Nethaji Campus'
+                : effectiveUnit === 'UNIT-2'
+                ? 'Plant Unit 2 — Perundurai Campus'
+                : effectiveUnit}
+            </span>
+            {!isAdmin && userAssignedUnit !== 'All Units' && (
+              <span className="ml-1 text-[10px] text-emerald-600 font-normal italic flex items-center gap-0.5">
+                <Lock className="w-2.5 h-2.5" /> (Locked to Assigned Unit)
+              </span>
+            )}
+          </span>
+        </div>
+
+        <div className="text-[11px] text-slate-500 font-medium">
+          Showing <strong>{filteredNotifications.length}</strong> active alerts
+        </div>
+      </div>
+
+      {/* ─── 3. HIGHLIGHT: UNATTENDED ISSUES > 5 MINUTES SLA ESCALATION BANNER ──── */}
+      {unattended5MCount > 0 && (
+        <div className="bg-gradient-to-r from-rose-50 via-rose-100/60 to-amber-50 rounded-2xl border-2 border-rose-300 p-4 sm:p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <span className="p-2.5 rounded-xl bg-rose-600 text-white shadow-xs shrink-0 animate-bounce">
+                <Flame className="w-5 h-5" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-black text-rose-950 uppercase tracking-wide">
+                    Urgent SLA Escalation: {unattended5MCount} Unattended Machine Defects
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white uppercase">
+                    &gt; 5 Mins Idle
+                  </span>
+                </div>
+                <p className="text-xs text-rose-900/90 font-medium mt-1 leading-relaxed">
+                  Machines in {effectiveUnit === 'ALL' ? 'the plant' : effectiveUnit} have been halted for more than 5 minutes without attendance. Dispatch or claim immediately to protect production targets.
+                </p>
+              </div>
             </div>
-            <div>
-              <span className="font-bold">Executive Authority Restricted:</span> You are viewing the CEO Approval Desk in read-only mode as <span className="font-mono font-bold uppercase">{role || 'GUEST'}</span>. Only <strong>CEO Dr. K. Ramanathan</strong> or <strong>Plant Admin</strong> has authority to grant emergency CapEx spare orders.
-            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('UNATTENDED_5M')}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
+            >
+              <span>View {unattended5MCount} Breaches</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
 
-      {/* KPI Stats Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+      {/* ─── 4. CATEGORY SUMMARY METRIC CARDS ────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        {/* Unattended 5m */}
         <div
-          onClick={() => setFilter('PENDING')}
-          className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-2xs ${
-            filter === 'PENDING'
-              ? 'border-rose-400 ring-2 ring-rose-200'
-              : 'border-slate-200/90 hover:border-slate-300'
+          onClick={() => setActiveTab('UNATTENDED_5M')}
+          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+            activeTab === 'UNATTENDED_5M'
+              ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-500/20'
+              : 'bg-white border-slate-200/80 hover:border-rose-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-slate-500 font-medium">Needs Action</div>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-              <ShieldAlert className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+            <span>&gt; 5m SLA</span>
+            <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
           </div>
-          <div className="text-2xl font-bold tracking-tight text-slate-900 mt-2">
-            {pendingCount}{' '}
-            <span className="text-xs font-semibold text-rose-600">Pending Review</span>
-          </div>
+          <div className="text-2xl font-black text-rose-600">{unattended5MCount}</div>
+          <div className="text-[10px] text-slate-500 font-medium mt-1">SLA response breach</div>
         </div>
 
+        {/* Breakdown Warnings */}
         <div
-          onClick={() => setFilter('APPROVED')}
-          className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-2xs ${
-            filter === 'APPROVED'
-              ? 'border-emerald-400 ring-2 ring-emerald-200'
-              : 'border-slate-200/90 hover:border-slate-300'
+          onClick={() => setActiveTab('BREAKDOWN_WARNING')}
+          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+            activeTab === 'BREAKDOWN_WARNING'
+              ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-500/20'
+              : 'bg-white border-slate-200/80 hover:border-amber-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-slate-500 font-medium">Executive Approved</div>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCheck className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+            <span>Breakdowns</span>
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
           </div>
-          <div className="text-2xl font-bold tracking-tight text-emerald-700 mt-2">
-            {approvedCount}{' '}
-            <span className="text-xs font-semibold text-emerald-600">Authorized</span>
-          </div>
+          <div className="text-2xl font-black text-amber-700">{breakdownWarningCount}</div>
+          <div className="text-[10px] text-slate-500 font-medium mt-1">Defects &amp; repair tickets</div>
         </div>
 
+        {/* Asset Actions Done */}
         <div
-          onClick={() => setFilter('REJECTED')}
-          className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-2xs ${
-            filter === 'REJECTED'
-              ? 'border-slate-400 ring-2 ring-slate-200'
-              : 'border-slate-200/90 hover:border-slate-300'
+          onClick={() => setActiveTab('ASSET_ACTIONS')}
+          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+            activeTab === 'ASSET_ACTIONS'
+              ? 'bg-indigo-50/80 border-indigo-400 ring-2 ring-indigo-500/20'
+              : 'bg-white border-slate-200/80 hover:border-indigo-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-slate-500 font-medium">Declined Orders</div>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
-              <XCircle className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+            <span>Asset Actions</span>
+            <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
           </div>
-          <div className="text-2xl font-bold tracking-tight text-slate-700 mt-2">
-            {rejectedCount}{' '}
-            <span className="text-xs font-semibold text-slate-500">Returned</span>
-          </div>
+          <div className="text-2xl font-black text-indigo-700">{assetActionsCount}</div>
+          <div className="text-[10px] text-slate-500 font-medium mt-1">Status &amp; relocations</div>
         </div>
 
+        {/* PPM Overdue */}
         <div
-          onClick={() => setFilter('ALL')}
-          className={`bg-white rounded-2xl p-4 border transition-all cursor-pointer shadow-2xs ${
-            filter === 'ALL'
-              ? 'border-indigo-400 ring-2 ring-indigo-200'
-              : 'border-slate-200/90 hover:border-slate-300'
+          onClick={() => setActiveTab('PPM_OVERDUE')}
+          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+            activeTab === 'PPM_OVERDUE'
+              ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20'
+              : 'bg-white border-slate-200/80 hover:border-blue-300'
           }`}
         >
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-slate-500 font-medium">Total CapEx Incurred</div>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
-              <IndianRupee className="w-4 h-4" />
-            </div>
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+            <span>Overdue PPM</span>
+            <Clock className="w-3.5 h-3.5 text-blue-600" />
           </div>
-          <div className="text-2xl font-bold tracking-tight text-slate-900 font-mono mt-2">
-            ₹{totalCapexRequested.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
+          <div className="text-2xl font-black text-blue-700">{ppmOverdueCount}</div>
+          <div className="text-[10px] text-slate-500 font-medium mt-1">Scheduled service due</div>
+        </div>
+
+        {/* Low Stock */}
+        <div
+          onClick={() => setActiveTab('LOW_STOCK')}
+          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+            activeTab === 'LOW_STOCK'
+              ? 'bg-orange-50/80 border-orange-400 ring-2 ring-orange-500/20'
+              : 'bg-white border-slate-200/80 hover:border-orange-300'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+            <span>Tool Crib</span>
+            <Package className="w-3.5 h-3.5 text-orange-600" />
           </div>
+          <div className="text-2xl font-black text-orange-700">{lowStockCount}</div>
+          <div className="text-[10px] text-slate-500 font-medium mt-1">Below safety stock</div>
+        </div>
+
+        {/* Approvals */}
+        <div
+          onClick={() => setActiveTab('APPROVALS')}
+          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs col-span-2 md:col-span-1 ${
+            activeTab === 'APPROVALS'
+              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-500/20'
+              : 'bg-white border-slate-200/80 hover:border-emerald-300'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+            <span>Capex Indents</span>
+            <FileText className="w-3.5 h-3.5 text-emerald-600" />
+          </div>
+          <div className="text-2xl font-black text-emerald-700">{approvalsCount}</div>
+          <div className="text-[10px] text-slate-500 font-medium mt-1">Awaiting sign-off</div>
         </div>
       </div>
 
-      {/* Search & Filter Toolbar */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Live Search */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+      {/* ─── 5. TABS & FILTER TOOLBAR ─────────────────────────────────────── */}
+      <div className="space-y-3">
+        {/* Category Filter Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setActiveTab('ALL')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              activeTab === 'ALL'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            All Alerts ({roleAndUnitScopedNotifications.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('UNATTENDED_5M')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'UNATTENDED_5M'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-rose-700 hover:bg-rose-50'
+            }`}
+          >
+            <Flame className="w-3.5 h-3.5" />
+            <span>Unattended &gt; 5m ({unattended5MCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('BREAKDOWN_WARNING')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              activeTab === 'BREAKDOWN_WARNING'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            Breakdowns ({breakdownWarningCount})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('ASSET_ACTIONS')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              activeTab === 'ASSET_ACTIONS'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            Asset Actions ({assetActionsCount})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('PPM_OVERDUE')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              activeTab === 'PPM_OVERDUE'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            Overdue PPM ({ppmOverdueCount})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('LOW_STOCK')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              activeTab === 'LOW_STOCK'
+                ? 'bg-orange-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            Tool Crib Spares ({lowStockCount})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('APPROVALS')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              activeTab === 'APPROVALS'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            Executive Capex ({approvalsCount})
+          </button>
+        </div>
+
+        {/* Filter Controls Row: Search, Role Category Filter, Severity, Unit Scoping */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+          {/* Keyword Search */}
+          <div className="lg:col-span-4 relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by REQ ID, Part Name, Machine ID, Line, Requester, SKU..."
-              className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+              placeholder="Search by Machine, Line, Defect, or Staff..."
+              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-2xs font-medium"
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+          </div>
+
+          {/* Role Category Selector */}
+          <div className="lg:col-span-3 relative">
+            <select
+              value={selectedRoleScope}
+              onChange={(e) => setSelectedRoleScope(e.target.value as RoleScope)}
+              className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
+            >
+              <option value="MY_ROLE">Scoped to My Role ({currentRole.replace(/_/g, ' ')})</option>
+              <option value="ALL_ROLES">All Roles (Full Overview)</option>
+              <option value="ROLE_MECHANIC">Sewing Line Mechanics</option>
+              <option value="ROLE_ELECTRICIAN">Plant Electricians</option>
+              <option value="ROLE_STORE">Tool Crib &amp; Stores</option>
+              <option value="ROLE_SUPERVISOR">Supervisors &amp; In-Charges</option>
+              <option value="ROLE_EXECUTIVE">Executive / CEO Capex</option>
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Unit Scope Selector */}
+          <div className="lg:col-span-3 relative">
+            {isAdmin || userAssignedUnit === 'All Units' ? (
+              <>
+                <select
+                  value={selectedUnit}
+                  onChange={(e) => setSelectedUnit(e.target.value)}
+                  className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">All Plant Units</option>
+                  <option value="UNIT - 1">Unit 1 &mdash; Nethaji Campus</option>
+                  <option value="UNIT-2">Unit 2 &mdash; Perundurai Campus</option>
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </>
+            ) : (
+              <div
+                className="w-full px-3.5 py-2 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-between shadow-2xs"
+                title="Your account is assigned strictly to this plant unit"
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
+                <span className="truncate flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span>{userAssignedUnit}</span>
+                </span>
+                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              </div>
             )}
           </div>
 
-          {/* Line Filter Dropdown */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 shrink-0 font-medium">
-              <Factory className="w-3.5 h-3.5 text-slate-400" />
-              <span>Line / Area:</span>
-            </div>
+          {/* Severity Selector */}
+          <div className="lg:col-span-2 relative">
             <select
-              value={lineFilter}
-              onChange={(e) => setLineFilter(e.target.value)}
-              className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-700 hover:bg-slate-100/80 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+              value={selectedSeverity}
+              onChange={(e) => setSelectedSeverity(e.target.value)}
+              className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
             >
-              <option value="ALL">All Factory Locations ({requisitions.length})</option>
-              {availableLines.map((line) => (
-                <option key={line} value={line}>
-                  {line} ({requisitions.filter((r) => r.targetLine === line).length})
-                </option>
-              ))}
+              <option value="ALL">All Severities</option>
+              <option value="CRITICAL">Critical Alarms</option>
+              <option value="WARNING">Warnings</option>
+              <option value="INFO">Informational</option>
             </select>
-          </div>
-        </div>
-
-        {/* Status Filter Tabs Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80">
-            <button
-              onClick={() => setFilter('PENDING')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                filter === 'PENDING'
-                  ? 'bg-white text-rose-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-              <span>Needs Action ({pendingCount})</span>
-            </button>
-            <button
-              onClick={() => setFilter('APPROVED')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                filter === 'APPROVED'
-                  ? 'bg-white text-emerald-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-              <span>Authorized ({approvedCount})</span>
-            </button>
-            <button
-              onClick={() => setFilter('REJECTED')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                filter === 'REJECTED'
-                  ? 'bg-white text-slate-800 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <XCircle className="w-3 h-3 text-slate-500" />
-              <span>Declined ({rejectedCount})</span>
-            </button>
-            <button
-              onClick={() => setFilter('ALL')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                filter === 'ALL'
-                  ? 'bg-white text-slate-900 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>All Messages ({requisitions.length})</span>
-            </button>
-          </div>
-
-          <div className="text-xs text-slate-500 font-medium">
-            Showing <strong className="text-slate-800">{filteredRequisitions.length}</strong> records • CapEx Subtotal:{' '}
-            <strong className="text-slate-900 font-mono">
-              ₹{filteredCapexSum.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
-            </strong>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
       </div>
 
-      {/* VIEW MODE 1: SPREADSHEET / EXCEL REPORT TABLE */}
-      {viewMode === 'TABLE' && (
-        <div className="space-y-3">
-          {filteredRequisitions.length === 0 ? (
-            <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-2xs">
-              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto mb-3">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-bold text-slate-800">No Approvals Found</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                No requisitions match your active search and filter parameters.
-              </p>
+      {/* ─── 6. NOTIFICATION CARDS LIST ───────────────────────────────────── */}
+      <div className="space-y-3">
+        {filteredNotifications.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+              <ShieldCheck className="w-6 h-6 text-emerald-600" />
             </div>
-          ) : (
-            <div className="overflow-x-auto border border-slate-300 rounded-xl shadow-xs bg-white">
-              <table className="w-full text-left text-xs border-collapse border border-slate-300">
-                <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
-                  <tr>
-                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 text-center w-10">
-                      #
-                    </th>
-                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 font-mono">
-                      REQ ID &amp; Time
-                    </th>
-                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300">
-                      Machine &amp; Line
-                    </th>
-                    <th className="py-2.5 px-3 min-w-[200px] bg-slate-100 border-r border-b border-slate-300">
-                      Component / Spare Part &amp; SKU
-                    </th>
-                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 text-center">
-                      Qty
-                    </th>
-                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 text-right font-mono">
-                      CapEx (INR)
-                    </th>
-                    <th className="py-2.5 px-3 min-w-[220px] bg-slate-100 border-r border-b border-slate-300">
-                      Requester &amp; Justification
-                    </th>
-                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-r border-b border-slate-300 text-center">
-                      Status
-                    </th>
-                    <th className="py-2.5 px-3 min-w-[190px] bg-slate-100 border-r border-b border-slate-300">
-                      Authorized By / Audit Notes
-                    </th>
-                    <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100 border-b border-slate-300 text-center min-w-[140px]">
-                      Executive Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 font-normal bg-white">
-                  {filteredRequisitions.map((req, idx) => {
-                    const isPending = req.status === 'PENDING_CEO_APPROVAL';
-                    const isApproved = req.status === 'APPROVED_BY_CEO';
-                    const isRejected = req.status === 'REJECTED';
-                    const isInfoOpen = !!expandedInfoMap[req.id];
-                    const reqDate = new Date(req.createdAt);
+            <h3 className="text-sm font-bold text-slate-800">No active alerts for this role &amp; unit filter</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+              All machine defects and alerts in {effectiveUnit === 'ALL' ? 'the plant' : effectiveUnit} matching {getRoleScopeLabel(selectedRoleScope)} are resolved or cleared.
+            </p>
+          </div>
+        ) : (
+          filteredNotifications.map((item) => {
+            const isUnattended = item.isUnattended5Mins;
+            const isAssetAction = item.category === 'ASSET_ACTION';
 
-                    return (
-                      <tr
-                        key={req.id}
-                        className="hover:bg-indigo-50/40 even:bg-slate-50/50 transition-colors"
-                      >
-                        {/* 1. Row Index */}
-                        <td className="py-2 px-3 text-center whitespace-nowrap align-top border-r border-b border-slate-200 text-slate-400 font-mono text-[11px]">
-                          {idx + 1}
-                        </td>
+            return (
+              <div
+                key={item.id}
+                className={`bg-white rounded-2xl border transition-all p-4 sm:p-5 shadow-2xs hover:shadow-xs relative overflow-hidden ${
+                  isUnattended
+                    ? 'border-rose-300 ring-1 ring-rose-500/20 bg-rose-50/15'
+                    : isAssetAction
+                    ? 'border-indigo-200/90 bg-indigo-50/10'
+                    : item.severity === 'CRITICAL'
+                    ? 'border-rose-200'
+                    : 'border-slate-200/80'
+                }`}
+              >
+                {/* Left Accent Bar */}
+                <div
+                  className={`absolute left-0 top-0 bottom-0 w-1.5 ${
+                    isUnattended
+                      ? 'bg-rose-600'
+                      : isAssetAction
+                      ? 'bg-indigo-600'
+                      : item.severity === 'CRITICAL'
+                      ? 'bg-rose-500'
+                      : 'bg-amber-500'
+                  }`}
+                />
 
-                        {/* 2. REQ ID & Date */}
-                        <td className="py-2 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="font-mono font-bold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                              {req.id}
-                            </span>
-                          </div>
-                          <div className="font-mono text-[10px] text-slate-500 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-400" />
-                            <span>
-                              {reqDate.toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                              })}{' '}
-                              •{' '}
-                              {reqDate.toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* 3. Machine & Line */}
-                        <td className="py-2 px-3 whitespace-nowrap align-top border-r border-b border-slate-200">
-                          <div className="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block">
-                            {req.targetMachineId || 'Plant Core'}
-                          </div>
-                          <div className="text-[11px] text-slate-600 font-semibold mt-1 flex items-center gap-1">
-                            <Factory className="w-3 h-3 text-slate-400" />
-                            <span>{req.targetLine || 'Factory Floor'}</span>
-                          </div>
-                        </td>
-
-                        {/* 4. Component & SKU */}
-                        <td className="py-2 px-3 align-top border-r border-b border-slate-200">
-                          <div className="font-bold text-slate-900 text-xs leading-snug">
-                            {req.partName}
-                          </div>
-                          {req.sku && (
-                            <div className="mt-1 inline-flex items-center gap-1 font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
-                              <span>SKU:</span>
-                              <strong className="text-slate-700">{req.sku}</strong>
-                            </div>
-                          )}
-                        </td>
-
-                        {/* 5. Quantity */}
-                        <td className="py-2 px-3 text-center whitespace-nowrap align-top border-r border-b border-slate-200">
-                          <span className="font-bold text-slate-800 text-xs">
-                            {req.quantity}
-                          </span>{' '}
-                          <span className="text-[10px] text-slate-500">{req.unit}</span>
-                        </td>
-
-                        {/* 6. Estimated CapEx (INR) */}
-                        <td className="py-2 px-3 text-right whitespace-nowrap align-top border-r border-b border-slate-200 font-mono">
-                          <span
-                            className={`font-black text-xs ${
-                              (req.estimatedCost || 0) >= 30000
-                                ? 'text-rose-700 font-bold'
-                                : 'text-slate-900'
-                            }`}
-                          >
-                            ₹
-                            {(req.estimatedCost || 0).toLocaleString('en-IN', {
-                              minimumFractionDigits: 2,
-                            })}
-                          </span>
-                        </td>
-
-                        {/* 7. Requester & Justification */}
-                        <td className="py-2 px-3 align-top border-r border-b border-slate-200">
-                          <div className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
-                            <User className="w-3 h-3 text-slate-400" />
-                            <span>{req.requestedBy}</span>
-                          </div>
-                          <p
-                            className={`text-[11px] text-slate-600 mt-1 leading-relaxed italic ${
-                              isInfoOpen ? '' : 'line-clamp-2'
-                            }`}
-                          >
-                            &ldquo;{req.justification || 'Emergency replacement spare requested.'}&rdquo;
-                          </p>
-                          {req.justification && req.justification.length > 70 && (
-                            <button
-                              onClick={() => toggleInfo(req.id)}
-                              className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold mt-0.5 cursor-pointer"
-                            >
-                              {isInfoOpen ? 'Show less' : 'View full justification'}
-                            </button>
-                          )}
-                        </td>
-
-                        {/* 8. Approval Status */}
-                        <td className="py-2 px-3 text-center whitespace-nowrap align-top border-r border-b border-slate-200">
-                          {isPending && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
-                              <span>Needs Action</span>
-                            </span>
-                          )}
-                          {isApproved && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Authorized</span>
-                            </span>
-                          )}
-                          {isRejected && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                              <XCircle className="w-3 h-3 text-slate-500" />
-                              <span>Declined</span>
-                            </span>
-                          )}
-                        </td>
-
-                        {/* 9. Audit Trail / Executive Notes */}
-                        <td className="py-2 px-3 align-top border-r border-b border-slate-200">
-                          {req.reviewedBy ? (
-                            <div className="space-y-1">
-                              <div className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                                <Crown className="w-3 h-3 text-amber-500" />
-                                <span>{req.reviewedBy}</span>
-                              </div>
-                              {req.reviewNotes && (
-                                <p className="text-[11px] text-slate-600 italic bg-slate-50 p-1.5 rounded border border-slate-200/80 leading-snug">
-                                  {req.reviewNotes}
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 italic text-[11px]">
-                              Awaiting executive review
-                            </span>
-                          )}
-                        </td>
-
-                        {/* 10. Actions */}
-                        <td className="py-2 px-3 text-center whitespace-nowrap align-top border-b border-slate-200">
-                          {isPending && isCeoOrAdmin ? (
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => handleApprove(req.id)}
-                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1"
-                                title="Grant Executive Approval"
-                              >
-                                <Check className="w-3 h-3" />
-                                <span>Grant</span>
-                              </button>
-                              <button
-                                onClick={() => handleReject(req.id)}
-                                className="px-2 py-1 text-[11px] font-semibold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition cursor-pointer flex items-center gap-1"
-                                title="Decline Request"
-                              >
-                                <X className="w-3 h-3" />
-                                <span>Decline</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedReqForDossier(req);
-                                  setCustomRemark('');
-                                }}
-                                className="p-1 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
-                                title="Open Detailed Review Dossier"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setSelectedReqForDossier(req);
-                                setCustomRemark(req.reviewNotes || '');
-                              }}
-                              className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer inline-flex items-center gap-1"
-                            >
-                              <FileText className="w-3 h-3" />
-                              <span>View Dossier</span>
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900 text-xs">
-                  <tr>
-                    <td colSpan={5} className="py-2.5 px-3 border-r border-slate-300">
-                      Total Filtered CapEx Commitments ({filteredRequisitions.length} requests)
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-slate-900 border-r border-slate-300">
-                      ₹{filteredCapexSum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td colSpan={4} className="py-2.5 px-3 text-slate-500 font-normal">
-                      Report generated from official Plant Executive CMMS Ledger
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* VIEW MODE 2: CARDS VIEW */}
-      {viewMode === 'CARDS' && (
-        <div>
-          {filteredRequisitions.length === 0 ? (
-            <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-2xs">
-              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mx-auto mb-3">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-bold text-slate-800">No Approvals Found</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                No requisitions match your active search and filter parameters.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-              {filteredRequisitions.map((req) => {
-                const isPending = req.status === 'PENDING_CEO_APPROVAL';
-                const isApproved = req.status === 'APPROVED_BY_CEO';
-                const isInfoOpen = !!expandedInfoMap[req.id];
-
-                return (
-                  <div
-                    key={req.id}
-                    className={`bg-white rounded-2xl border p-4 sm:p-5 shadow-2xs hover:shadow-xs transition-all duration-150 flex flex-col justify-between min-h-[350px] sm:min-h-[360px] ${
-                      isPending
-                        ? 'border-rose-200 hover:border-rose-300'
-                        : isApproved
-                        ? 'border-emerald-200 hover:border-emerald-300'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="space-y-3">
-                      {/* Top Row: Status badge + ID + Time */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {isPending ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>Emergency</span>
-                            </span>
-                          ) : isApproved ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Authorized</span>
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 flex items-center gap-1">
-                              <XCircle className="w-3 h-3" />
-                              <span>Declined</span>
-                            </span>
-                          )}
-                          <span className="font-mono text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            {req.id}
-                          </span>
-                        </div>
-
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 shrink-0 font-medium">
-                          <Clock className="w-3 h-3" />
-                          <span>
-                            {new Date(req.createdAt).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Machine & Line Tag */}
-                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                        <span className="px-2.5 py-0.5 rounded-md font-mono font-bold bg-slate-900 text-white text-[10px]">
-                          {req.targetMachineId || 'Plant Core'}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  {/* Left info */}
+                  <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                    <div className="shrink-0 mt-0.5">
+                      {isUnattended ? (
+                        <span className="p-2.5 rounded-xl bg-rose-100 text-rose-700 border border-rose-300 flex items-center justify-center animate-pulse">
+                          <Flame className="w-5 h-5 text-rose-600" />
                         </span>
-                        <span className="px-2 py-0.5 rounded-md font-semibold bg-slate-100 text-slate-700 text-[10px] border border-slate-200">
-                          {req.targetLine}
+                      ) : isAssetAction ? (
+                        <span className="p-2.5 rounded-xl bg-indigo-100 text-indigo-700 border border-indigo-300 flex items-center justify-center">
+                          <ArrowRightLeft className="w-5 h-5 text-indigo-600" />
                         </span>
-                        {req.sku && (
-                          <span className="font-mono text-[10px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
-                            SKU: {req.sku}
+                      ) : item.category === 'BREAKDOWN_WARNING' ? (
+                        <span className="p-2.5 rounded-xl bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center">
+                          <Wrench className="w-5 h-5" />
+                        </span>
+                      ) : item.category === 'PPM_OVERDUE' ? (
+                        <span className="p-2.5 rounded-xl bg-blue-100 text-blue-800 border border-blue-300 flex items-center justify-center">
+                          <Clock className="w-5 h-5" />
+                        </span>
+                      ) : item.category === 'LOW_STOCK' ? (
+                        <span className="p-2.5 rounded-xl bg-orange-100 text-orange-800 border border-orange-300 flex items-center justify-center">
+                          <Package className="w-5 h-5" />
+                        </span>
+                      ) : (
+                        <span className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center">
+                          <FileText className="w-5 h-5" />
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        {/* Unit Scoping Pill */}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <Building2 className="w-3 h-3 text-indigo-600" />
+                          <span>{item.unit || 'UNIT - 1'}</span>
+                        </span>
+
+                        {/* Role / Trade Pill */}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                          {item.targetTrade === 'ELECTRICIAN' ? (
+                            <>
+                              <Zap className="w-3 h-3 text-amber-600" />
+                              <span>Electrician</span>
+                            </>
+                          ) : item.category === 'LOW_STOCK' ? (
+                            <>
+                              <Package className="w-3 h-3 text-orange-600" />
+                              <span>Store &amp; Crib</span>
+                            </>
+                          ) : item.category === 'APPROVAL' ? (
+                            <>
+                              <Crown className="w-3 h-3 text-rose-600" />
+                              <span>Executive Capex</span>
+                            </>
+                          ) : (
+                            <>
+                              <Wrench className="w-3 h-3 text-indigo-600" />
+                              <span>Line Mechanic</span>
+                            </>
+                          )}
+                        </span>
+
+                        {isUnattended && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-600 text-white uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                            <span>Unattended &gt; 5 Mins</span>
+                          </span>
+                        )}
+
+                        {isAssetAction && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-200 uppercase tracking-wider flex items-center gap-1">
+                            <Activity className="w-3 h-3 text-indigo-600" />
+                            <span>Asset Action Log</span>
+                          </span>
+                        )}
+
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            item.severity === 'CRITICAL'
+                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                              : isAssetAction
+                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                              : 'bg-amber-100 text-amber-900 border border-amber-200'
+                          }`}
+                        >
+                          {item.severity}
+                        </span>
+
+                        {item.machineId && (
+                          <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                            {item.machineId}
+                          </span>
+                        )}
+
+                        {item.line && (
+                          <span className="text-xs font-semibold text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
+                            {item.line} {item.stationNo ? `• ${item.stationNo}` : ''}
                           </span>
                         )}
                       </div>
 
-                      {/* Part Name & Quantity */}
-                      <div>
-                        <h3
-                          className="text-sm sm:text-base font-bold text-slate-900 leading-snug line-clamp-1"
-                          title={req.partName}
-                        >
-                          {req.partName}
-                        </h3>
-                        <div className="text-[11px] text-slate-500 font-medium mt-0.5 flex items-center gap-1">
-                          <span>Quantity:</span>
-                          <strong className="text-slate-800">
-                            {req.quantity} {req.unit}
-                          </strong>
-                        </div>
-                      </div>
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                        {item.title}
+                      </h3>
 
-                      {/* Estimated CapEx Cost Box */}
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 px-3 flex items-center justify-between">
-                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                          Estimated CapEx
+                      <p className="text-xs text-slate-600 leading-relaxed font-normal">
+                        {item.message}
+                      </p>
+
+                      {/* Metadata tags */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 pt-1">
+                        <span className="flex items-center gap-1 font-medium">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Logged: {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </span>
-                        <span className="text-base sm:text-lg font-black font-mono text-slate-900">
-                          ₹
-                          {req.estimatedCost?.toLocaleString('en-IN', {
-                            minimumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
 
-                      {/* Technical Justification Drawer with Toggle */}
-                      <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-2.5 text-xs text-slate-700 space-y-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
-                            <FileText className="w-3 h-3 text-slate-400" />
-                            <span>Justification</span>
-                            <span className="font-normal text-[10px] text-slate-400">
-                              ({req.requestedBy})
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => toggleInfo(req.id)}
-                            className="text-[10px] font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer flex items-center gap-0.5"
-                          >
-                            <Info className="w-3 h-3" />
-                            <span>{isInfoOpen ? 'Less' : 'Details'}</span>
-                          </button>
-                        </div>
-                        <p
-                          className={`text-[11px] text-slate-600 leading-relaxed italic ${
-                            isInfoOpen ? '' : 'line-clamp-2'
-                          }`}
-                        >
-                          &ldquo;{req.justification || 'Emergency repair replacement component needed for halted operation.'}&rdquo;
-                        </p>
-                      </div>
-
-                      {/* Audit Trail if already reviewed */}
-                      {req.reviewedBy && (
-                        <div className="text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1.5">
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span>
-                            Authorized by <strong>{req.reviewedBy}</strong>
+                        {item.attendedBy && item.attendedBy !== 'Unassigned' && (
+                          <span className="flex items-center gap-1 font-medium text-slate-700">
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{isAssetAction ? 'Changed by' : 'Attendant'}: <strong>{item.attendedBy}</strong></span>
                           </span>
-                        </div>
-                      )}
-                    </div>
+                        )}
 
-                    {/* Action Bar */}
-                    {isPending && isCeoOrAdmin && (
-                      <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-slate-100 mt-3">
-                        <button
-                          onClick={() => handleReject(req.id)}
-                          className="w-full py-2 px-3 text-xs font-semibold text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                          <span>Decline</span>
-                        </button>
-                        <button
-                          onClick={() => handleApprove(req.id)}
-                          className="w-full py-2 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Grant</span>
-                        </button>
+                        {isUnattended && (
+                          <span className="font-mono font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-200">
+                            ⏱️ Total Unattended Time: {formatTimer(item.elapsedSeconds)}
+                          </span>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* EXECUTIVE DOSSIER & REMARKS MODAL */}
-      {selectedReqForDossier && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded">
-                    {selectedReqForDossier.id}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      selectedReqForDossier.status === 'PENDING_CEO_APPROVAL'
-                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                        : selectedReqForDossier.status === 'APPROVED_BY_CEO'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-slate-100 text-slate-700 border border-slate-200'
-                    }`}
-                  >
-                    {selectedReqForDossier.status === 'PENDING_CEO_APPROVAL'
-                      ? 'Action Required'
-                      : selectedReqForDossier.status === 'APPROVED_BY_CEO'
-                      ? 'Authorized'
-                      : 'Declined'}
-                  </span>
+                  {/* Right quick actions */}
+                  <div className="flex items-center gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+                    {/* Quick Attend Button: ONLY shown to field line mechanics / electricians for defect tickets */}
+                    {isUnattended && canAttendDirectly && (
+                      <button
+                        type="button"
+                        onClick={() => handleAttendNow(item)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                        title="Take immediate floor custody of repair"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Attend Work Myself</span>
+                      </button>
+                    )}
+
+                    {/* Quick Assign Mechanic Button: Shown to Admins & Supervisors */}
+                    {(isUnattended || (item.category === 'BREAKDOWN_WARNING' && !item.attendedBy) || isSupervisorOrAdmin) &&
+                      (item.category === 'UNATTENDED_5M' || item.category === 'BREAKDOWN_WARNING') && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAssignModal(item)}
+                        className="px-3 py-1.5 bg-[#00897b] hover:bg-[#00796b] text-white rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                        title="Dispatch technician to this machine"
+                      >
+                        <Wrench className="w-3.5 h-3.5" />
+                        <span>Dispatch Mechanic</span>
+                      </button>
+                    )}
+
+                    {/* Dismiss Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleDismiss(item.id)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                      title="Clear Notification"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-base font-bold text-slate-900 mt-1">
-                  {selectedReqForDossier.partName}
-                </h3>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ─── 7. DISPATCH ATTENDING MECHANIC MODAL ───────────────────────── */}
+      {assigningItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <Wrench className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Dispatch Floor Technician</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Assign mechanic to {assigningItem.machineId} &bull; {assigningItem.unit || 'UNIT - 1'}
+                  </p>
+                </div>
               </div>
               <button
-                onClick={() => setSelectedReqForDossier(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                type="button"
+                onClick={() => setAssigningItem(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Requisition Details Grid */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-                <div className="text-[10px] text-slate-400 uppercase font-bold">Target Machine</div>
-                <div className="font-mono font-bold text-slate-800 mt-0.5">
-                  {selectedReqForDossier.targetMachineId || 'Plant Core'}
-                </div>
-                <div className="text-[11px] text-slate-500">{selectedReqForDossier.targetLine}</div>
+            <div className="mt-4 space-y-4">
+              {/* Supervisory Assigner Notice */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-[11px] text-emerald-900 font-medium flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  Supervisory Dispatch: Select a technician designated for <strong>{assigningItem.unit || 'UNIT - 1'}</strong> to take floor custody.
+                </span>
               </div>
 
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-                <div className="text-[10px] text-slate-400 uppercase font-bold">Estimated CapEx</div>
-                <div className="font-mono font-black text-slate-900 text-sm mt-0.5">
-                  ₹
-                  {selectedReqForDossier.estimatedCost?.toLocaleString('en-IN', {
-                    minimumFractionDigits: 2,
+              {/* Target Issue Summary */}
+              <div className="bg-rose-50/60 border border-rose-200 rounded-xl p-3.5 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-rose-900">{assigningItem.machineId}</span>
+                  <span className="font-semibold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
+                    Unattended: {formatTimer(assigningItem.elapsedSeconds)}
+                  </span>
+                </div>
+                <div className="text-slate-800 font-medium">
+                  {assigningItem.unit} &bull; {assigningItem.line} &bull; {assigningItem.stationNo}
+                </div>
+                <div className="text-slate-600">Issue: {assigningItem.faultCategory || assigningItem.message}</div>
+              </div>
+
+              {/* Technician selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">
+                  Select Attending Technician for {assigningItem.unit || 'UNIT - 1'}
+                </label>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {TECHNICIAN_ROSTER.filter((m) =>
+                    assigningItem.unit ? matchesUnit(m.unit, assigningItem.unit) : true
+                  ).map((mech) => {
+                    const isSelected = selectedMechanic === mech.name;
+                    return (
+                      <div
+                        key={mech.name}
+                        onClick={() => setSelectedMechanic(mech.name)}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between text-xs ${
+                          isSelected
+                            ? 'bg-emerald-50/80 border-emerald-500 ring-1 ring-emerald-500/20'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {mech.name.slice(0, 2).toUpperCase()}
+                          </span>
+                          <div>
+                            <div className="font-bold text-slate-900">{mech.name}</div>
+                            <div className="text-[11px] text-slate-500">{mech.role} &bull; {mech.unit}</div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-[11px] font-mono text-slate-600 flex items-center gap-1 justify-end">
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            <span>{mech.phone}</span>
+                          </div>
+                          {isSelected && (
+                            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5 justify-end mt-0.5">
+                              <Check className="w-3 h-3" /> Selected
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
                   })}
                 </div>
-                <div className="text-[11px] text-slate-500">
-                  Qty: {selectedReqForDossier.quantity} {selectedReqForDossier.unit}
-                </div>
               </div>
 
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 col-span-2">
-                <div className="text-[10px] text-slate-400 uppercase font-bold">Requested By</div>
-                <div className="font-bold text-slate-800 mt-0.5">
-                  {selectedReqForDossier.requestedBy}
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  Logged on {new Date(selectedReqForDossier.createdAt).toLocaleString('en-IN')}
-                </div>
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAssigningItem(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAssign}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-2xs flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Dispatch {selectedMechanic}</span>
+                </button>
               </div>
-
-              <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200/80 col-span-2">
-                <div className="text-[10px] text-amber-800 uppercase font-bold flex items-center gap-1">
-                  <FileText className="w-3 h-3" />
-                  <span>Technical Justification</span>
-                </div>
-                <p className="text-xs text-amber-950 mt-1 leading-relaxed italic">
-                  &ldquo;{selectedReqForDossier.justification}&rdquo;
-                </p>
-              </div>
-            </div>
-
-            {/* Executive Remarks Area (Editable if Pending) */}
-            {selectedReqForDossier.status === 'PENDING_CEO_APPROVAL' && isCeoOrAdmin && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-                  <span>CEO Executive Remarks &amp; Purchasing Directives</span>
-                </label>
-
-                {/* Quick preset chips */}
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    'Approved under executive maintenance contingency reserve.',
-                    'Expedite direct delivery to factory floor immediately.',
-                    'Declined: Recheck factory buffer machine salvage first.',
-                  ].map((preset, pIdx) => (
-                    <button
-                      key={pIdx}
-                      type="button"
-                      onClick={() => setCustomRemark(preset)}
-                      className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-md transition cursor-pointer"
-                    >
-                      {preset.slice(0, 35)}...
-                    </button>
-                  ))}
-                </div>
-
-                <textarea
-                  rows={2}
-                  value={customRemark}
-                  onChange={(e) => setCustomRemark(e.target.value)}
-                  placeholder="Enter custom authorization note or procurement conditions..."
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
-                />
-              </div>
-            )}
-
-            {/* Audit Trail if already decided */}
-            {selectedReqForDossier.reviewedBy && (
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-xs">
-                <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <Crown className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Authorized by {selectedReqForDossier.reviewedBy}</span>
-                </div>
-                {selectedReqForDossier.reviewNotes && (
-                  <p className="text-slate-600 italic pl-5">
-                    {selectedReqForDossier.reviewNotes}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                onClick={() => setSelectedReqForDossier(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
-              >
-                Close
-              </button>
-
-              {selectedReqForDossier.status === 'PENDING_CEO_APPROVAL' && isCeoOrAdmin && (
-                <>
-                  <button
-                    onClick={() => handleReject(selectedReqForDossier.id, customRemark)}
-                    className="px-4 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition cursor-pointer flex items-center gap-1.5"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>Decline Request</span>
-                  </button>
-                  <button
-                    onClick={() => handleApprove(selectedReqForDossier.id, customRemark)}
-                    className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Grant Executive Approval</span>
-                  </button>
-                </>
-              )}
             </div>
           </div>
         </div>

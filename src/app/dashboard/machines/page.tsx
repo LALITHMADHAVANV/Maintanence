@@ -32,7 +32,14 @@ import { Machine, MachineType, MotorType, FloorLine, MachineStatus, AssetCategor
 import { subscribeMachines, createMachine } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import {
+  matchesUnit,
+  isUserAdmin,
+  getUserScopedUnit,
+  getZonesForUnit,
+  getFactoryUnitsFromSettings,
+  DynamicFactoryUnit,
+} from '@/lib/constants/units';
 import { ScanModal } from '@/components/scan/ScanModal';
 import { PrintableAssetDocumentModal } from '@/components/print/PrintableAssetDocumentModal';
 import {
@@ -52,7 +59,36 @@ export default function MachinesPage() {
 
   // Asset Form State
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('MACHINE');
-  const [mCompany, setMCompany] = useState('');
+
+  // User's assigned enterprise company from authenticated session
+  const userCompany = useMemo(() => {
+    if (user?.company && user.company.trim()) return user.company.trim();
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('cmms_company_name');
+      if (stored && stored.trim()) return stored.trim();
+    }
+    const email = (user?.email || '').toLowerCase();
+    if (email.includes('sahana')) return 'Sahana Garments Ltd';
+    if (email.includes('textech')) return 'Textech Apparel';
+    if (email.includes('@')) {
+      const domain = email.split('@')[1];
+      const namePart = domain ? domain.split('.')[0] : '';
+      if (namePart && namePart !== 'gmail' && namePart !== 'yahoo' && namePart !== 'outlook') {
+        return namePart.charAt(0).toUpperCase() + namePart.slice(1) + ' Garments Ltd';
+      }
+    }
+    return 'Sahana Garments Ltd';
+  }, [user]);
+
+  const [mCompany, setMCompany] = useState<string>(() => userCompany);
+
+  // Sync company if user auth session loads asynchronously
+  useEffect(() => {
+    if (userCompany && (!mCompany || mCompany === 'Sahana Garments Ltd')) {
+      setMCompany(userCompany);
+    }
+  }, [userCompany]);
+
   const [mId, setMId] = useState('');
   const [mBrand, setMBrand] = useState('');
   const [mType, setMType] = useState<MachineType | ''>('');
@@ -60,14 +96,67 @@ export default function MachinesPage() {
   const [mDate, setMDate] = useState('');
   const [mCost, setMCost] = useState<number | ''>('');
   const [mMotor, setMMotor] = useState<MotorType>('SERVO');
+
+  // Configured factory units from Settings page (synced with localStorage)
+  const [configuredUnits, setConfiguredUnits] = useState<DynamicFactoryUnit[]>(() => getFactoryUnitsFromSettings());
+
+  useEffect(() => {
+    setConfiguredUnits(getFactoryUnitsFromSettings());
+    const handleStorage = (e?: StorageEvent | Event) => {
+      if (!e || !('key' in e) || (e as StorageEvent).key === 'cmms_settings_factory_units') {
+        setConfiguredUnits(getFactoryUnitsFromSettings());
+      }
+    };
+    window.addEventListener('storage', handleStorage as EventListener);
+    window.addEventListener('cmms_settings_factory_units_changed', handleStorage as EventListener);
+    return () => {
+      window.removeEventListener('storage', handleStorage as EventListener);
+      window.removeEventListener('cmms_settings_factory_units_changed', handleStorage as EventListener);
+    };
+  }, []);
+
   const [mUnit, setMUnit] = useState<string>(() => {
     if (!isUserAdmin(role)) return getUserScopedUnit(user, role);
     return user?.unit && user.unit !== 'All Units' ? user.unit : 'UNIT - 1';
   });
   const effectiveUnit = getUserScopedUnit(user, role, mUnit || null);
-  const [mArea, setMArea] = useState<string>('');
-  const [mLine, setMLine] = useState<FloorLine>('Line 01');
-  const [mStation, setMStation] = useState('');
+  const activeUnitValue = !isAdmin ? effectiveUnit : mUnit;
+
+  // Available zones categorized by the currently selected unit
+  const availableZonesForUnit = useMemo(() => {
+    return getZonesForUnit(activeUnitValue);
+  }, [activeUnitValue]);
+
+  // Zone / Area Dropdown & Custom State
+  const [mArea, setMArea] = useState<string>('NETHAJI');
+  const [isCustomZone, setIsCustomZone] = useState<boolean>(false);
+  const [customZoneInput, setCustomZoneInput] = useState<string>('');
+
+  // Floor Line & Station Placement (Manual Entry + Quick-Pick Chips)
+  const [mLine, setMLine] = useState<string>('Line 01');
+  const [mStation, setMStation] = useState<string>('');
+
+  // Available lines for the current selected zone
+  const availableLinesForZone = useMemo(() => {
+    const match = availableZonesForUnit.find((z) => z.id === mArea);
+    if (match && match.defaultLines.length > 0) {
+      return match.defaultLines;
+    }
+    return ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Line 05', 'Line 06', 'Line 07', 'Line 08'];
+  }, [availableZonesForUnit, mArea]);
+
+  // When unit changes, update zone to first zone in that unit if current zone is not in list
+  useEffect(() => {
+    if (!isCustomZone) {
+      const match = availableZonesForUnit.find((z) => z.id === mArea);
+      if (!match && availableZonesForUnit.length > 0) {
+        setMArea(availableZonesForUnit[0].id);
+        if (availableZonesForUnit[0].defaultLines.length > 0) {
+          setMLine(availableZonesForUnit[0].defaultLines[0]);
+        }
+      }
+    }
+  }, [availableZonesForUnit, isCustomZone, mArea]);
 
   useEffect(() => {
     if (!isUserAdmin(role)) {
@@ -206,15 +295,18 @@ export default function MachinesPage() {
 
   // Clear / Reset all inputs
   const handleResetForm = () => {
-    setMCompany('');
+    setMCompany(userCompany);
     setMId('');
     setMBrand('');
     setMType('');
     setMModel('');
     setMDate('');
     setMCost('');
-    setMUnit('');
-    setMArea('');
+    setMUnit(!isAdmin ? effectiveUnit : 'UNIT - 1');
+    setMArea('NETHAJI');
+    setIsCustomZone(false);
+    setCustomZoneInput('');
+    setMLine('Line 01');
     setMStation('');
     setIsCustomBrand(false);
     setCustomBrandInput('');
@@ -309,13 +401,15 @@ export default function MachinesPage() {
       }
     }
 
-    const userLine = (mArea.trim() || 'Line 01') as FloorLine;
-    const userDept = (mArea.trim().includes('Line') ? 'Sewing Floor' : mArea.trim() || 'Sewing Floor') as any;
+    const finalUnit = !isAdmin ? effectiveUnit : (mUnit.trim() || 'UNIT - 1');
+    const finalZone = isCustomZone && customZoneInput.trim() ? customZoneInput.trim() : (mArea.trim() || 'NETHAJI');
+    const finalLine = (mLine.trim() || 'Line 01') as FloorLine;
+    const userDept = (finalZone.includes('Cutting') ? 'Cutting Floor' : finalZone.includes('Finishing') ? 'Finishing Floor' : 'Sewing Floor') as any;
 
     const newAsset: Machine = {
       id: cleanId,
       name: `${finalBrand} ${finalTypeName}${mModel.trim() ? ` (${mModel.trim()})` : ''}`,
-      company: mCompany.trim(),
+      company: mCompany.trim() || userCompany,
       brand: finalBrand,
       model: mModel.trim() || 'Standard Model',
       category: selectedCategory,
@@ -333,11 +427,12 @@ export default function MachinesPage() {
       purchaseDate: mDate,
       cost: typeof mCost === 'number' ? mCost : Number(mCost) || 0,
       status: 'ACTIVE',
-      unit: !isAdmin ? effectiveUnit : (mUnit.trim() || 'UNIT - 1'),
-      area: mArea.trim() || 'Unassigned Area',
-      currentLine: userLine,
+      unit: finalUnit,
+      area: finalZone,
+      zone: finalZone,
+      currentLine: finalLine,
       department: userDept,
-      stationNo: mStation.trim() || 'Unassigned Station',
+      stationNo: mStation.trim() || 'Line Standard',
       totalDowntimeMinutes: 0,
       ageYears: parseFloat(calculatedAge) || 0,
       specs: finalSpecs,
@@ -574,9 +669,14 @@ export default function MachinesPage() {
             {/* Company / Enterprise Name & Category */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Company / Organization Name *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-600">
+                    Company / Organization Name *
+                  </label>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                    Assigned from Login
+                  </span>
+                </div>
                 <input
                   type="text"
                   required
@@ -877,57 +977,180 @@ export default function MachinesPage() {
               </div>
             </div>
 
-            {/* Plant Unit & Located Area */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Plant Unit * {!isAdmin && <span className="text-[10px] text-indigo-600 font-bold">(Locked to your assigned unit)</span>}
-                </label>
+            {/* ─── Plant Unit, Categorized Zone & Floor Line Placement ─── */}
+            <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200/80 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <LayoutGrid className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Factory Location &amp; Floor Placement</span>
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Unit ➔ Categorized Zone ➔ Line Placement
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. Plant Unit Dropdown */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Plant Unit * {!isAdmin && <span className="text-[10px] text-indigo-600 font-bold">(Locked to your assigned unit)</span>}
+                  </label>
+                  <select
+                    value={!isAdmin ? effectiveUnit : mUnit}
+                    disabled={!isAdmin}
+                    onChange={(e) => {
+                      const nextUnit = e.target.value;
+                      setMUnit(nextUnit);
+                      const zones = getZonesForUnit(nextUnit);
+                      if (zones.length > 0) {
+                        setMArea(zones[0].id);
+                        setIsCustomZone(false);
+                        if (zones[0].defaultLines.length > 0) {
+                          setMLine(zones[0].defaultLines[0]);
+                        }
+                      }
+                    }}
+                    className={`w-full px-3 py-2 text-sm border rounded-xl outline-none font-bold text-slate-800 ${
+                      !isAdmin
+                        ? 'bg-slate-100 border-slate-200 cursor-not-allowed'
+                        : 'bg-white border-slate-300 focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs'
+                    }`}
+                  >
+                    {configuredUnits.map((u) => (
+                      <option key={u.code} value={u.code}>
+                        {u.code}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. Categorized Zone / Area Dropdown */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Zone / Area *
+                    </label>
+                    {!isCustomZone ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomZone(true);
+                          setCustomZoneInput('');
+                        }}
+                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                      >
+                        + Custom Zone
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomZone(false);
+                          if (availableZonesForUnit.length > 0) {
+                            setMArea(availableZonesForUnit[0].id);
+                          }
+                        }}
+                        className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+                      >
+                        Use Zone List
+                      </button>
+                    )}
+                  </div>
+
+                  {!isCustomZone ? (
+                    <select
+                      required
+                      value={mArea}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '__CUSTOM_ZONE__') {
+                          setIsCustomZone(true);
+                          setCustomZoneInput('');
+                        } else {
+                          setMArea(val);
+                          const matched = availableZonesForUnit.find((z) => z.id === val);
+                          if (matched && matched.defaultLines.length > 0) {
+                            setMLine(matched.defaultLines[0]);
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 font-bold cursor-pointer shadow-2xs"
+                    >
+                      <optgroup label={`Available Zones in ${!isAdmin ? effectiveUnit : mUnit}`}>
+                        {availableZonesForUnit.map((z) => (
+                          <option key={z.id} value={z.id}>
+                            {z.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <option value="__CUSTOM_ZONE__" className="text-indigo-600 font-bold">
+                        + Enter Custom Zone...
+                      </option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      required
+                      value={customZoneInput}
+                      onChange={(e) => {
+                        setCustomZoneInput(e.target.value);
+                        setMArea(e.target.value);
+                      }}
+                      placeholder="e.g. NETHAJI, PEACOCK, Sampling Section"
+                      autoFocus
+                      className="w-full px-3 py-2 text-sm bg-white border border-indigo-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 font-bold"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Floor Line Input (Manual Entry + Available Line Chips) */}
+              <div className="pt-1">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Floor Line *
+                  </label>
+                  <span className="text-[10px] text-slate-400">Mention line manually or click chip below</span>
+                </div>
+
                 <input
                   type="text"
                   required
-                  readOnly={!isAdmin}
-                  value={!isAdmin ? effectiveUnit : mUnit}
-                  onChange={(e) => setMUnit(e.target.value)}
-                  placeholder="e.g. Unit 01"
+                  list="floor-lines-suggestions"
+                  value={mLine}
+                  onChange={(e) => setMLine(e.target.value)}
+                  placeholder="e.g. Line 01, Line 04, Cutting Bay"
                   autoComplete="off"
-                  className={`w-full px-3 py-2 text-sm border rounded-xl outline-none font-semibold ${
-                    !isAdmin
-                      ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed'
-                      : 'bg-slate-50 border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800'
-                  }`}
+                  className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 font-bold"
                 />
-              </div>
+                <datalist id="floor-lines-suggestions">
+                  {availableLinesForZone.map((l) => (
+                    <option key={l} value={l} />
+                  ))}
+                </datalist>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Area / Zone *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={mArea}
-                  onChange={(e) => setMArea(e.target.value)}
-                  placeholder="e.g. Sewing Floor"
-                  autoComplete="off"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
-                />
+                {/* Quick-Pick Line Chips */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span className="text-[10px] font-semibold text-slate-400">Available in {mArea}:</span>
+                  {availableLinesForZone.map((l) => {
+                    const isSelected = mLine === l;
+                    return (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => setMLine(l)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-
-            {/* Station / Bay */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Station / Bay (Optional)
-              </label>
-              <input
-                type="text"
-                value={mStation}
-                onChange={(e) => setMStation(e.target.value)}
-                placeholder="e.g. Station 01, Cutting Bay 02"
-                autoComplete="off"
-                className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-medium"
-              />
             </div>
 
             <div className="pt-3 flex items-center justify-between border-t border-slate-100">

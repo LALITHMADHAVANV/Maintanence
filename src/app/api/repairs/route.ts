@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 import { RepairTicket } from '@/types/cmms';
+import { sendTelegramAlert } from '@/lib/services/telegramService';
 
 export async function GET() {
   try {
@@ -36,6 +37,27 @@ export async function POST(req: Request) {
       );
     }
 
+    // Trigger Telegram notification for new breakdown tickets
+    if (ticket.status === 'PENDING') {
+      try {
+        const machine = await db.collection('machines').findOne({ id: ticket.machineId });
+        sendTelegramAlert({
+          category: 'BREAKDOWN',
+          title: ticket.faultCategory || 'Machine Breakdown',
+          unit: ticket.unit || (machine as any)?.unit || 'UNIT - 1',
+          machineId: ticket.machineId,
+          machineName: (machine as any)?.model || (machine as any)?.name || ticket.machineType || 'Sewing Machine',
+          line: ticket.line || (machine as any)?.currentLine || 'Line',
+          zone: (machine as any)?.zone || (machine as any)?.location || 'Sewing Floor',
+          issue: ticket.faultDetails || ticket.faultCategory || 'Breakdown reported',
+          severity: ticket.urgency === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+          assignedTo: ticket.attendedBy || undefined,
+        }).catch((e) => console.warn('Telegram alert error:', e));
+      } catch (tgErr) {
+        console.warn('Telegram dispatch error:', tgErr);
+      }
+    }
+
     return NextResponse.json({ success: true, message: `Repair ticket ${ticket.id} saved` });
   } catch (err: unknown) {
     console.error('Error saving repair ticket in MongoDB:', err);
@@ -61,5 +83,34 @@ export async function PATCH(req: Request) {
   } catch (err: unknown) {
     console.error('Error updating repair ticket in MongoDB:', err);
     return NextResponse.json({ error: 'Failed to update repair ticket' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    const all = searchParams.get('all') === 'true';
+
+    const db = await getDatabase();
+
+    if (all) {
+      const result = await db.collection('repair_tickets').deleteMany({});
+      return NextResponse.json({
+        success: true,
+        message: `Deleted ${result.deletedCount} repair tickets`,
+        deletedCount: result.deletedCount,
+      });
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: 'Ticket ID or all=true query parameter is required' }, { status: 400 });
+    }
+
+    await db.collection('repair_tickets').deleteOne({ id });
+    return NextResponse.json({ success: true, message: `Repair ticket ${id} deleted` });
+  } catch (err: unknown) {
+    console.error('Error deleting repair ticket in MongoDB:', err);
+    return NextResponse.json({ error: 'Failed to delete repair ticket' }, { status: 500 });
   }
 }

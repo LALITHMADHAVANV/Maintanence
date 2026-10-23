@@ -43,7 +43,26 @@ function resolveUserTitle(role: UserRole): string {
       return 'Tool Crib & Store In-Charge';
     case 'MECHANIC':
       return 'Line Sewing Mechanic';
+    default:
+      return (role as string) || 'Garment Factory Specialist';
   }
+}
+
+function resolveCompanyFromUser(dbUser: any, identifier: string): string {
+  if (dbUser?.company && typeof dbUser.company === 'string' && dbUser.company.trim()) {
+    return dbUser.company.trim();
+  }
+  const email = (dbUser?.email || identifier || '').toLowerCase();
+  if (email.includes('sahana')) return 'Sahana Garments Ltd';
+  if (email.includes('textech')) return 'Textech Apparel';
+  if (email.includes('@')) {
+    const domain = email.split('@')[1];
+    const namePart = domain ? domain.split('.')[0] : '';
+    if (namePart && namePart !== 'gmail' && namePart !== 'yahoo' && namePart !== 'outlook') {
+      return namePart.charAt(0).toUpperCase() + namePart.slice(1) + ' Garments Ltd';
+    }
+  }
+  return 'Sahana Garments Ltd';
 }
 
 export async function POST(req: Request) {
@@ -97,6 +116,8 @@ export async function POST(req: Request) {
         );
       }
 
+      const assignedCompany = resolveCompanyFromUser(dbUser, identifier);
+
       const profile: UserProfile = {
         uid: dbUser.uid || String(dbUser._id),
         name: dbUser.name || 'Factory Staff',
@@ -107,6 +128,8 @@ export async function POST(req: Request) {
         department: dbUser.department || 'Maintenance Workshop',
         employeeId: dbUser.employeeId || '',
         unit: dbUser.unit || 'All Units',
+        zones: Array.isArray(dbUser.zones) ? dbUser.zones : (dbUser.zone ? [dbUser.zone] : []),
+        company: assignedCompany,
         status: dbUser.status || 'ACTIVE',
       };
 
@@ -124,6 +147,7 @@ export async function POST(req: Request) {
 
     if (isRolePassValid) {
       const isAdministrator = resolvedRole === 'ADMIN' || identifier.includes('admin');
+      const assignedCompany = resolveCompanyFromUser(null, identifier);
       const profile: UserProfile = {
         uid: `${resolvedRole.slice(0, 3)}-01`,
         name: isAdministrator ? 'Plant Administrator' : `${resolvedRole.replace('_', ' ')} Staff`,
@@ -134,6 +158,7 @@ export async function POST(req: Request) {
         department: isAdministrator ? 'Factory Operations' : 'Maintenance Workshop',
         employeeId: `EMP-${resolvedRole.slice(0, 3)}-01`,
         unit: 'All Units',
+        company: assignedCompany,
         status: 'ACTIVE',
       };
 

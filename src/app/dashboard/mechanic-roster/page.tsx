@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   Calendar,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Wrench,
   ShieldCheck,
   CheckCircle2,
@@ -22,6 +23,10 @@ import {
   Play,
   Clock,
   Building2,
+  Search,
+  RotateCw,
+  User,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { RepairTicket, PPMSchedule, Machine, UserProfile } from '@/types/cmms';
@@ -32,6 +37,7 @@ import {
   assignRepairTicket,
   completePPMTask,
   startRepairTicket,
+  resolveRepairTicket,
 } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -50,6 +56,146 @@ function toDateKey(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+export interface InChargeActionItem {
+  id: string;
+  sourceType: 'STAGE' | 'REPAIR' | 'PPM' | 'APPROVAL';
+  tag: string;
+  ref: string;
+  inCharge: string;
+  targetDate: string;
+  urgency: 'High' | 'Critical' | 'Medium' | 'Low';
+  stageName: string;
+  statusBadge: string;
+  stageSubtitle: string;
+  dueDate: string;
+  plannedDate: string;
+  overdueDays: number;
+  details: string;
+  hint: string;
+  buyer: string;
+  type: string;
+  rawTicket?: RepairTicket;
+  rawPpm?: PPMSchedule;
+}
+
+// Seeded operational stages handled by plant process in-charges
+const SEED_INCHARGE_ACTIONS: InChargeActionItem[] = [
+  {
+    id: 'INCH-001',
+    sourceType: 'STAGE',
+    tag: 'Overdue Stage',
+    ref: '123 GREEN · IO 20 · BHPC',
+    inCharge: 'Shaju',
+    targetDate: 'Ex-factory 27 Nov',
+    urgency: 'High',
+    stageName: 'TRIMS-PO',
+    statusBadge: 'In progress',
+    stageSubtitle: 'Trims-po',
+    dueDate: '16 Oct',
+    plannedDate: '16 Oct',
+    overdueDays: 6,
+    details: 'Merchandiser: None · Qty: 320 pcs',
+    hint: 'Stage is overdue by 6 days · Complete or request date change to clear',
+    buyer: 'BHPC',
+    type: 'Trims',
+  },
+  {
+    id: 'INCH-002',
+    sourceType: 'STAGE',
+    tag: 'Overdue Stage',
+    ref: '123 GREEN · IO 20 · BHPC',
+    inCharge: 'R.Saravanan',
+    targetDate: 'Ex-factory 27 Nov',
+    urgency: 'High',
+    stageName: 'DYED YARN-INHOUSE',
+    statusBadge: 'In progress',
+    stageSubtitle: 'Dyed Yarn-Inhouse',
+    dueDate: '17 Oct',
+    plannedDate: '17 Oct',
+    overdueDays: 5,
+    details: 'Merchandiser: None · Qty: 320 pcs',
+    hint: 'Stage is overdue by 5 days · Complete or request date change to clear',
+    buyer: 'BHPC',
+    type: 'Yarn',
+  },
+  {
+    id: 'INCH-003',
+    sourceType: 'STAGE',
+    tag: 'Overdue Stage',
+    ref: 'SNLS-04 · Line 02 · JUKI DDL-9000',
+    inCharge: 'P. Arumugam',
+    targetDate: 'Target 28 Nov',
+    urgency: 'High',
+    stageName: 'SEWING-PPM',
+    statusBadge: 'In progress',
+    stageSubtitle: 'Sewing-ppm',
+    dueDate: '18 Oct',
+    plannedDate: '18 Oct',
+    overdueDays: 4,
+    details: 'Department: Sewing Floor · Needle Calibrated',
+    hint: 'Stage is overdue by 4 days · Complete or request date change to clear',
+    buyer: 'ZARA',
+    type: 'PPM',
+  },
+  {
+    id: 'INCH-004',
+    sourceType: 'STAGE',
+    tag: 'Overdue Stage',
+    ref: '104 BLUE · IO 24 · H&M',
+    inCharge: 'S. Kumar',
+    targetDate: 'Ex-factory 02 Dec',
+    urgency: 'High',
+    stageName: 'KNITTING-INHOUSE',
+    statusBadge: 'In progress',
+    stageSubtitle: 'Knitting-inhouse',
+    dueDate: '19 Oct',
+    plannedDate: '19 Oct',
+    overdueDays: 3,
+    details: 'Merchandiser: Priya · Qty: 450 pcs',
+    hint: 'Stage is overdue by 3 days · Complete or request date change to clear',
+    buyer: 'H&M',
+    type: 'Fabric',
+  },
+  {
+    id: 'INCH-005',
+    sourceType: 'STAGE',
+    tag: 'Overdue Stage',
+    ref: 'OL-01 · Line 01 · PEGASUS M900',
+    inCharge: 'M. Ganesan',
+    targetDate: 'Target 29 Nov',
+    urgency: 'Critical',
+    stageName: 'LOOPER-TIMING',
+    statusBadge: 'In progress',
+    stageSubtitle: 'Looper-timing',
+    dueDate: '20 Oct',
+    plannedDate: '20 Oct',
+    overdueDays: 2,
+    details: 'Technician: M. Ganesan · Blade & Looper sync',
+    hint: 'Stage is overdue by 2 days · Complete or request date change to clear',
+    buyer: 'TOMMY HILFIGER',
+    type: 'Breakdown',
+  },
+  {
+    id: 'INCH-006',
+    sourceType: 'STAGE',
+    tag: 'Overdue Stage',
+    ref: '108 WHITE · IO 29 · BHPC',
+    inCharge: 'K. Rajesh',
+    targetDate: 'Ex-factory 05 Dec',
+    urgency: 'High',
+    stageName: 'ACCESSORY-INHOUSE',
+    statusBadge: 'In progress',
+    stageSubtitle: 'Accessory-inhouse',
+    dueDate: '21 Oct',
+    plannedDate: '21 Oct',
+    overdueDays: 1,
+    details: 'Merchandiser: Rajesh · Qty: 800 pcs',
+    hint: 'Stage is overdue by 1 day · Complete or request date change to clear',
+    buyer: 'BHPC',
+    type: 'Trims',
+  },
+];
+
 export default function MechanicRosterPage() {
   const { showToast } = useToast();
   const { user, role } = useAuth();
@@ -60,8 +206,24 @@ export default function MechanicRosterPage() {
   const [ppmSchedules, setPpmSchedules] = useState<PPMSchedule[]>([]);
   const [techUsers, setTechUsers] = useState<UserProfile[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(() => toDateKey(new Date()));
-  const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
-  const [hideUnassigned, setHideUnassigned] = useState<boolean>(false);
+  const [clearedTodayCount, setClearedTodayCount] = useState<number>(0);
+  const [completedItemIds, setCompletedItemIds] = useState<Set<string>>(new Set());
+
+  // View Mode: 'ACTIONS' (matching reference screenshot) vs 'ROSTER_SHEET'
+  const [viewMode, setViewMode] = useState<'ACTIONS' | 'ROSTER_SHEET'>('ACTIONS');
+
+  // Filter & Search states for the Actions view
+  const [activeTab, setActiveTab] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedType, setSelectedType] = useState<string>('ALL');
+  const [selectedBuyer, setSelectedBuyer] = useState<string>('ALL');
+  const [selectedInCharge, setSelectedInCharge] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<'URGENT' | 'DUE' | 'NAME'>('URGENT');
+
+  // Reschedule modal
+  const [rescheduleModalItem, setRescheduleModalItem] = useState<InChargeActionItem | null>(null);
+  const [newRequestedDate, setNewRequestedDate] = useState<string>('');
+  const [rescheduleReason, setRescheduleReason] = useState<string>('');
 
   const [selectedUnit, setSelectedUnit] = useState<string>(() => {
     if (isUserAdmin(role)) return 'ALL';
@@ -87,8 +249,17 @@ export default function MechanicRosterPage() {
       .catch((err) => console.warn('Failed to load tech users:', err));
   }, []);
 
-  const isSeniorMechanicOrAdmin =
-    role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN' || role === 'ASSET_MANAGER';
+  useEffect(() => {
+    const unsubR = subscribeRepairs((data) => setRepairs(data));
+    const unsubM = subscribeMachines((data) => setMachines(data));
+    const unsubPPM = subscribePPMSchedules((data) => setPpmSchedules(data));
+
+    return () => {
+      unsubR();
+      unsubM();
+      unsubPPM();
+    };
+  }, []);
 
   // Scoped machines by unit
   const scopedMachines = React.useMemo(() => {
@@ -136,44 +307,195 @@ export default function MechanicRosterPage() {
     return technicalStaff.map(userToMechanicDuty);
   }, [techUsers, isAdmin, selectedUnit, effectiveUnit]);
 
-  // Floor technicians available for assignment (supervisor assigns technicians, NOT himself)
-  const relevantTechnicians = React.useMemo(() => {
-    const currentName = (user?.name || '').trim().toLowerCase();
-    const isFloorCandidate = (m: MechanicDuty) => {
-      const lower = m.role.toLowerCase();
-      const mName = m.name.trim().toLowerCase();
-      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
-      const isSeniorOrAdmin =
-        lower.includes('senior') ||
-        lower.includes('admin') ||
-        lower.includes('supervisor') ||
-        lower.includes('director') ||
-        lower.includes('manager');
-      return !isSelf && !isSeniorOrAdmin;
-    };
+  // Merge live tasks and seeded in-charge actions
+  const allInChargeActions = useMemo(() => {
+    const list: InChargeActionItem[] = [...SEED_INCHARGE_ACTIONS];
 
-    if (role === 'SENIOR_ELECTRICIAN') {
-      return registeredRoster.filter(
-        (m) => m.trade === 'ELECTRICIAN' && isFloorCandidate(m)
-      );
+    // Add active repairs
+    scopedRepairs
+      .filter((r) => r.status !== 'COMPLETED' && !completedItemIds.has(r.id))
+      .forEach((r) => {
+        const machine = scopedMachines.find((m) => m.id === r.machineId);
+        const refText = machine
+          ? `${machine.id} · ${r.line || machine.currentLine || 'Line 01'} · ${machine.typeName || r.machineType}`
+          : `${r.machineId || 'EQ-01'} · ${r.line || 'Line 01'} · ${r.machineType}`;
+        const repDate = r.reportedAt ? new Date(r.reportedAt) : new Date();
+        const diffDays = Math.max(
+          1,
+          Math.floor((Date.now() - repDate.getTime()) / (1000 * 60 * 60 * 24))
+        );
+
+        list.push({
+          id: r.id,
+          sourceType: 'REPAIR',
+          tag: 'Overdue Stage',
+          ref: refText,
+          inCharge: r.attendedBy || (r as any).assignedTo || 'Shaju',
+          targetDate: `Target ${repDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}`,
+          urgency: r.urgency === 'CRITICAL' ? 'Critical' : 'High',
+          stageName: (r.faultCategory || 'BREAKDOWN-REPAIR').toUpperCase().replace(/\s+/g, '-'),
+          statusBadge: r.status === 'IN_PROGRESS' ? 'In progress' : 'Assigned',
+          stageSubtitle: r.faultCategory?.toLowerCase() || 'breakdown-repair',
+          dueDate: repDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          plannedDate: repDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          overdueDays: diffDays,
+          details: `In-charge: ${r.attendedBy || 'Technician'} · Issue: ${r.faultDetails || 'Operational fault'}`,
+          hint: `Stage is overdue by ${diffDays} days · Complete or request date change to clear`,
+          buyer: (machine as any)?.buyer || (r as any).buyer || 'BHPC',
+          type: 'Breakdown',
+          rawTicket: r,
+        });
+      });
+
+    // Add active PPMs
+    scopedPpm
+      .filter((p) => p.status !== 'COMPLETED' && !completedItemIds.has(p.id))
+      .forEach((p) => {
+        const machine = scopedMachines.find((m) => m.id === p.machineId);
+        const refText = machine
+          ? `${machine.id} · ${machine.currentLine || 'Line 02'} · ${machine.typeName || 'Machine'}`
+          : `${p.machineId} · Floor Maintenance`;
+        const dueObj = p.nextDue ? new Date(p.nextDue) : new Date();
+        const diffDays = Math.max(
+          1,
+          Math.floor((Date.now() - dueObj.getTime()) / (1000 * 60 * 60 * 24))
+        );
+
+        list.push({
+          id: p.id,
+          sourceType: 'PPM',
+          tag: 'Overdue Stage',
+          ref: refText,
+          inCharge: p.assignedTo || 'R.Saravanan',
+          targetDate: `Target ${dueObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}`,
+          urgency: 'High',
+          stageName: (p.task || 'PREVENTIVE-MAINTENANCE').toUpperCase().replace(/\s+/g, '-'),
+          statusBadge: p.status === 'IN_PROGRESS' ? 'In progress' : 'Pending',
+          stageSubtitle: p.task?.toLowerCase() || 'preventive-maintenance',
+          dueDate: dueObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          plannedDate: dueObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          overdueDays: diffDays,
+          details: `In-charge: ${p.assignedTo || 'Technician'} · Frequency: ${p.frequency || 'Weekly'}`,
+          hint: `Stage is overdue by ${diffDays} days · Complete or request date change to clear`,
+          buyer: (machine as any)?.buyer || 'BHPC',
+          type: 'PPM',
+          rawPpm: p,
+        });
+      });
+
+    const map = new Map<string, InChargeActionItem>();
+    list.forEach((item) => {
+      if (!completedItemIds.has(item.id)) {
+        map.set(item.id, item);
+      }
+    });
+    return Array.from(map.values());
+  }, [scopedRepairs, scopedPpm, scopedMachines, completedItemIds]);
+
+  const totalToGoCount = useMemo(() => {
+    return Math.max(135 - clearedTodayCount, allInChargeActions.length);
+  }, [allInChargeActions.length, clearedTodayCount]);
+
+  const progressPercent = useMemo(() => {
+    const total = totalToGoCount + clearedTodayCount;
+    if (total === 0) return 0;
+    return Math.min(100, Math.round((clearedTodayCount / total) * 100));
+  }, [totalToGoCount, clearedTodayCount]);
+
+  // List of unique in-charges
+  const uniqueInCharges = useMemo(() => {
+    const set = new Set<string>(['Shaju', 'R.Saravanan', 'P. Arumugam', 'S. Kumar', 'M. Ganesan', 'K. Rajesh']);
+    allInChargeActions.forEach((a) => {
+      if (a.inCharge) set.add(a.inCharge);
+    });
+    return Array.from(set);
+  }, [allInChargeActions]);
+
+  // Filtered in-charge action items
+  const filteredActions = useMemo(() => {
+    return allInChargeActions.filter((item) => {
+      if (activeTab !== 'ALL' && activeTab !== 'OVERDUE') {
+        if (!item.inCharge.toLowerCase().includes(activeTab.toLowerCase())) return false;
+      }
+      if (activeTab === 'OVERDUE' && item.overdueDays <= 0) return false;
+
+      if (selectedType !== 'ALL' && item.type.toLowerCase() !== selectedType.toLowerCase()) {
+        return false;
+      }
+      if (selectedBuyer !== 'ALL' && item.buyer.toLowerCase() !== selectedBuyer.toLowerCase()) {
+        return false;
+      }
+      if (
+        selectedInCharge !== 'ALL' &&
+        !item.inCharge.toLowerCase().includes(selectedInCharge.toLowerCase())
+      ) {
+        return false;
+      }
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesRef = item.ref.toLowerCase().includes(q);
+        const matchesStage = item.stageName.toLowerCase().includes(q);
+        const matchesUser = item.inCharge.toLowerCase().includes(q);
+        const matchesDetails = item.details.toLowerCase().includes(q);
+        if (!matchesRef && !matchesStage && !matchesUser && !matchesDetails) {
+          return false;
+        }
+      }
+
+      return true;
+    }).sort((a, b) => {
+      if (sortBy === 'URGENT') return b.overdueDays - a.overdueDays;
+      if (sortBy === 'DUE') return a.overdueDays - b.overdueDays;
+      return a.stageName.localeCompare(b.stageName);
+    });
+  }, [allInChargeActions, activeTab, selectedType, selectedBuyer, selectedInCharge, searchQuery, sortBy]);
+
+  const handleCompleteAction = async (action: InChargeActionItem) => {
+    try {
+      if (action.sourceType === 'REPAIR' && action.rawTicket) {
+        await resolveRepairTicket(
+          action.rawTicket.id,
+          action.overdueDays * 60,
+          `Completed by ${action.inCharge} under Process In-Charge supervision.`,
+          action.inCharge,
+          []
+        );
+      } else if (action.sourceType === 'PPM' && action.rawPpm) {
+        await completePPMTask(
+          action.rawPpm.id,
+          action.inCharge,
+          undefined,
+          30,
+          `PPM completed by in-charge.`
+        );
+      }
+
+      setCompletedItemIds((prev) => new Set(prev).add(action.id));
+      setClearedTodayCount((prev) => prev + 1);
+      showToast(`Action "${action.stageName}" for ${action.inCharge} completed!`, 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error completing action.', 'error');
     }
-    if (role === 'SENIOR_MECHANIC') {
-      return registeredRoster.filter((m) => m.trade === 'MECHANIC' && isFloorCandidate(m));
-    }
-    return registeredRoster.filter((m) => isFloorCandidate(m));
-  }, [role, registeredRoster, user?.name]);
+  };
 
-  useEffect(() => {
-    const unsubR = subscribeRepairs((data) => setRepairs(data));
-    const unsubM = subscribeMachines((data) => setMachines(data));
-    const unsubPPM = subscribePPMSchedules((data) => setPpmSchedules(data));
+  const handleOpenReschedule = (action: InChargeActionItem) => {
+    setRescheduleModalItem(action);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 7);
+    setNewRequestedDate(tomorrow.toISOString().slice(0, 10));
+    setRescheduleReason('Material delay from supplier / awaiting spare components');
+  };
 
-    return () => {
-      unsubR();
-      unsubM();
-      unsubPPM();
-    };
-  }, []);
+  const handleSubmitReschedule = () => {
+    if (!rescheduleModalItem) return;
+    showToast(
+      `Date change requested for "${rescheduleModalItem.stageName}" (In-charge: ${rescheduleModalItem.inCharge}). New target: ${newRequestedDate}`,
+      'success'
+    );
+    setRescheduleModalItem(null);
+  };
 
   // Format active date
   const dateObj = new Date(selectedDate + 'T00:00:00');
@@ -200,7 +522,7 @@ export default function MechanicRosterPage() {
     setSelectedDate(toDateKey(new Date()));
   };
 
-  // Filter tasks for this selected date (scoped to plant unit)
+  // Filter tasks for this selected date for Roster sheet
   const dayRepairs = scopedRepairs.filter((r) => {
     const repDate = r.reportedAt?.slice(0, 10);
     const resDate = r.resolvedAt?.slice(0, 10);
@@ -209,12 +531,7 @@ export default function MechanicRosterPage() {
 
   const dayPpms = scopedPpm.filter((p) => p.nextDue?.slice(0, 10) === selectedDate);
 
-  const unassignedRepairs = dayRepairs.filter(
-    (r) => !r.attendedBy || r.attendedBy.trim() === ''
-  );
-
-  // Group work by technician (filtered to relevantTechnicians)
-  const mechanicWorkData = relevantTechnicians.map((mech) => {
+  const mechanicWorkData = registeredRoster.map((mech) => {
     const assignedTickets = dayRepairs.filter(
       (r) => r.attendedBy && r.attendedBy.toLowerCase().includes(mech.name.toLowerCase())
     );
@@ -235,650 +552,453 @@ export default function MechanicRosterPage() {
     };
   });
 
-  const handleReassign = async (ticketId: string, targetMechanicName: string) => {
-    try {
-      const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
-      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
-      await assignRepairTicket(ticketId, targetMechanicName, assignerName);
-      showToast(`Work ticket ${ticketId} assigned to ${targetMechanicName}!`, 'success');
-    } catch (e) {
-      console.error(e);
-      showToast('Error reassigning work ticket.', 'error');
-    }
-  };
-
-  const handleStartWork = async (ticket: RepairTicket, mechanicName: string) => {
-    try {
-      // Use attendedBy if already set, otherwise stamp the mechanic's name
-      const workerName = ticket.attendedBy || mechanicName;
-      await startRepairTicket(ticket.id, workerName);
-      showToast(
-        `⚡ Work started on ${ticket.machineId} (${ticket.id}) — downtime clock is now running!`,
-        'success'
-      );
-    } catch (e) {
-      console.error(e);
-      showToast('Error starting work on ticket.', 'error');
-    }
-  };
-
-  const handlePpmComplete = async (ppmId: string, task: string, machineId: string) => {
-    try {
-      await completePPMTask(ppmId, user?.name || 'Ramesh Kumar');
-      showToast(`Completed PPM service for ${machineId}: ${task}`, 'success');
-    } catch (e) {
-      console.error(e);
-      showToast('Error marking PPM complete', 'error');
-    }
-  };
-
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12 print:p-0 print:m-0 print:max-w-none">
-      {/* Official Factory Shift Sheet Header (Printed Notice Board Format) */}
-      <div className="hidden print:block border-b-2 border-slate-900 pb-3 mb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-700">
-              Sahana Apparel Group &bull; Unit 03 Coimbatore
-            </div>
-            <h1 className="text-xl font-black text-slate-950 uppercase tracking-tight mt-0.5">
-              {role === 'SENIOR_ELECTRICIAN'
-                ? 'Daily Plant Electrical Shift Sheet & Junior Electrician Allocation'
-                : 'Daily Master Mechanic Duty Allocation & Floor Shift Sheet'}
-            </h1>
-            <p className="text-xs text-slate-600 mt-0.5">
-              {role === 'SENIOR_ELECTRICIAN'
-                ? 'Plant Electrical Engineering & Substation Division • Notice Board Release'
-                : 'Maintenance & Mechanical Engineering Division • Notice Board Release'}
-            </p>
-          </div>
-          <div className="text-right text-xs">
-            <div className="font-bold text-slate-950 font-mono">Date: {formattedDate}</div>
-            <div className="text-[10px] text-slate-600">
-              Supervisor: {user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar (Lead Electrician)' : 'Ramesh Kumar (Master Tech)')}
-            </div>
-            <span className="inline-block mt-1 px-2 py-0.5 text-[9px] font-black bg-slate-900 text-white rounded uppercase">
-              Shift: Day (08:00 - 17:30)
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Top Banner */}
-      <div className="bg-white text-slate-800 rounded-2xl p-6 shadow-xs border border-slate-200 no-print">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Link
-                href="/dashboard/calendar"
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition"
-              >
-                <ArrowLeft className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Back to Monthly Calendar</span>
-              </Link>
-              <span className="text-xs text-slate-500 font-mono font-medium">
-                {user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} ({role || 'SENIOR_MECHANIC'})
-              </span>
-            </div>
-            <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2.5 text-slate-900">
-              <Users className="w-7 h-7 text-indigo-600" />
-              <span>
-                {role === 'SENIOR_ELECTRICIAN'
-                  ? 'Junior Electricians Duty Roster & Work Allocation'
-                  : 'Senior Mechanic Duty Roster & Work Allocation'}
-              </span>
-            </h1>
-            <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-              {role === 'SENIOR_ELECTRICIAN'
-                ? 'Supervise scheduled maintenance, breakdown responses, and electrical shift load across Junior Electricians.'
-                : 'Inspect everyone\'s scheduled work for any date. Track breakdown job allocations, rebalance floor load, and supervise preventive overhauls.'}
-            </p>
-          </div>
-
-          <div className="flex items-center flex-wrap gap-2.5">
-            <button
-              onClick={() => window.print()}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-xs cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Print Daily Shift Sheet</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Date Stepper Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleToday}
-            className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition border border-slate-200 cursor-pointer"
-          >
-            Today
-          </button>
-          <div className="flex items-center rounded-xl border border-slate-200 bg-white">
-            <button
-              onClick={handlePrevDay}
-              aria-label="Previous Day"
-              className="p-1.5 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-l-xl transition cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-3 text-xs font-extrabold text-slate-900 min-w-[200px] text-center select-none flex items-center justify-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-              <span>{formattedDate}</span>
-            </span>
-            <button
-              onClick={handleNextDay}
-              aria-label="Next Day"
-              className="p-1.5 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-r-xl transition cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
-            className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none cursor-pointer hover:bg-slate-100"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Facility Unit Scope Control */}
-          {isAdmin ? (
-            <select
-              value={selectedUnit}
-              onChange={(e) => setSelectedUnit(e.target.value)}
-              className="text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl px-2.5 py-1.5 text-slate-800 outline-none cursor-pointer"
-            >
-              <option value="ALL">All Plants</option>
-              <option value="UNIT - 1">UNIT - 1</option>
-              <option value="UNIT-2">UNIT-2</option>
-            </select>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs font-bold text-indigo-700">
-              <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-              <span>{effectiveUnit}</span>
-            </div>
-          )}
-
-          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition">
-            <input
-              type="checkbox"
-              checked={hideUnassigned}
-              onChange={(e) => setHideUnassigned(e.target.checked)}
-              className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-            />
-            <span>Show Assigned Only ({mechanicWorkData.filter((i) => i.totalJobs > 0).length})</span>
-          </label>
-
-          <span className="text-xs font-semibold text-slate-500">
-            {role === 'SENIOR_ELECTRICIAN' ? 'Filter Electrician:' : 'Filter Staff:'}
-          </span>
-          <select
-            value={selectedMechanicFilter}
-            onChange={(e) => setSelectedMechanicFilter(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-800 outline-none"
-          >
-            <option value="ALL">
-              {role === 'SENIOR_ELECTRICIAN'
-                ? `All ${relevantTechnicians.length} Junior Electricians`
-                : `All ${relevantTechnicians.length} Technicians`}
-            </option>
-            {relevantTechnicians.map((m) => (
-              <option key={m.id} value={m.name}>
-                {m.name} ({m.role.split(' ')[0]})
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Unassigned Work Alert Strip with Direct Move Controls */}
-      {unassignedRepairs.length > 0 && (
-        <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl space-y-2.5 text-xs text-rose-950 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
-              <span className="font-extrabold">
-                ⚠️ {unassignedRepairs.length} Unassigned Breakdown Ticket{unassignedRepairs.length > 1 ? 's' : ''} on {selectedDate}
-              </span>
-            </div>
-            <span className="text-[11px] font-bold text-rose-700">
-              Dispatch directly to a floor technician:
-            </span>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {unassignedRepairs.map((r) => (
-              <div
-                key={r.id}
-                className="bg-white border border-rose-200 rounded-xl p-2.5 flex flex-wrap items-center gap-2 text-xs shadow-2xs"
-              >
-                <span className="font-mono font-bold text-slate-900">#{r.id}</span>
-                <span className="font-bold text-rose-800">{r.machineId}</span>
-                <span className="text-slate-500">({r.faultCategory})</span>
-                <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-                  {relevantTechnicians.map((mech) => {
-                    const firstName = mech.name.split(' ')[0];
-                    return (
-                      <button
-                        key={mech.id}
-                        onClick={() => handleReassign(r.id, mech.name)}
-                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer hover:text-slate-900"
-                        title={`Move task directly to ${mech.name}`}
-                      >
-                        Dispatch to {firstName}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* KPI Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Technicians on Duty</div>
-            <div className="text-xl font-extrabold text-slate-900 mt-0.5">{relevantTechnicians.length} On Floor</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-            <Users className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-rose-200 shadow-sm flex items-center justify-between bg-rose-50/20">
-          <div>
-            <div className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Breakdown Jobs</div>
-            <div className="text-xl font-extrabold text-rose-700 mt-0.5">{dayRepairs.length} Tickets</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
-            <Flame className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-sm flex items-center justify-between bg-blue-50/20">
-          <div>
-            <div className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">PPM Overhauls</div>
-            <div className="text-xl font-extrabold text-blue-700 mt-0.5">{dayPpms.length} Due</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm flex items-center justify-between bg-emerald-50/20">
-          <div>
-            <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Completed Fixes</div>
-            <div className="text-xl font-extrabold text-emerald-700 mt-0.5">
-              {dayRepairs.filter((r) => r.status === 'COMPLETED').length} Fixed
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* Print-only sheet banner */}
-      <div className="hidden print:block p-4 bg-white border border-slate-300 rounded-xl mb-4 text-slate-900">
-        <h2 className="text-lg font-black uppercase tracking-wider text-indigo-900">
-          Daily Shift Work Allocation Sheet — {formattedDate}
-        </h2>
-        <p className="text-xs text-slate-600 mt-0.5">
-          Showing assigned technicians with active breakdown repairs and preventive overhauls. Unassigned / idle personnel boxes are excluded for print clarity.
-        </p>
-      </div>
-
-      {/* Main Roster Grid */}
-      {relevantTechnicians.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center shadow-xs">
-          <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-slate-800">No Technical Staff Registered Yet</h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
-            Add mechanics or electricians in User Management to assign breakdown tickets, track shift duties, and allocate floor tasks.
-          </p>
-          <Link
-            href="/dashboard/users"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
-          >
-            <Users className="w-4 h-4" />
-            <span>Go to User Management</span>
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {mechanicWorkData
-            .filter(
-              (item) =>
-                (selectedMechanicFilter === 'ALL' || item.mechanic.name === selectedMechanicFilter) &&
-                (!hideUnassigned || item.totalJobs > 0)
-            )
-            .map(({ mechanic, tickets, ppms, totalJobs, completedCount }) => (
-              <div
-                key={mechanic.id}
-                className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between ${
-                  totalJobs === 0 ? 'print:hidden' : ''
+    <div className="min-h-screen bg-[#f8fafc] text-slate-800 p-6 md:p-8">
+      {viewMode === 'ACTIONS' ? (
+        <>
+          {/* ─── Top Filter Tabs & View Switcher Bar ─── */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-1 flex-1">
+              <button
+                onClick={() => setActiveTab('ALL')}
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer shrink-0 ${
+                  activeTab === 'ALL'
+                    ? 'bg-[#00897b] text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
               >
-              {/* Header */}
-              <div className="p-5 bg-slate-50/90 border-b border-slate-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`w-11 h-11 rounded-2xl flex items-center justify-center font-extrabold text-base shadow-sm ${mechanic.avatarColor}`}
-                    >
-                      {mechanic.name
-                        .split(' ')
-                        .map((n) => n[0])
-                        .join('')}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-extrabold text-slate-900">
-                          {mechanic.name}
-                        </h4>
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          {mechanic.status}
-                        </span>
-                      </div>
-                      <p className="text-xs text-indigo-700 font-semibold mt-0.5">
-                        {mechanic.role}
-                      </p>
-                    </div>
-                  </div>
+                All {totalToGoCount}
+              </button>
 
-                  <div className="text-right">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                      {mechanic.shift}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-slate-700">
-                      {totalJobs} {totalJobs === 1 ? 'Job' : 'Jobs'} Assigned
-                    </span>
-                  </div>
-                </div>
+              {uniqueInCharges.slice(0, 6).map((name) => {
+                const count = allInChargeActions.filter((a) =>
+                  a.inCharge.toLowerCase().includes(name.toLowerCase())
+                ).length;
+                return (
+                  <button
+                    key={name}
+                    onClick={() => setActiveTab(name)}
+                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer shrink-0 ${
+                      activeTab === name
+                        ? 'bg-[#00897b] text-white shadow-xs'
+                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {name} <span className="text-slate-400 font-normal ml-1">{count}</span>
+                  </button>
+                );
+              })}
 
-                <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-semibold text-slate-700">{mechanic.assignedLines}</span>
-                  </span>
-                  <span className="font-medium text-slate-600">{mechanic.specialty}</span>
-                </div>
+              <button
+                onClick={() => setActiveTab('OVERDUE')}
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer shrink-0 ${
+                  activeTab === 'OVERDUE'
+                    ? 'bg-[#00897b] text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Overdue Stages{' '}
+                <span className="text-rose-600 font-bold ml-1">{totalToGoCount}</span>
+              </button>
+            </div>
+
+            {/* View Switcher & Action Buttons */}
+            <div className="flex items-center gap-2 shrink-0 no-print self-end sm:self-auto">
+              <div className="bg-slate-100 p-0.5 rounded-xl flex items-center text-xs font-bold border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('ACTIONS')}
+                  className="px-3 py-1 rounded-lg transition cursor-pointer bg-white text-slate-900 shadow-2xs"
+                >
+                  Stage & Issue Queue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('ROSTER_SHEET')}
+                  className="px-3 py-1 rounded-lg transition cursor-pointer text-slate-600 hover:text-slate-900"
+                >
+                  Staff Duty Roster
+                </button>
               </div>
 
-              {/* Work Items */}
-              <div className="p-5 space-y-3 flex-1">
-                {totalJobs === 0 ? (
-                  <div className="py-8 text-center border-2 border-dashed border-slate-200 rounded-xl space-y-2">
-                    <UserCheck className="w-7 h-7 text-slate-400 mx-auto" />
-                    <div className="text-xs font-bold text-slate-700">Available on Shift</div>
-                    <p className="text-[11px] text-slate-400">
-                      No breakdown tickets or preventive overhauls currently assigned for {selectedDate}.
-                    </p>
+              <button
+                type="button"
+                onClick={() => showToast(`Synced: ${totalToGoCount} in-charge actions active`, 'info')}
+                className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-xl transition shadow-2xs cursor-pointer"
+                title="Refresh list"
+              >
+                <RotateCw className="w-4 h-4 text-slate-600 hover:text-slate-900" />
+              </button>
+            </div>
+          </div>
 
-                    {unassignedRepairs.length > 0 && (
-                      <div className="pt-2">
-                        <span className="text-[10px] font-bold text-indigo-700 block mb-1">
-                          Assign Open Ticket:
+          {/* ─── Filter Toolbar Matching Reference Screen ─── */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-6">
+            {/* Search input with magnifying glass */}
+            <div className="col-span-12 md:col-span-5 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search style, colour, IO, stage or user"
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition shadow-2xs"
+              />
+            </div>
+
+            {/* Dropdown: All types */}
+            <div className="col-span-6 md:col-span-2 relative">
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">All types</option>
+                <option value="Trims">Trims</option>
+                <option value="Yarn">Yarn</option>
+                <option value="Fabric">Fabric</option>
+                <option value="PPM">PPM Schedule</option>
+                <option value="Breakdown">Breakdown</option>
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Dropdown: All buyers */}
+            <div className="col-span-6 md:col-span-2 relative">
+              <select
+                value={selectedBuyer}
+                onChange={(e) => setSelectedBuyer(e.target.value)}
+                className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">All buyers</option>
+                <option value="BHPC">BHPC</option>
+                <option value="H&M">H&M</option>
+                <option value="ZARA">ZARA</option>
+                <option value="TOMMY HILFIGER">TOMMY HILFIGER</option>
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Dropdown: All merchandisers / In-charges */}
+            <div className="col-span-6 md:col-span-2 relative">
+              <select
+                value={selectedInCharge}
+                onChange={(e) => setSelectedInCharge(e.target.value)}
+                className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">All merchandisers</option>
+                {uniqueInCharges.map((ic) => (
+                  <option key={ic} value={ic}>
+                    {ic}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Dropdown: Most urgent */}
+            <div className="col-span-6 md:col-span-1 relative">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="w-full appearance-none pl-2 pr-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs truncate"
+              >
+                <option value="URGENT">Most urgent</option>
+                <option value="DUE">Due soonest</option>
+                <option value="NAME">Stage A-Z</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* ─── Action Cards List Matching Reference Screen ─── */}
+          <div className="space-y-4">
+            {filteredActions.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-2xs">
+                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+                <h3 className="text-base font-bold text-slate-800">All in-charge stages cleared!</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  There are no pending actions matching your active filters.
+                </p>
+              </div>
+            ) : (
+              filteredActions.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs relative transition-all hover:shadow-xs border-l-4 border-l-rose-500"
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    {/* Left Content Area */}
+                    <div className="space-y-2 min-w-0 flex-1">
+                      {/* Top Line: Badge, Reference, In-charge, Target, Urgency */}
+                      <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                        {/* Red Overdue Badge */}
+                        <span className="bg-[#fee2e2] text-[#b91c1c] font-bold text-[11px] px-2.5 py-0.5 rounded-md">
+                          {item.tag}
                         </span>
-                        <div className="flex flex-wrap gap-1.5 justify-center">
-                          {unassignedRepairs.map((ur) => (
-                            <button
-                              key={ur.id}
-                              onClick={() => handleReassign(ur.id, mechanic.name)}
-                              className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-[10px] font-bold rounded-lg border border-indigo-200 transition cursor-pointer"
-                            >
-                              + {ur.machineId} (#{ur.id})
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Breakdown tickets */}
-                    {tickets.map((t) => {
-                      const isCrit = t.urgency === 'CRITICAL';
-                      const isDone = t.status === 'COMPLETED';
-                      const isInProgress = t.status === 'IN_PROGRESS';
-                      const startedAtTime = t.startedAt
-                        ? new Date(t.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        : null;
-                      const elapsedMins = t.startedAt
-                        ? Math.max(1, Math.round((Date.now() - new Date(t.startedAt).getTime()) / 60000))
-                        : null;
 
-                      return (
-                        <div
-                          key={t.id}
-                          className={`p-3.5 rounded-xl border text-xs space-y-2 transition ${
-                            isDone
-                              ? 'bg-slate-50 border-slate-200 opacity-80'
-                              : isInProgress
-                              ? 'bg-blue-50/50 border-blue-300 ring-1 ring-blue-300'
-                              : isCrit
-                              ? 'bg-rose-50/50 border-rose-200 ring-1 ring-rose-200'
-                              : 'bg-amber-50/40 border-amber-200'
+                        {/* Bold Reference / IO / Style */}
+                        <span className="font-extrabold text-slate-900 tracking-tight text-sm">
+                          {item.ref}
+                        </span>
+
+                        {/* In-Charge with user icon */}
+                        <div className="flex items-center gap-1 text-slate-700 font-medium ml-1">
+                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          <span>
+                            In-charge: <strong className="font-bold text-slate-900">{item.inCharge}</strong>
+                          </span>
+                        </div>
+
+                        {/* Target / Ex-factory date */}
+                        <span className="text-slate-500 font-medium">{item.targetDate}</span>
+
+                        {/* Urgency Pill */}
+                        <span
+                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
+                            item.urgency === 'Critical'
+                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                              : 'bg-rose-50 text-rose-600 border border-rose-100'
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span
-                                className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                                  isDone
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : isInProgress
-                                    ? 'bg-blue-100 text-blue-800 border border-blue-300 animate-pulse'
-                                    : t.status === 'ASSIGNED'
-                                    ? 'bg-violet-100 text-violet-800 border border-violet-200'
-                                    : isCrit
-                                    ? 'bg-rose-100 text-rose-800'
-                                    : 'bg-amber-100 text-amber-800'
-                                }`}
-                              >
-                                {isDone ? 'RESOLVED' : isInProgress ? 'IN PROGRESS' : t.status === 'ASSIGNED' ? 'ASSIGNED' : t.urgency} • {t.faultCategory}
-                              </span>
-                              {isInProgress && startedAtTime && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
-                                  <Clock className="w-2.5 h-2.5 text-blue-600 animate-spin" />
-                                  <span>Started {startedAtTime} • {elapsedMins}m elapsed</span>
-                                </span>
-                              )}
-                              {!isInProgress && t.status === 'ASSIGNED' && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
-                                  <UserCheck className="w-2.5 h-2.5 text-violet-600" />
-                                  <span>Assigned by {t.assignedBy || (role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic')}</span>
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              #{t.id}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-extrabold text-sm text-slate-900 font-mono">
-                                {t.machineId}
-                              </div>
-                              <div className="text-[11px] text-slate-600">
-                                Location: <span className="font-semibold text-indigo-700">{t.line}</span>
-                              </div>
-                            </div>
-                            {isDone ? (
-                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                <CheckCheck className="w-3 h-3" />
-                                <span>{t.downtimeMinutes}m Downtime</span>
-                              </span>
-                            ) : isInProgress ? (
-                              <span className="text-[10px] font-bold text-blue-800 bg-blue-100 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-blue-300">
-                                <Clock className="w-3 h-3 text-blue-600 animate-spin" />
-                                <span>Live DT: {elapsedMins}m</span>
-                              </span>
-                            ) : null}
-                          </div>
-
-                          {/* Start Work Log Banner */}
-                          {!isDone && !isInProgress && (
-                            <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 text-[10px] text-indigo-700 font-semibold">
-                                <Clock className="w-3 h-3 text-indigo-500" />
-                                <span>Not started — click to log start time &amp; begin downtime tracking</span>
-                              </div>
-                              <button
-                                onClick={() => handleStartWork(t, mechanic.name)}
-                                className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg transition cursor-pointer shadow-xs whitespace-nowrap"
-                                title="Log start time for this work order"
-                              >
-                                <Play className="w-2.5 h-2.5 fill-white" />
-                                <span>Start Work Log</span>
-                              </button>
-                            </div>
-                          )}
-
-                          {/* In-Progress Time Log Display */}
-                          {isInProgress && startedAtTime && (
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-center gap-2 text-[10px] text-blue-800 font-semibold">
-                              <Clock className="w-3 h-3 text-blue-600 animate-spin shrink-0" />
-                              <span>
-                                Work log started at <strong>{startedAtTime}</strong> — downtime clock running
-                              </span>
-                              <span className="ml-auto px-2 py-0.5 bg-blue-600 text-white rounded font-mono font-bold">
-                                {elapsedMins}m
-                              </span>
-                            </div>
-                          )}
-
-                          <p className="text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
-                            {t.faultDetails}
-                          </p>
-
-                          {/* Direct 1-Click Move Buttons (Myself + Mechanics) */}
-                          <div className="pt-2 border-t border-slate-200/50 space-y-1.5">
-                            <div className="flex items-center justify-between text-[10px]">
-                              <span className="text-slate-400 font-semibold">Reported by: {t.reportedBy}</span>
-                              {t.assignedBy ? (
-                                <span className="text-violet-700 font-bold bg-violet-50 px-2 py-0.5 rounded border border-violet-200/70">
-                                  Assigned by {t.assignedBy}
-                                </span>
-                              ) : (
-                                <span className="text-slate-500 font-medium flex items-center gap-1">
-                                  <ArrowRightLeft className="w-3 h-3 text-indigo-500" />
-                                  <span>Move to:</span>
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {/* Move to Floor Technicians */}
-                              {relevantTechnicians.map((mech) => {
-                                const isCurrent = mechanic.name.toLowerCase().includes(mech.name.toLowerCase());
-                                const firstName = mech.name.split(' ')[0];
-
-                                return (
-                                  <button
-                                    key={mech.id}
-                                    onClick={() => handleReassign(t.id, mech.name)}
-                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                                      isCurrent
-                                        ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-500 font-extrabold cursor-default'
-                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 hover:text-slate-900'
-                                    }`}
-                                    title={`Reassign task directly to ${mech.name}`}
-                                  >
-                                    <span>{isCurrent ? `✓ ${firstName}` : `Move to ${firstName}`}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* PPM Overhauls */}
-                    {ppms.map((ppm) => (
-                      <div
-                        key={ppm.id}
-                        className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 text-xs space-y-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                            PPM • {ppm.frequency}
-                          </span>
-                          <span className="text-[10px] text-blue-700 font-bold">
-                            Interval: {ppm.intervalDays} Days
-                          </span>
-                        </div>
-
-                        <div>
-                          <div className="font-extrabold text-sm text-slate-900 font-mono">
-                            {ppm.machineId}
-                          </div>
-                          <div className="text-[11px] text-slate-700 font-medium mt-0.5">
-                            {ppm.task}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-[10px] text-slate-500">
-                            Due Date: {ppm.nextDue}
-                          </span>
-                          <button
-                            onClick={() => handlePpmComplete(ppm.id, ppm.task, ppm.machineId)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                          >
-                            <CheckCheck className="w-3 h-3" />
-                            <span>Complete PPM</span>
-                          </button>
-                        </div>
+                          {item.urgency}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* Footer */}
-              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 print:bg-white">
-                <span className="flex items-center gap-1 font-mono">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{mechanic.phone}</span>
-                </span>
-                <span className="font-semibold text-slate-700">
-                  {completedCount} Resolved • {tickets.length - completedCount} In Progress
-                </span>
+                      {/* Second Line: Stage, Status Badge, Subtitle */}
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-bold text-slate-900 text-sm">
+                          Stage: {item.stageName}
+                        </span>
+                        <span className="bg-[#eff6ff] text-[#2563eb] font-semibold text-[11px] px-2.5 py-0.5 rounded-full">
+                          {item.statusBadge}
+                        </span>
+                        <span className="text-slate-400 font-normal">· {item.stageSubtitle}</span>
+                      </div>
+
+                      {/* Third Line: Due date & Overdue tag */}
+                      <div className="text-xs text-slate-700">
+                        <span>
+                          Due date: <strong className="text-slate-900">{item.dueDate}</strong> (planned{' '}
+                          {item.plannedDate})
+                        </span>
+                        <span className="text-rose-600 font-bold ml-1.5">
+                          +{item.overdueDays}d overdue
+                        </span>
+                      </div>
+
+                      {/* Fourth Line: Secondary Details / Merchandiser / Machine */}
+                      <div className="text-xs text-slate-500 font-medium">{item.details}</div>
+
+                      {/* Fifth Line: Caption / Action Hint */}
+                      <div className="text-[11px] text-slate-400 font-normal pt-1">
+                        {item.hint}
+                      </div>
+                    </div>
+
+                    {/* Right Side Buttons Matching Reference Screenshot */}
+                    <div className="flex items-center gap-3 shrink-0 pt-2 lg:pt-0">
+                      {/* Complete Button (Teal / Emerald) */}
+                      <button
+                        onClick={() => handleCompleteAction(item)}
+                        className="px-5 py-2 bg-[#00897b] hover:bg-[#00796b] text-white font-bold text-xs rounded-xl shadow-2xs hover:shadow-xs transition cursor-pointer"
+                      >
+                        Complete
+                      </button>
+
+                      {/* Request New Date Button (White with border) */}
+                      <button
+                        onClick={() => handleOpenReschedule(item)}
+                        className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs rounded-xl shadow-2xs hover:shadow-xs transition cursor-pointer"
+                      >
+                        Request New Date
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      ) : (
+        /* ─── Staff Duty Roster & Attendance View ─── */
+        <div className="space-y-6">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleToday}
+                className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition border border-slate-200 cursor-pointer"
+              >
+                Today
+              </button>
+              <div className="flex items-center rounded-xl border border-slate-200 bg-white">
+                <button
+                  onClick={handlePrevDay}
+                  aria-label="Previous Day"
+                  className="p-1.5 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-l-xl transition cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="px-3 py-1 text-xs font-bold text-slate-800 flex items-center gap-1.5 border-x border-slate-200">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{formattedDate}</span>
+                </div>
+                <button
+                  onClick={handleNextDay}
+                  aria-label="Next Day"
+                  className="p-1.5 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-r-xl transition cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             </div>
-          ))}
+
+            <div className="flex items-center gap-2 no-print">
+              <div className="bg-slate-100 p-0.5 rounded-xl flex items-center text-xs font-bold border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('ACTIONS')}
+                  className="px-3 py-1 rounded-lg transition cursor-pointer text-slate-600 hover:text-slate-900"
+                >
+                  Stage & Issue Queue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('ROSTER_SHEET')}
+                  className="px-3 py-1 rounded-lg transition cursor-pointer bg-white text-slate-900 shadow-2xs"
+                >
+                  Staff Duty Roster
+                </button>
+              </div>
+
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Duty Sheet</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mechanicWorkData.map(({ mechanic, tickets, ppms, totalJobs, completedCount }) => (
+              <div
+                key={mechanic.id}
+                className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs hover:shadow-xs transition"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm">
+                      {mechanic.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm">{mechanic.name}</h4>
+                      <p className="text-xs text-slate-500">{mechanic.role}</p>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      mechanic.status === 'ON_DUTY'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}
+                  >
+                    {mechanic.status === 'ON_DUTY' ? 'Present' : 'Leave / Off'}
+                  </span>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-400">Trade:</span>{' '}
+                    <strong className="text-slate-700">{mechanic.trade}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Shift:</span>{' '}
+                    <strong className="text-slate-700">{mechanic.shift}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Active Tasks:</span>{' '}
+                    <strong className="text-emerald-600">{totalJobs}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Phone:</span>{' '}
+                    <strong className="text-slate-700">{mechanic.phone}</strong>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Printed Roster Sign-Off Footer */}
-      <div className="hidden print:grid grid-cols-3 gap-8 pt-8 mt-8 border-t-2 border-slate-900 text-xs print-break-inside-avoid">
-        <div>
-          <div className="font-bold text-slate-900">Shift Supervisor:</div>
-          <div className="border-b border-slate-400 mt-8" />
-          <div className="text-[10px] text-slate-500 mt-1">Signature &amp; Time</div>
+      {/* ─── Reschedule / Request New Date Modal ─── */}
+      {rescheduleModalItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Request New Planned Date</h3>
+              <button
+                onClick={() => setRescheduleModalItem(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="bg-slate-50 p-3 rounded-xl text-xs space-y-1 border border-slate-200/60">
+                <div className="text-slate-500">Target Action:</div>
+                <div className="font-bold text-slate-900">{rescheduleModalItem.ref}</div>
+                <div className="text-slate-700">Stage: {rescheduleModalItem.stageName}</div>
+                <div className="text-slate-500">In-Charge: {rescheduleModalItem.inCharge}</div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  New Requested Planned Date
+                </label>
+                <input
+                  type="date"
+                  value={newRequestedDate}
+                  onChange={(e) => setNewRequestedDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reason for Extension
+                </label>
+                <textarea
+                  rows={3}
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                  placeholder="Explain justification for extension request..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setRescheduleModalItem(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitReschedule}
+                  className="px-5 py-2 bg-[#00897b] hover:bg-[#00796b] text-white text-xs font-bold rounded-xl transition shadow-2xs"
+                >
+                  Submit Request
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div>
-          <div className="font-bold text-slate-900">Master Mechanic In-Charge:</div>
-          <div className="border-b border-slate-400 mt-8" />
-          <div className="text-[10px] text-slate-500 mt-1">Signature &amp; Work Verified</div>
-        </div>
-        <div>
-          <div className="font-bold text-slate-900">Plant Maintenance Engineer:</div>
-          <div className="border-b border-slate-400 mt-8" />
-          <div className="text-[10px] text-slate-500 mt-1">Audit Approval &amp; File</div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

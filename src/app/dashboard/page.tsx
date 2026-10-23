@@ -11,6 +11,7 @@ import { MechanicDeskDashboard } from '@/components/dashboard/MechanicDeskDashbo
 import { StoreDashboard } from '@/components/dashboard/StoreDashboard';
 import { ExecutiveDashboard } from '@/components/dashboard/ExecutiveDashboard';
 import { FACTORY_UNITS, matchesUnit, getUnitBadgeInfo, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { normalizeRole } from '@/lib/constants/roles';
 import { Building, ShieldCheck, Layers } from 'lucide-react';
 
 import {
@@ -109,8 +110,8 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, user]);
 
-  // Determine active dashboard view based on user's role
-  const activeRole: UserRole = role || 'ADMIN';
+  // Determine active dashboard view based on user's normalized role
+  const activeRole: UserRole = normalizeRole(user?.role || role);
 
   // Multi-unit authority: ONLY Admin & CEO can access/switch all units
   const isMultiUnitAuthority = isUserAdmin(activeRole);

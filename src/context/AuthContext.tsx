@@ -57,6 +57,8 @@ function resolveUserTitle(role: UserRole): string {
       return 'Tool Crib & Store In-Charge';
     case 'MECHANIC':
       return 'Line Sewing Mechanic';
+    default:
+      return (role as string) || 'Garment Factory Specialist';
   }
 }
 

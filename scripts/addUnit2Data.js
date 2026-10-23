@@ -234,17 +234,17 @@ function getUnit2Items(unit1Items) {
       year,
       cost: 45000,
       status: 'ACTIVE',
-      currentLine: `Line 0${((parseInt(zoneNum, 10) - 1) % 4) + 1}`,
+      currentLine: `Line 0${zoneNum}`,
       stationNo: `Station ${String(sNo).padStart(2, '0')}`,
       unit: plant,
-      area: `${location} - Zone ${zoneNum}`,
-      zone: `Zone ${zoneNum}`,
+      area: `${location} - Line 0${zoneNum}`,
+      zone: 'PEACOCK',
       location,
       plant,
       company: 'Sahana Garments Ltd',
       totalDowntimeMinutes: 0,
       motorType: 'SERVO',
-      specs: `Plant ${plant} • Location ${location} • Zone ${zoneNum} • Model ${mcModel}`
+      specs: `Plant ${plant} • Location ${location} • Line 0${zoneNum} • Model ${mcModel}`
     });
   }
 

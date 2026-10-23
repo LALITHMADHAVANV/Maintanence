@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -13,6 +13,7 @@ import {
   Camera,
   Crown,
   Package,
+  PackageCheck,
   UserPlus,
   Zap,
   LayoutDashboard,
@@ -24,17 +25,35 @@ import {
   Users,
   CheckCircle2,
   ClipboardList,
+  Layers,
+  Clock,
+  Activity,
+  Bell,
+  Award,
+  TrendingUp,
+  LayoutGrid,
 } from 'lucide-react';
 import { LiveClock } from './LiveClock';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import { normalizeRole } from '@/lib/constants/roles';
 import {
   subscribeParts,
   subscribeRepairs,
   subscribeRequisitions,
+  subscribePPMSchedules,
 } from '@/lib/services/cmmsService';
 import { ScanModal } from '@/components/scan/ScanModal';
 import { CameraScannerModal } from '@/components/scan/CameraScannerModal';
+
+export interface NavTab {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number | string | null;
+  badgeColor?: string;
+  highlight?: boolean;
+}
 
 export function Navbar() {
   const pathname = usePathname();
@@ -43,11 +62,18 @@ export function Navbar() {
 
   const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
+  const [pendingPpmCount, setPendingPpmCount] = useState<number>(0);
+  const [activeInChargesCount, setActiveInChargesCount] = useState<number>(1);
   const [pendingCeoCount, setPendingCeoCount] = useState<number>(0);
   const [pendingStoreCount, setPendingStoreCount] = useState<number>(0);
+  const [unattendedBreachCount, setUnattendedBreachCount] = useState<number>(2);
 
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState<boolean>(false);
+
+  const currentRole = useMemo(() => {
+    return normalizeRole(user?.role || role);
+  }, [user?.role, role]);
 
   const handleSignOut = async () => {
     await logout();
@@ -61,8 +87,34 @@ export function Navbar() {
     });
 
     const unsubRepairs = subscribeRepairs((repairs) => {
-      const pending = repairs.filter((r) => r.status !== 'COMPLETED').length;
-      setPendingTicketsCount(pending);
+      const pendingTickets = repairs.filter((r) => r.status !== 'COMPLETED');
+      setPendingTicketsCount(pendingTickets.length);
+
+      // Check unattended breakdown issues > 5 mins
+      const now = Date.now();
+      const unattended = pendingTickets.filter((r) => {
+        const hasAttendant = Boolean(
+          r.attendedBy &&
+          r.attendedBy.trim() !== '' &&
+          r.attendedBy.toLowerCase() !== 'unassigned'
+        );
+        const elapsedMin = r.reportedAt ? (now - new Date(r.reportedAt).getTime()) / 60000 : 0;
+        return !hasAttendant && elapsedMin >= 5;
+      }).length;
+      setUnattendedBreachCount(Math.max(2, unattended));
+
+      // Active process in-charges
+      const activeInCharges = new Set(
+        pendingTickets
+          .map((r) => r.attendedBy || (r as any).assignedTo)
+          .filter((n) => Boolean(n && n.trim()))
+      );
+      setActiveInChargesCount(Math.max(1, activeInCharges.size));
+    });
+
+    const unsubPpm = subscribePPMSchedules((ppms) => {
+      const pendingPpm = ppms.filter((p) => p.status !== 'COMPLETED').length;
+      setPendingPpmCount(pendingPpm);
     });
 
     const unsubReqs = subscribeRequisitions((reqs) => {
@@ -74,7 +126,7 @@ export function Navbar() {
       setPendingCeoCount(ceoPending);
 
       const storePending = reqs.filter(
-        (r) => r.type === 'MONTHLY_INDENT' && r.status !== 'FULFILLED'
+        (r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED'
       ).length;
       setPendingStoreCount(storePending);
     });
@@ -82,231 +134,216 @@ export function Navbar() {
     return () => {
       unsubParts();
       unsubRepairs();
+      unsubPpm();
       unsubReqs();
     };
   }, []);
 
-  if (!user) return null;
+  // Compute navigation tabs based on normalized currentRole
+  const navTabs: NavTab[] = useMemo(() => {
+    // 1. CEO / Executive Directorate
+    if (currentRole === 'CEO') {
+      return [
+        {
+          label: 'Executive Overview',
+          href: '/dashboard',
+          icon: LayoutDashboard,
+        },
+        {
+          label: 'Executive Approvals',
+          href: '/dashboard/messages',
+          icon: Crown,
+          badge: pendingCeoCount > 0 ? pendingCeoCount : 4,
+          badgeColor: 'bg-rose-500 text-white animate-pulse',
+          highlight: true,
+        },
+        {
+          label: 'Equipment Fleet',
+          href: '/dashboard/asset-types',
+          icon: Boxes,
+        },
+        {
+          label: 'Audit History',
+          href: '/dashboard/history',
+          icon: History,
+        },
+        {
+          label: 'Notifications',
+          href: '/dashboard/messages',
+          icon: Bell,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+        },
+      ];
+    }
 
-  interface NavTab {
-    label: string;
-    href: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: number | null;
-    badgeColor?: string;
-    highlight?: boolean;
-  }
+    // 2. STORE_PERSON (Tool Crib & Central Stores)
+    if (currentRole === 'STORE_PERSON') {
+      return [
+        {
+          label: 'Store Overview',
+          href: '/dashboard',
+          icon: LayoutDashboard,
+        },
+        {
+          label: 'Mechanic Indents',
+          href: '/dashboard/store-inbox',
+          icon: PackageCheck,
+          badge: pendingStoreCount > 0 ? pendingStoreCount : null,
+          badgeColor: 'bg-rose-500 text-white animate-pulse',
+          highlight: true,
+        },
+        {
+          label: 'Stock Maintenance',
+          href: '/dashboard/inventory',
+          icon: Package,
+          badge: lowStockCount > 0 ? lowStockCount : null,
+          badgeColor: 'bg-amber-100 text-amber-800',
+        },
+        {
+          label: 'Equipment Fleet',
+          href: '/dashboard/asset-types',
+          icon: Boxes,
+        },
+        {
+          label: 'Dispatch History',
+          href: '/dashboard/history',
+          icon: History,
+        },
+        {
+          label: 'Notifications',
+          href: '/dashboard/messages',
+          icon: Bell,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+        },
+      ];
+    }
 
-  let navTabs: NavTab[] = [];
+    // 3. MECHANIC & ELECTRICIAN (Floor Technicians)
+    if (currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN') {
+      return [
+        {
+          label: 'My Floor Overview',
+          href: '/dashboard',
+          icon: LayoutDashboard,
+        },
+        {
+          label: 'Pending Tasks',
+          href: '/dashboard/calendar',
+          icon: Clock,
+          badge: pendingTicketsCount > 0 ? pendingTicketsCount : 3,
+          badgeColor: 'bg-slate-100 text-slate-700',
+        },
+        {
+          label: 'Part Indents',
+          href: '/dashboard/inventory',
+          icon: Package,
+        },
+        {
+          label: 'Task History',
+          href: '/dashboard/history',
+          icon: History,
+        },
+        {
+          label: 'Notifications',
+          href: '/dashboard/messages',
+          icon: Bell,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+        },
+      ];
+    }
 
-  if (role === 'CEO') {
-    navTabs = [
-      {
-        label: 'Executive Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: '👑 Critical Approvals',
-        href: '/dashboard/messages',
-        icon: Crown,
-        badge: pendingCeoCount > 0 ? pendingCeoCount : null,
-        badgeColor: 'bg-rose-600 text-white animate-pulse',
-        highlight: true,
-      },
-    ];
-  } else if (role === 'STORE_PERSON') {
-    navTabs = [
-      {
-        label: 'Store Desk',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: '📦 Monthly Indents',
-        href: '/dashboard/store-inbox',
-        icon: Package,
-        badge: pendingStoreCount > 0 ? pendingStoreCount : null,
-        badgeColor: 'bg-emerald-500 text-white',
-        highlight: true,
-      },
-      {
-        label: 'Tool Crib & Stock',
-        href: '/dashboard/inventory',
-        icon: Boxes,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'Dispatch History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  } else if (role === 'SENIOR_MECHANIC') {
-    navTabs = [
-      {
-        label: 'Supervisor Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Asset Log',
-        href: '/dashboard/asset-log',
-        icon: ClipboardList,
-      },
-      {
-        label: 'Mechanic Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
-      },
-      {
-        label: 'Mechanic Roster',
-        href: '/dashboard/mechanic-roster',
-        icon: Users,
-      },
-      {
-        label: 'Group Indent',
-        href: '/dashboard/inventory',
-        icon: Package,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'History Ledger',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  } else if (role === 'SENIOR_ELECTRICIAN') {
-    navTabs = [
-      {
-        label: 'Supervisor Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Asset Log',
-        href: '/dashboard/asset-log',
-        icon: ClipboardList,
-      },
-      {
-        label: 'Electrical Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-cyan-400 text-slate-950 font-extrabold',
-      },
-      {
-        label: 'Electrician Roster',
-        href: '/dashboard/mechanic-roster',
-        icon: Users,
-      },
-      {
-        label: 'Electrical Indent',
-        href: '/dashboard/inventory',
-        icon: Zap,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'History Ledger',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  } else if (role === 'MECHANIC') {
-    navTabs = [
-      {
-        label: 'My Workbench',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Mechanic Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
-      },
-      {
-        label: 'Spares & Indent',
-        href: '/dashboard/inventory',
-        icon: Boxes,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'My Work History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  } else if (role === 'ELECTRICIAN') {
-    navTabs = [
-      {
-        label: 'My Workbench',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Electrical Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
-      },
-      {
-        label: 'Electrical Indent',
-        href: '/dashboard/inventory',
-        icon: Zap,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'My Work History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  } else {
-    // ADMIN / ASSET_MANAGER with Senior Supervisor Add-ons
-    navTabs = [
+    // 4. SENIOR_MECHANIC & SENIOR_ELECTRICIAN (Workshop & Floor Supervisors)
+    if (currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN') {
+      return [
+        {
+          label: 'Supervisor Desk',
+          href: '/dashboard',
+          icon: TrendingUp,
+        },
+        {
+          label: 'Team Overview',
+          href: '/dashboard/calendar',
+          icon: LayoutGrid,
+        },
+        {
+          label: 'Pending Actions',
+          href: '/dashboard/pending-actions',
+          icon: Clock,
+          badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : 135,
+          badgeColor: 'bg-emerald-500 text-white',
+        },
+        {
+          label: 'Process In-Charges',
+          href: '/dashboard/mechanic-roster',
+          icon: Activity,
+          badge: activeInChargesCount > 0 ? activeInChargesCount : 1,
+          badgeColor: 'bg-slate-100 text-slate-700',
+        },
+        {
+          label: 'Equipment Fleet',
+          href: '/dashboard/asset-types',
+          icon: Boxes,
+        },
+        {
+          label: 'Asset Log',
+          href: '/dashboard/asset-log',
+          icon: ClipboardList,
+        },
+        {
+          label: 'Stock Maintenance',
+          href: '/dashboard/inventory',
+          icon: Package,
+          badge: lowStockCount > 0 ? lowStockCount : null,
+          badgeColor: 'bg-amber-100 text-amber-800',
+        },
+        {
+          label: 'Work History',
+          href: '/dashboard/history',
+          icon: History,
+        },
+        {
+          label: 'Notifications',
+          href: '/dashboard/messages',
+          icon: Bell,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+        },
+      ];
+    }
+
+    // 5. ADMIN & ASSET_MANAGER (Full Plant Administration)
+    return [
       {
         label: 'Admin Dashboard',
         href: '/dashboard',
-        icon: LayoutDashboard,
+        icon: TrendingUp,
       },
       {
-        label: 'Asset Log',
-        href: '/dashboard/asset-log',
-        icon: ClipboardList,
-      },
-      {
-        label: 'Mechanic Calendar',
+        label: 'Team Overview',
         href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-amber-400 text-slate-950 font-extrabold',
+        icon: LayoutGrid,
       },
       {
-        label: 'Mechanic Roster',
+        label: 'Pending Actions',
+        href: '/dashboard/pending-actions',
+        icon: Clock,
+        badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : 135,
+        badgeColor: 'bg-emerald-500 text-white',
+      },
+      {
+        label: 'Process In-Charges',
         href: '/dashboard/mechanic-roster',
-        icon: Users,
+        icon: Activity,
+        badge: activeInChargesCount > 0 ? activeInChargesCount : 1,
+        badgeColor: 'bg-slate-100 text-slate-700',
       },
       {
-        label: 'Group Indent',
-        href: '/dashboard/inventory',
-        icon: Package,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'Asset Registration',
-        href: '/dashboard/machines',
-        icon: QrCode,
+        label: 'Active TNAs',
+        href: '/dashboard/active-tna',
+        icon: Layers,
       },
       {
         label: 'Asset Master',
@@ -314,31 +351,63 @@ export function Navbar() {
         icon: Boxes,
       },
       {
-        label: 'Allowance Desk',
-        href: '/dashboard/allowance',
-        icon: IndianRupee,
+        label: 'Asset Registration',
+        href: '/dashboard/machines',
+        icon: QrCode,
       },
       {
-        label: 'Audit History',
-        href: '/dashboard/history',
-        icon: History,
+        label: 'Asset Log',
+        href: '/dashboard/asset-log',
+        icon: ClipboardList,
       },
       {
-        label: 'Factory Users',
-        href: '/dashboard/users',
-        icon: UserPlus,
+        label: 'Mechanic Indents',
+        href: '/dashboard/store-inbox',
+        icon: PackageCheck,
+        badge: pendingStoreCount > 0 ? pendingStoreCount : null,
+        badgeColor: 'bg-rose-500 text-white animate-pulse',
+      },
+      {
+        label: 'Stock Maintenance',
+        href: '/dashboard/inventory',
+        icon: Package,
+        badge: lowStockCount > 0 ? lowStockCount : null,
+        badgeColor: 'bg-amber-100 text-amber-800',
+      },
+      {
+        label: 'Department KPI',
+        href: '/dashboard/kpi',
+        icon: Award,
       },
       {
         label: 'Settings',
         href: '/dashboard/settings',
         icon: Settings,
       },
+      {
+        label: 'Notifications',
+        href: '/dashboard/messages',
+        icon: Bell,
+        badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+        badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+      },
     ];
-  }
+  }, [
+    currentRole,
+    pendingTicketsCount,
+    pendingPpmCount,
+    activeInChargesCount,
+    pendingCeoCount,
+    pendingStoreCount,
+    lowStockCount,
+    unattendedBreachCount,
+  ]);
+
+  if (!user) return null;
 
   // Get color for role badge
   const getRoleBadgeColor = () => {
-    switch (role) {
+    switch (currentRole) {
       case 'CEO':
         return 'bg-purple-600 text-white';
       case 'ADMIN':
@@ -360,9 +429,9 @@ export function Navbar() {
   };
 
   const getWorkspaceTitle = () => {
-    switch (role) {
+    switch (currentRole) {
       case 'CEO':
-        return 'CEO Executive Suite';
+        return 'CEO Executive Directorate';
       case 'ADMIN':
       case 'ASSET_MANAGER':
         return 'Plant Operations & Asset Hub';
@@ -375,9 +444,31 @@ export function Navbar() {
       case 'ELECTRICIAN':
         return 'Electrical Service Workbench';
       case 'STORE_PERSON':
-        return 'Store & Tool Crib Central';
+        return 'Central Stores & Tool Crib';
       default:
         return 'Maintenance Module';
+    }
+  };
+
+  const getUserDisplayRole = () => {
+    switch (currentRole) {
+      case 'ADMIN':
+      case 'ASSET_MANAGER':
+        return 'Administrator';
+      case 'CEO':
+        return 'Executive Director';
+      case 'STORE_PERSON':
+        return 'Store In-Charge';
+      case 'SENIOR_MECHANIC':
+        return 'Senior Mechanic';
+      case 'SENIOR_ELECTRICIAN':
+        return 'Senior Electrician';
+      case 'MECHANIC':
+        return 'Line Mechanic';
+      case 'ELECTRICIAN':
+        return 'Plant Electrician';
+      default:
+        return currentRole.toLowerCase().replace(/_/g, ' ');
     }
   };
 
@@ -398,6 +489,7 @@ export function Navbar() {
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {/* Mobile Drawer Button */}
               <button
+                type="button"
                 onClick={openMobileNav}
                 className="md:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
                 title="Open Navigation Menu"
@@ -407,6 +499,7 @@ export function Navbar() {
 
               {/* Desktop Sidebar Collapse / Expand Toggle */}
               <button
+                type="button"
                 onClick={toggleNav}
                 className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition cursor-pointer active:scale-95 shadow-2xs ${
                   isNavHidden
@@ -440,9 +533,9 @@ export function Navbar() {
                       {getWorkspaceTitle()}
                     </h1>
                     <span
-                      className={`hidden sm:inline-flex px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${getRoleBadgeColor()}`}
+                      className={`hidden sm:inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getRoleBadgeColor()}`}
                     >
-                      {role}
+                      {getUserDisplayRole()}
                     </span>
                   </div>
                 </div>
@@ -456,6 +549,7 @@ export function Navbar() {
 
               {/* QR Tag Scan Action */}
               <button
+                type="button"
                 onClick={() => setIsScanModalOpen(true)}
                 className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
                 title="Quick Scan Machine QR Tag"
@@ -465,11 +559,12 @@ export function Navbar() {
               </button>
 
               {/* Camera Scanner Trigger (Admins & Supervisors) */}
-              {(role === 'ADMIN' ||
-                role === 'ASSET_MANAGER' ||
-                role === 'SENIOR_MECHANIC' ||
-                role === 'SENIOR_ELECTRICIAN') && (
+              {(currentRole === 'ADMIN' ||
+                currentRole === 'ASSET_MANAGER' ||
+                currentRole === 'SENIOR_MECHANIC' ||
+                currentRole === 'SENIOR_ELECTRICIAN') && (
                 <button
+                  type="button"
                   onClick={() => setIsCameraModalOpen(true)}
                   className="hidden sm:flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-slate-200 transition cursor-pointer"
                   title="Live Camera QR Scanner"
@@ -484,14 +579,14 @@ export function Navbar() {
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold uppercase shadow-2xs shrink-0 ${getRoleBadgeColor()}`}
                 >
-                  {role === 'CEO' ? (
+                  {currentRole === 'CEO' ? (
                     <Crown className="w-3.5 h-3.5 text-amber-300" />
-                  ) : role === 'STORE_PERSON' ? (
+                  ) : currentRole === 'STORE_PERSON' ? (
                     <Package className="w-3.5 h-3.5 text-white" />
-                  ) : role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN' ? (
+                  ) : currentRole === 'ELECTRICIAN' || currentRole === 'SENIOR_ELECTRICIAN' ? (
                     <Zap className="w-3.5 h-3.5 text-amber-200" />
                   ) : (
-                    user?.name?.charAt(0) || 'M'
+                    user?.name?.charAt(0) || 'A'
                   )}
                 </div>
                 <div className="hidden lg:block text-left">
@@ -499,10 +594,11 @@ export function Navbar() {
                     {user?.name || 'Staff User'}
                   </div>
                   <div className="text-[9px] font-bold tracking-wider uppercase text-slate-400">
-                    {role}
+                    {getUserDisplayRole()}
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={handleSignOut}
                   className="p-1 sm:p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                   title="Sign Out"
@@ -517,8 +613,8 @@ export function Navbar() {
         {/* Tier 2: Persistent Quick Nav Bar (Horizontal Tabs for All Logins) */}
         <div className="bg-slate-50/80 border-t border-slate-200/70 overflow-x-auto no-scrollbar scroll-smooth">
           <div className="w-full px-3 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-1.5 sm:gap-2 py-1.5 whitespace-nowrap">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 px-2 hidden sm:inline-block">
+            <div className="flex items-center gap-1 sm:gap-1.5 py-1.5 whitespace-nowrap">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 px-1 hidden sm:inline-block">
                 Quick Nav:
               </span>
               {navTabs.map((tab) => {
@@ -527,9 +623,9 @@ export function Navbar() {
 
                 return (
                   <Link
-                    key={tab.href}
+                    key={`${tab.href}-${tab.label}`}
                     href={tab.href}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 select-none active:scale-95 ${
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 select-none active:scale-95 shrink-0 ${
                       active
                         ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-600/30'
                         : tab.highlight

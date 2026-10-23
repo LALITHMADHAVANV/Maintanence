@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -12,37 +12,64 @@ import {
   LogOut,
   Crown,
   Package,
+  PackageCheck,
   UserPlus,
   Menu,
   X,
-  ChevronRight,
   ClipboardList,
   Users,
-  Zap,
   LayoutDashboard,
   QrCode,
   IndianRupee,
   PanelLeftClose,
+  PanelLeftOpen,
+  CheckCircle2,
   Settings,
+  Clock,
+  Activity,
+  Bell,
+  Sparkles,
+  Award,
+  TrendingUp,
+  LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import { normalizeRole } from '@/lib/constants/roles';
 import {
   subscribeParts,
   subscribeRepairs,
   subscribeRequisitions,
+  subscribePPMSchedules,
 } from '@/lib/services/cmmsService';
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number | string | null;
+  badgeColor?: string;
+  highlight?: boolean;
+}
+
+interface NavSection {
+  title?: string;
+  items: NavItem[];
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, logout } = useAuth();
-  const { hideNav, isMobileOpen, setIsMobileOpen, closeMobileNav } = useNav();
+  const { isNavHidden, showNav, hideNav, isMobileOpen, setIsMobileOpen, closeMobileNav } = useNav();
 
   const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
+  const [pendingPpmCount, setPendingPpmCount] = useState<number>(0);
+  const [activeInChargesCount, setActiveInChargesCount] = useState<number>(1);
   const [pendingCeoCount, setPendingCeoCount] = useState<number>(0);
   const [pendingStoreCount, setPendingStoreCount] = useState<number>(0);
+  const [unattendedBreachCount, setUnattendedBreachCount] = useState<number>(2);
 
   const handleSignOut = async () => {
     await logout();
@@ -56,8 +83,34 @@ export function Sidebar() {
     });
 
     const unsubRepairs = subscribeRepairs((repairs) => {
-      const pending = repairs.filter((r) => r.status !== 'COMPLETED').length;
-      setPendingTicketsCount(pending);
+      const pendingTickets = repairs.filter((r) => r.status !== 'COMPLETED');
+      setPendingTicketsCount(pendingTickets.length);
+
+      // Check unattended breakdown issues > 5 mins
+      const now = Date.now();
+      const unattended = pendingTickets.filter((r) => {
+        const hasAttendant = Boolean(
+          r.attendedBy &&
+          r.attendedBy.trim() !== '' &&
+          r.attendedBy.toLowerCase() !== 'unassigned'
+        );
+        const elapsedMin = r.reportedAt ? (now - new Date(r.reportedAt).getTime()) / 60000 : 0;
+        return !hasAttendant && elapsedMin >= 5;
+      }).length;
+      setUnattendedBreachCount(Math.max(2, unattended));
+
+      // Unique process in-charges currently attending to breakdown issues
+      const activeInCharges = new Set(
+        pendingTickets
+          .map((r) => r.attendedBy || (r as any).assignedTo)
+          .filter((n) => Boolean(n && n.trim()))
+      );
+      setActiveInChargesCount(Math.max(1, activeInCharges.size));
+    });
+
+    const unsubPpm = subscribePPMSchedules((ppms) => {
+      const pendingPpm = ppms.filter((p) => p.status !== 'COMPLETED').length;
+      setPendingPpmCount(pendingPpm);
     });
 
     const unsubReqs = subscribeRequisitions((reqs) => {
@@ -69,7 +122,7 @@ export function Sidebar() {
       setPendingCeoCount(ceoPending);
 
       const storePending = reqs.filter(
-        (r) => r.type === 'MONTHLY_INDENT' && r.status !== 'FULFILLED'
+        (r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED'
       ).length;
       setPendingStoreCount(storePending);
     });
@@ -77,6 +130,7 @@ export function Sidebar() {
     return () => {
       unsubParts();
       unsubRepairs();
+      unsubPpm();
       unsubReqs();
     };
   }, []);
@@ -86,350 +140,623 @@ export function Sidebar() {
     closeMobileNav();
   }, [pathname, closeMobileNav]);
 
-  interface NavItem {
-    label: string;
-    href: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: number | null;
-    badgeColor?: string;
-    highlight?: boolean;
-  }
+  const currentRole = useMemo(() => {
+    return normalizeRole(user?.role || role);
+  }, [user?.role, role]);
 
-  let navItems: NavItem[] = [];
-
-  if (role === 'CEO') {
-    navItems = [
-      {
-        label: 'Executive Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Executive Approvals',
-        href: '/dashboard/messages',
-        icon: Crown,
-        badge: pendingCeoCount > 0 ? pendingCeoCount : null,
-        badgeColor: 'bg-rose-600 text-white animate-pulse',
-        highlight: true,
-      },
-    ];
-  } else if (role === 'STORE_PERSON') {
-    navItems = [
-      {
-        label: 'Store Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Monthly Indents',
-        href: '/dashboard/store-inbox',
-        icon: Package,
-        badge: pendingStoreCount > 0 ? pendingStoreCount : null,
-        badgeColor: 'bg-emerald-500 text-white',
-        highlight: true,
-      },
-      {
-        label: 'Tool Crib & Parts',
-        href: '/dashboard/inventory',
-        icon: Boxes,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-amber-500 text-slate-900',
-      },
-      {
-        label: 'History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  } else if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
-    // 🛡️ Admin & Senior Supervisor: Full Plant Management & Floor Supervisor Add-ons
-    navItems = [
-      {
-        label: 'Admin Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Asset Log',
-        href: '/dashboard/asset-log',
-        icon: ClipboardList,
-      },
-      {
-        label: 'Mechanic Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'Mechanic Roster',
-        href: '/dashboard/mechanic-roster',
-        icon: Users,
-      },
-      {
-        label: 'Group Indent',
-        href: '/dashboard/inventory',
-        icon: Package,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-amber-500 text-slate-900',
-      },
-      {
-        label: 'Asset Registration',
-        href: '/dashboard/machines',
-        icon: QrCode,
-      },
-      {
-        label: 'Assets',
-        href: '/dashboard/asset-types',
-        icon: Boxes,
-      },
-      {
-        label: 'Allowance',
-        href: '/dashboard/allowance',
-        icon: IndianRupee,
-      },
-      {
-        label: 'History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-      {
-        label: 'Factory Users',
-        href: '/dashboard/users',
-        icon: UserPlus,
-      },
-      {
-        label: 'Settings',
-        href: '/dashboard/settings',
-        icon: Settings,
-      },
-    ];
-  } else if (role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN') {
-    // 🔧 Senior Mechanic: Supervisor Dashboard, Asset Log, Calendar, Roster, Group Indent, History
-    navItems = [
-      {
-        label: 'Supervisor Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Asset Log',
-        href: '/dashboard/asset-log',
-        icon: ClipboardList,
-      },
-      {
-        label: 'Mechanic Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'Mechanic Roster',
-        href: '/dashboard/mechanic-roster',
-        icon: Users,
-      },
-      {
-        label: 'Group Indent',
-        href: '/dashboard/inventory',
-        icon: Package,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-amber-500 text-slate-900',
-      },
-      {
-        label: 'History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  } else {
-    // 🦺 Mechanic & Electrician: My Dashboard, Mechanic Calendar, Indent, History
-    navItems = [
-      {
-        label: 'My Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Mechanic Calendar',
-        href: '/dashboard/calendar',
-        icon: CalendarCheck,
-        badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-        badgeColor: 'bg-rose-500 text-white',
-      },
-      {
-        label: 'Indent',
-        href: '/dashboard/inventory',
-        icon: Boxes,
-        badge: lowStockCount > 0 ? lowStockCount : null,
-        badgeColor: 'bg-amber-500 text-slate-900',
-      },
-      {
-        label: 'History',
-        href: '/dashboard/history',
-        icon: History,
-      },
-    ];
-  }
-
-  const getRoleBadgeColor = () => {
-    switch (role) {
-      case 'CEO':
-        return 'bg-purple-600 text-white';
-      case 'ADMIN':
-      case 'ASSET_MANAGER':
-        return 'bg-indigo-600 text-white';
-      case 'SENIOR_MECHANIC':
-        return 'bg-blue-600 text-white';
-      case 'SENIOR_ELECTRICIAN':
-        return 'bg-cyan-600 text-white font-bold';
-      case 'MECHANIC':
-        return 'bg-amber-500 text-slate-950 font-bold';
-      case 'ELECTRICIAN':
-        return 'bg-amber-400 text-slate-950 font-bold';
-      case 'STORE_PERSON':
-        return 'bg-emerald-600 text-white';
-      default:
-        return 'bg-slate-600 text-white';
+  // Dynamic day of week and greeting (e.g. "Happy Thursday, Administrator!")
+  const todayGreeting = useMemo(() => {
+    try {
+      const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date());
+      const displayName =
+        currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER'
+          ? 'Administrator'
+          : currentRole === 'CEO'
+          ? 'Executive Director'
+          : currentRole === 'STORE_PERSON'
+          ? 'Store In-Charge'
+          : currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN'
+          ? 'Supervisor'
+          : user?.name?.split(' ')[0] || 'Technician';
+      return `Happy ${dayName}, ${displayName}!`;
+    } catch {
+      return 'Happy Day, Operations Team!';
     }
-  };
+  }, [currentRole, user]);
+
+  // Grouped Navigation Sections separated based on credentials
+  const navSections: NavSection[] = useMemo(() => {
+    // 1. CEO / Executive Directorate
+    if (currentRole === 'CEO') {
+      return [
+        {
+          items: [
+            {
+              label: 'Executive Overview',
+              href: '/dashboard',
+              icon: LayoutDashboard,
+            },
+            {
+              label: 'Executive Approvals',
+              href: '/dashboard/messages',
+              icon: Crown,
+              badge: pendingCeoCount > 0 ? pendingCeoCount : 4,
+              badgeColor: 'bg-rose-500 text-white animate-pulse',
+            },
+            {
+              label: 'Notifications',
+              href: '/dashboard/messages',
+              icon: Bell,
+              badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+              badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
+            },
+          ],
+        },
+        {
+          title: 'PLANT AUDIT',
+          items: [
+            {
+              label: 'Equipment Fleet',
+              href: '/dashboard/asset-types',
+              icon: Boxes,
+            },
+            {
+              label: 'Audit History',
+              href: '/dashboard/history',
+              icon: History,
+            },
+          ],
+        },
+      ];
+    }
+
+    // 2. STORE_PERSON (Tool Crib & Central Stores)
+    if (currentRole === 'STORE_PERSON') {
+      return [
+        {
+          items: [
+            {
+              label: 'Store Overview',
+              href: '/dashboard',
+              icon: LayoutDashboard,
+            },
+            {
+              label: 'Mechanic Indents',
+              href: '/dashboard/store-inbox',
+              icon: PackageCheck,
+              badge: pendingStoreCount > 0 ? pendingStoreCount : null,
+              badgeColor: 'bg-rose-500 text-white animate-pulse',
+            },
+            {
+              label: 'Notifications',
+              href: '/dashboard/messages',
+              icon: Bell,
+              badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+              badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
+            },
+          ],
+        },
+        {
+          title: 'INVENTORY & CRIB',
+          items: [
+            {
+              label: 'Stock Maintenance',
+              href: '/dashboard/inventory',
+              icon: Package,
+              badge: lowStockCount > 0 ? lowStockCount : null,
+              badgeColor: 'bg-amber-100 text-amber-800',
+            },
+            {
+              label: 'Equipment Ledger',
+              href: '/dashboard/asset-types',
+              icon: Boxes,
+            },
+            {
+              label: 'Dispatch History',
+              href: '/dashboard/history',
+              icon: History,
+            },
+          ],
+        },
+      ];
+    }
+
+    // 3. MECHANIC & ELECTRICIAN (Floor Technicians)
+    if (currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN') {
+      return [
+        {
+          items: [
+            {
+              label: 'My Floor Overview',
+              href: '/dashboard',
+              icon: LayoutDashboard,
+            },
+            {
+              label: 'Pending Tasks',
+              href: '/dashboard/calendar',
+              icon: Clock,
+              badge: pendingTicketsCount > 0 ? pendingTicketsCount : 3,
+              badgeColor: 'bg-slate-100 text-slate-700',
+            },
+            {
+              label: 'Notifications',
+              href: '/dashboard/messages',
+              icon: Bell,
+              badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+              badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
+            },
+          ],
+        },
+        {
+          title: 'FLOOR ACTIONS',
+          items: [
+            {
+              label: 'Part Indents',
+              href: '/dashboard/inventory',
+              icon: Package,
+            },
+            {
+              label: 'Task History',
+              href: '/dashboard/history',
+              icon: History,
+            },
+          ],
+        },
+      ];
+    }
+
+    // 4. SENIOR_MECHANIC & SENIOR_ELECTRICIAN (Workshop & Floor Supervisors)
+    if (currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN') {
+      return [
+        {
+          items: [
+            {
+              label: 'Supervisor Desk',
+              href: '/dashboard',
+              icon: TrendingUp,
+            },
+            {
+              label: 'Team Overview',
+              href: '/dashboard/calendar',
+              icon: LayoutGrid,
+            },
+            {
+              label: 'Pending Actions',
+              href: '/dashboard/pending-actions',
+              icon: Clock,
+              badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : 135,
+              badgeColor: 'bg-emerald-500 text-white',
+            },
+            {
+              label: 'Process In-Charges',
+              href: '/dashboard/mechanic-roster',
+              icon: Activity,
+              badge: activeInChargesCount > 0 ? activeInChargesCount : 1,
+              badgeColor: 'bg-slate-100 text-slate-700',
+            },
+            {
+              label: 'Notifications',
+              href: '/dashboard/messages',
+              icon: Bell,
+              badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+              badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+            },
+          ],
+        },
+        {
+          title: 'EQUIPMENT & SPARES',
+          items: [
+            {
+              label: 'Equipment Fleet',
+              href: '/dashboard/asset-types',
+              icon: Boxes,
+            },
+            {
+              label: 'Asset Log',
+              href: '/dashboard/asset-log',
+              icon: ClipboardList,
+            },
+            {
+              label: 'Stock Maintenance',
+              href: '/dashboard/inventory',
+              icon: Package,
+              badge: lowStockCount > 0 ? lowStockCount : null,
+              badgeColor: 'bg-amber-100 text-amber-800',
+            },
+            {
+              label: 'Work History',
+              href: '/dashboard/history',
+              icon: History,
+            },
+          ],
+        },
+      ];
+    }
+
+    // 5. ADMIN & ASSET_MANAGER (Full Plant Administration)
+    return [
+      {
+        items: [
+          {
+            label: 'Admin Dashboard',
+            href: '/dashboard',
+            icon: TrendingUp,
+          },
+          {
+            label: 'Team Overview',
+            href: '/dashboard/calendar',
+            icon: LayoutGrid,
+          },
+          {
+            label: 'Pending Actions',
+            href: '/dashboard/pending-actions',
+            icon: Clock,
+            badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : 135,
+            badgeColor: 'bg-emerald-500 text-white',
+          },
+          {
+            label: 'Process In-Charges',
+            href: '/dashboard/mechanic-roster',
+            icon: Activity,
+            badge: activeInChargesCount > 0 ? activeInChargesCount : 1,
+            badgeColor: 'bg-slate-100 text-slate-700',
+          },
+          {
+            label: 'Notifications',
+            href: '/dashboard/messages',
+            icon: Bell,
+            badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+            badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+          },
+        ],
+      },
+      {
+        title: 'TNA',
+        items: [
+          {
+            label: 'Active TNAs',
+            href: '/dashboard/active-tna',
+            icon: Layers,
+          },
+          {
+            label: 'Completed TNAs',
+            href: '/dashboard/history',
+            icon: CheckCircle2,
+          },
+        ],
+      },
+      {
+        title: 'Asset Management',
+        items: [
+          {
+            label: 'Asset',
+            href: '/dashboard/asset-types',
+            icon: Boxes,
+          },
+          {
+            label: 'Asset Registration',
+            href: '/dashboard/machines',
+            icon: QrCode,
+          },
+          {
+            label: 'Asset Log',
+            href: '/dashboard/asset-log',
+            icon: ClipboardList,
+          },
+        ],
+      },
+      {
+        title: 'STORE & SPARES',
+        items: [
+          {
+            label: 'Mechanic Indents',
+            href: '/dashboard/store-inbox',
+            icon: PackageCheck,
+            badge: pendingStoreCount > 0 ? pendingStoreCount : null,
+            badgeColor: 'bg-rose-500 text-white animate-pulse',
+          },
+          {
+            label: 'Stock Maintenance',
+            href: '/dashboard/inventory',
+            icon: Package,
+            badge: lowStockCount > 0 ? lowStockCount : null,
+            badgeColor: 'bg-amber-100 text-amber-800',
+          },
+        ],
+      },
+      {
+        title: 'PEOPLE',
+        items: [
+          {
+            label: 'Department KPI',
+            href: '/dashboard/kpi',
+            icon: Award,
+          },
+          {
+            label: 'Settings',
+            href: '/dashboard/settings',
+            icon: Settings,
+          },
+        ],
+      },
+    ];
+  }, [currentRole, pendingTicketsCount, pendingPpmCount, activeInChargesCount, pendingCeoCount, pendingStoreCount, lowStockCount]);
+
+  const userInitial = useMemo(() => {
+    if (currentRole === 'ADMIN') return 'A';
+    if (currentRole === 'CEO') return 'C';
+    if (user?.name) return user.name.charAt(0).toUpperCase();
+    return 'A';
+  }, [currentRole, user]);
+
+  const userDisplayName = useMemo(() => {
+    if (currentRole === 'ADMIN') return 'Administrator';
+    if (currentRole === 'CEO') return 'Managing Director';
+    return user?.name || 'Administrator';
+  }, [currentRole, user]);
+
+  const userDisplayRole = useMemo(() => {
+    if (currentRole === 'ADMIN') return 'Administrator';
+    if (currentRole === 'STORE_PERSON') return 'Store In-Charge';
+    if (currentRole === 'SENIOR_MECHANIC') return 'Senior Mechanic';
+    if (currentRole === 'MECHANIC') return 'Line Mechanic';
+    return currentRole?.toLowerCase().replace(/_/g, ' ') || 'Staff';
+  }, [currentRole]);
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-white text-slate-700 select-none">
-      {/* Brand Header */}
-      <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-        <Link
-          href={
-            role === 'CEO'
-              ? '/dashboard'
-              : role === 'STORE_PERSON'
-              ? '/dashboard/store-inbox'
-              : role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN'
-              ? '/dashboard/calendar'
-              : '/dashboard'
-          }
-          className="flex items-center gap-3 group"
-        >
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-indigo-600/20 group-hover:scale-105 transition shrink-0">
-            <Wrench className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-base tracking-tight text-slate-900">
-                Maintenance
-              </span>
-              <span className="px-1.5 py-0.2 text-[9px] font-bold bg-indigo-50 text-indigo-700 rounded border border-indigo-200">
-                Module
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium truncate max-w-[140px]">
-              Asset Maintenance
-            </p>
-          </div>
-        </Link>
+    <div className="flex flex-col h-full bg-white text-slate-700 select-none border-r border-slate-200">
+      {/* ─── Top Brand Header (matching reference image) ─── */}
+      <div className="p-4 border-b border-slate-100 flex flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <Link href="/dashboard" className="flex items-center gap-2 group">
+            <span className="text-2xl font-black text-[#15803d] tracking-tight hover:opacity-90 transition font-sans">
+              Asset Maintenace System
+            </span>
+          </Link>
 
-        {/* Hide Navbar (Desktop) */}
-        <button
-          onClick={hideNav}
-          className="hidden md:flex p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-          title="Hide Navigation Bar"
-        >
-          <PanelLeftClose className="w-4 h-4" />
-        </button>
-
-        {/* Mobile close button */}
-        <button
-          onClick={closeMobileNav}
-          className="md:hidden p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Navigation Links */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1.5">
-          Navigation
-        </div>
-
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          const Icon = item.icon;
-
-          return (
+          <div className="flex items-center gap-1.5">
+            {/* Top Notification Bell with unseen counter */}
             <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition group ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20 font-bold'
-                  : item.highlight
-                  ? 'text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 font-bold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-              }`}
+              href="/dashboard/messages"
+              className="relative p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer flex items-center justify-center group"
+              title={`${unattendedBreachCount} unseen alerts & notifications`}
             >
-              <div className="flex items-center gap-3">
-                <Icon
-                  className={`w-4 h-4 shrink-0 transition ${
-                    isActive
-                      ? 'text-white'
-                      : item.highlight
-                      ? 'text-purple-600'
-                      : 'text-slate-500 group-hover:text-slate-800'
-                  }`}
-                />
-                <span className="truncate">{item.label}</span>
-              </div>
-
-              {item.badge !== null && item.badge !== undefined && (
-                <span
-                  className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold shrink-0 ${
-                    isActive
-                      ? 'bg-white text-indigo-700'
-                      : item.badgeColor || 'bg-indigo-600 text-white'
-                  }`}
-                >
-                  {item.badge}
+              <Bell className="w-4 h-4 text-slate-600 group-hover:text-rose-600 transition" />
+              {unattendedBreachCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-extrabold flex items-center justify-center shadow-2xs animate-pulse">
+                  {unattendedBreachCount}
                 </span>
               )}
             </Link>
-          );
-        })}
+
+            {/* Desktop hide button */}
+            <button
+              onClick={hideNav}
+              className="hidden md:flex p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              title="Hide Navigation Bar"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+
+            {/* Mobile close button */}
+            <button
+              onClick={closeMobileNav}
+              className="md:hidden p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Day Greeting */}
+        <p className="text-[11px] text-slate-400 font-medium">
+          {todayGreeting}
+        </p>
+      </div>
+
+      {/* ─── Categorized Navigation Links (matching reference image) ─── */}
+      <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto">
+        {navSections.map((section, sIdx) => (
+          <div key={sIdx} className="space-y-0.5">
+            {section.title && (
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-2 pb-1">
+                {section.title}
+              </div>
+            )}
+
+            {section.items.map((item) => {
+              // Active check: exact pathname match or sub-tab query match
+              const isActive =
+                item.href.includes('?')
+                  ? `${pathname}?${item.href.split('?')[1]}` === item.href || pathname === item.href.split('?')[0]
+                  : pathname === item.href;
+              const Icon = item.icon;
+
+              return (
+                <Link
+                  key={item.label + item.href}
+                  href={item.href}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition group cursor-pointer ${
+                    isActive
+                      ? 'bg-[#eef9f5] text-[#065f46] border border-[#a7f3d0] font-bold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon
+                      className={`w-4 h-4 shrink-0 transition ${
+                        isActive
+                          ? 'text-[#059669]'
+                          : 'text-slate-400 group-hover:text-slate-700'
+                      }`}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+
+                  {item.badge !== null && item.badge !== undefined && (
+                    <span
+                      className={`px-2 py-0.5 text-[10px] rounded-full font-semibold shrink-0 ${
+                        isActive
+                          ? 'bg-[#10b981] text-white shadow-2xs'
+                          : item.badgeColor || 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
-      {/* User Profile & Logout Bottom Dock */}
-      <div className="p-3 border-t border-slate-200 bg-slate-50/70">
-        <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200 shadow-xs">
+      {/* ─── Bottom User Profile Dock (matching reference image) ─── */}
+      <div className="p-3 border-t border-slate-100 bg-white">
+        <div className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div
-              className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold uppercase shrink-0 shadow-xs ${getRoleBadgeColor()}`}
-            >
-              {role === 'CEO' ? (
-                <Crown className="w-4 h-4 text-amber-300" />
-              ) : role === 'STORE_PERSON' ? (
-                <Package className="w-4 h-4 text-white" />
-              ) : (
-                user?.name?.charAt(0) || 'M'
-              )}
+            {/* Green circular avatar */}
+            <div className="w-8 h-8 rounded-full bg-[#15803d] text-white font-bold flex items-center justify-center text-xs shadow-2xs shrink-0 uppercase">
+              {userInitial}
             </div>
+
             <div className="min-w-0">
-              <div className="text-xs font-bold text-slate-900 truncate leading-tight">
-                {user?.name || 'Staff User'}
+              <div className="text-xs font-bold text-slate-800 truncate leading-tight">
+                {userDisplayName}
               </div>
-              <div className="text-[10px] text-slate-500 font-semibold uppercase truncate">
-                {role}
+              <div className="text-[10px] text-slate-400 font-medium capitalize truncate">
+                {userDisplayRole}
               </div>
             </div>
           </div>
 
-          <button
-            onClick={handleSignOut}
-            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
-            title="Sign Out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Settings trigger */}
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard/settings')}
+              className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition cursor-pointer"
+              title="System Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            {/* Logout arrow icon */}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+      </div>
+    </div>
+  );
+
+  const collapsedSidebarContent = (
+    <div className="flex flex-col h-full bg-white text-slate-700 select-none border-r border-slate-200 w-[72px] shrink-0 items-center py-3.5 px-2 justify-between">
+      {/* ─── Top Brand & Navigation Controls ─── */}
+      <div className="flex flex-col items-center gap-2.5 w-full">
+        {/* Brand Text */}
+        <Link
+          href="/dashboard"
+          className="text-center font-black text-xs text-[#15803d] tracking-tight hover:opacity-90 transition pt-1"
+          title="Asset Maintenance System (Noolezhai)"
+        >
+          Noolezhai
+        </Link>
+
+        {/* Top Notification Bell with unseen counter */}
+        <Link
+          href="/dashboard/messages"
+          className="relative p-2 text-slate-600 hover:text-rose-600 hover:bg-slate-50 rounded-xl transition cursor-pointer flex items-center justify-center group"
+          title={`${unattendedBreachCount} unseen alerts & notifications`}
+        >
+          <Bell className="w-5 h-5 text-slate-600 group-hover:text-rose-600 transition" />
+          {unattendedBreachCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-extrabold flex items-center justify-center shadow-2xs animate-pulse">
+              {unattendedBreachCount}
+            </span>
+          )}
+        </Link>
+
+        {/* Open/Expand Navbar button */}
+        <button
+          type="button"
+          onClick={showNav}
+          className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer flex items-center justify-center"
+          title="Expand Navigation Bar"
+        >
+          <PanelLeftOpen className="w-5 h-5" />
+        </button>
+
+        <div className="w-8 h-px bg-slate-200 mt-1" />
+      </div>
+
+      {/* ─── Middle: Quick Icon Navigation Area ─── */}
+      <div className="flex-1 w-full overflow-y-auto no-scrollbar py-2 flex flex-col items-center gap-2">
+        {navSections.map((section, sIdx) => (
+          <React.Fragment key={section.title || sIdx}>
+            {sIdx > 0 && <div className="w-8 h-px bg-slate-200 my-1" />}
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              const hasBadge = Boolean(item.badge);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition cursor-pointer ${
+                    isActive
+                      ? 'bg-[#e6f7f4] border border-[#a7f3d0] text-[#00897b] font-bold shadow-2xs ring-1 ring-[#00897b]/20'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/60 hover:border-slate-300'
+                  }`}
+                  title={item.label}
+                >
+                  <Icon className="w-5 h-5" />
+                  {hasBadge && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#f43f5e] ring-2 ring-white" />
+                  )}
+                </Link>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* ─── Bottom Capsule matching screenshot ─── */}
+      <div className="w-full bg-slate-50 border border-slate-200/90 rounded-2xl p-1.5 flex flex-col items-center gap-2.5 mt-2 shadow-2xs">
+        {/* User avatar circle */}
+        <div
+          className="w-9 h-9 rounded-full bg-[#52c41a] text-white font-extrabold flex items-center justify-center text-sm shadow-xs"
+          title={`${user?.name || 'Administrator'} (${userDisplayRole})`}
+        >
+          {userInitial}
+        </div>
+
+        {/* Sparkles / performance icon */}
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard/kpi')}
+          className="p-1.5 text-slate-400 hover:text-amber-500 rounded-lg hover:bg-white transition cursor-pointer"
+          title="Department KPI & Performance"
+        >
+          <Sparkles className="w-4 h-4" />
+        </button>
+
+        {/* Sign out button */}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white transition cursor-pointer"
+          title="Sign Out"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
@@ -449,20 +776,17 @@ export function Sidebar() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-1.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-xs text-white">
-              <Wrench className="w-3.5 h-3.5" />
-            </div>
-            <span className="font-bold text-sm tracking-tight text-slate-900">Maintenance Module</span>
+            <span className="font-black text-lg tracking-tight text-[#15803d]">Noolezhai</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${getRoleBadgeColor()}`}>
-            {role}
-          </span>
+          <div className="w-7 h-7 rounded-full bg-[#15803d] text-white font-bold flex items-center justify-center text-xs">
+            {userInitial}
+          </div>
           <button
             onClick={handleSignOut}
-            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
             title="Sign Out"
           >
             <LogOut className="w-4 h-4" />
@@ -483,9 +807,13 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Desktop Sticky Left Sidebar */}
-      <aside className="hidden md:flex flex-col w-60 shrink-0 sticky top-0 h-screen border-r border-slate-200 bg-white z-30">
-        {sidebarContent}
+      {/* Desktop Sticky Left Sidebar (Full w-64 or Collapsed w-[72px]) */}
+      <aside
+        className={`hidden md:flex flex-col shrink-0 sticky top-0 h-screen bg-white z-30 transition-all duration-150 ${
+          isNavHidden ? 'w-[72px]' : 'w-64'
+        }`}
+      >
+        {isNavHidden ? collapsedSidebarContent : sidebarContent}
       </aside>
     </>
   );

@@ -45,6 +45,7 @@ import {
   Check,
   ArrowUpRight,
   Package,
+  PackageCheck,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -68,18 +69,20 @@ import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/li
 import { MechanicCustodyModal } from '@/components/mechanic/MechanicCustodyModal';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { normalizeRole } from '@/lib/constants/roles';
 import { FACTORY_MACHINE_CATEGORIES, detectMachineCategory, isSpareCompatibleWithMachine } from '@/lib/utils/spareMapping';
 
 export default function InventoryPage() {
   const { showToast } = useToast();
   const { user, role } = useAuth();
+  const currentRole = normalizeRole(user?.role || role);
 
-  const isStorePersonOrAdmin = role === 'STORE_PERSON' || role === 'ADMIN' || role === 'ASSET_MANAGER';
-  const isMechanicOrAdmin = role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN' || role === 'ASSET_MANAGER';
+  const isStorePersonOrAdmin = currentRole === 'STORE_PERSON' || currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER';
+  const isMechanicOrAdmin = currentRole === 'MECHANIC' || currentRole === 'SENIOR_MECHANIC' || currentRole === 'ELECTRICIAN' || currentRole === 'SENIOR_ELECTRICIAN' || currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER';
 
   // Strict authorization matrix: only authorized executives/admin can approve critical needs
-  const isAuthorizedToApproveCritical = role === 'CEO' || role === 'ADMIN' || role === 'ASSET_MANAGER';
-  const isAuthorizedToApproveGeneral = role === 'STORE_PERSON' || role === 'ADMIN' || role === 'ASSET_MANAGER' || role === 'CEO';
+  const isAuthorizedToApproveCritical = currentRole === 'CEO' || currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER';
+  const isAuthorizedToApproveGeneral = currentRole === 'STORE_PERSON' || currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER' || currentRole === 'CEO';
 
   const [parts, setParts] = useState<SparePart[]>([]);
   const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
@@ -98,9 +101,16 @@ export default function InventoryPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
-          const staff = data.users.filter((u: any) =>
-            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'STORE_PERSON', 'ADMIN'].includes(u.role)
-          );
+          const staff = data.users.filter((u: any) => {
+            const r = String(u.role || '').toUpperCase();
+            return (
+              r.includes('MECHANIC') ||
+              r.includes('ELECTRICIAN') ||
+              r.includes('STORE') ||
+              r.includes('ADMIN') ||
+              r.includes('TECH')
+            );
+          });
           if (staff.length > 0) {
             setRegisteredStaff(staff.map(userToMechanicDuty));
           }
@@ -172,16 +182,16 @@ export default function InventoryPage() {
 
   // For Senior Electrician, ONLY show junior electricians
   const visibleMechanics = useMemo(() => {
-    if (role === 'SENIOR_ELECTRICIAN') {
+    if (currentRole === 'SENIOR_ELECTRICIAN') {
       return activeStaffRoster.filter(
         (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
       );
     }
-    if (role === 'SENIOR_MECHANIC') {
+    if (currentRole === 'SENIOR_MECHANIC') {
       return activeStaffRoster.filter((m) => m.trade === 'MECHANIC');
     }
     return activeStaffRoster;
-  }, [role, activeStaffRoster]);
+  }, [currentRole, activeStaffRoster]);
 
   // Sync active selected mechanic
   useEffect(() => {
@@ -903,24 +913,33 @@ export default function InventoryPage() {
           </div>
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span>Sewing Spare Parts, Monthly Indents & Approvals</span>
+              <span>Spare Parts Stock Maintenance Table</span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Crib stock levels, mechanic monthly planned indents (part list), and distinct critical (CEO) vs urgent (Manager) needs.
+              Live crib stock inventory, buffer levels, machine compatibility mappings, and parts catalog.
             </p>
           </div>
         </div>
 
-        {/* Action Buttons: Critical vs Urgent vs Monthly Indent */}
+        {/* Action Buttons: Stock Maintenance & Mechanic Indents */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Centralized Action: Monthly Indents, Critical Parts, and Urgent Needs under a Specific Button */}
+          <Link
+            href="/dashboard/store-inbox"
+            className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            title="Go to Mechanic Indent Receiving Desk"
+          >
+            <PackageCheck className="w-4 h-4 text-[#059669]" />
+            <span>Mechanic Indents Desk</span>
+          </Link>
+
+          {/* Centralized Action: Indents & Requisitions under a Specific Button */}
           {isMechanicOrAdmin && (
             <div className="relative" ref={indentMenuRef}>
               <button
                 type="button"
                 onClick={() => setIsIndentMenuOpen(!isIndentMenuOpen)}
                 className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-4 py-2 rounded-xl transition flex items-center gap-2 shadow-sm cursor-pointer"
-                title="Centralized Indents & Requisitions: Monthly Indents, Critical Parts (CEO), and Urgent Needs (Manager)"
+                title="Centralized Indents & Requisitions"
               >
                 <ListPlus className="w-4 h-4 text-white" />
                 <span>Central Indents &amp; Requisitions</span>
@@ -949,29 +968,29 @@ export default function InventoryPage() {
                   </div>
 
                   <div className="p-1.5 space-y-1">
-                    {/* 1. Monthly Indent (Part List) */}
+                    {/* 1. Urgent Floor Indent (Mechanic Need) */}
                     <button
                       type="button"
                       onClick={() => {
                         setIsIndentMenuOpen(false);
-                        handleOpenReqModal('MONTHLY_INDENT');
+                        handleOpenReqModal('URGENT_NEED');
                       }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-indigo-50/70 transition flex items-start gap-2.5 group cursor-pointer"
+                      className="w-full text-left p-2.5 rounded-xl hover:bg-amber-50/70 transition flex items-start gap-2.5 group cursor-pointer"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-indigo-600 group-hover:text-white transition">
-                        <ListPlus className="w-4 h-4" />
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-amber-500 group-hover:text-white transition">
+                        <Zap className="w-4 h-4" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-700">
-                            📦 Monthly Indents
+                          <span className="text-xs font-bold text-slate-900 group-hover:text-amber-800">
+                            ⚡ Urgent Floor Indents
                           </span>
-                          <span className="text-[9px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">
-                            Multi-Part List
+                          <span className="text-[9px] font-bold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded">
+                            Mechanic Need
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                          Planned store replenishment list for upcoming production month.
+                          Urgent spare parts requisition for active floor machine breakdowns.
                         </p>
                       </div>
                     </button>
@@ -1189,197 +1208,206 @@ export default function InventoryPage() {
             </div>
 
             {/* Mechanic Selector Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              {visibleMechanics.map((mech) => {
-                const isSelected = mech.id === activeMechanicId;
-                const specialToolsCount = mech.checkedOutTools?.length || 0;
-                const drawnSparesCount = mech.activePartsDrawn?.reduce((acc, p) => acc + p.quantity, 0) || 0;
+            {visibleMechanics.length === 0 ? (
+              <div className="p-6 bg-white rounded-2xl border border-dashed border-slate-300 text-center text-slate-400">
+                <Wrench className="w-6 h-6 mx-auto text-slate-300 mb-1" />
+                <p className="text-xs font-semibold">No mechanics or technicians currently found in roster.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {visibleMechanics.map((mech) => {
+                  const isSelected = mech.id === activeMechanicId;
+                  const specialToolsCount = mech.checkedOutTools?.length || 0;
+                  const drawnSparesCount = mech.activePartsDrawn?.reduce((acc, p) => acc + p.quantity, 0) || 0;
 
-                return (
-                  <button
-                    key={mech.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveMechanicId(mech.id);
-                    }}
-                    className={`text-left p-3.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-3 ${
-                      isSelected
-                        ? 'border-indigo-600 ring-2 ring-indigo-500 bg-indigo-50/50 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/70 shadow-2xs'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${mech.avatarColor}`}
-                      >
-                        {mech.name.charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-slate-900 truncate">
-                          {mech.name}
+                  return (
+                    <button
+                      key={mech.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveMechanicId(mech.id);
+                      }}
+                      className={`text-left p-3.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-3 ${
+                        isSelected
+                          ? 'border-indigo-600 ring-2 ring-indigo-500 bg-indigo-50/50 shadow-sm'
+                          : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/70 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${mech.avatarColor || 'bg-indigo-600 text-white'}`}
+                        >
+                          {mech.name?.charAt(0) || 'M'}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono">
-                          {mech.id}
+                        <div className="min-w-0">
+                          <div className="font-bold text-xs text-slate-900 truncate">
+                            {mech.name}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            {mech.id}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="text-[11px] bg-white/80 p-2 rounded-xl border border-slate-200/70 space-y-0.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500 text-[10px]">Tools:</span>
-                        <span className="font-bold text-amber-700 font-mono">
-                          {specialToolsCount}
-                        </span>
+                      <div className="text-[11px] bg-white/80 p-2 rounded-xl border border-slate-200/70 space-y-0.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 text-[10px]">Tools:</span>
+                          <span className="font-bold text-amber-700 font-mono">
+                            {specialToolsCount}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 text-[10px]">Drawn:</span>
+                          <span className="font-bold text-emerald-700 font-mono">
+                            {drawnSparesCount} pcs
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500 text-[10px]">Drawn:</span>
-                        <span className="font-bold text-emerald-700 font-mono">
-                          {drawnSparesCount} pcs
-                        </span>
-                      </div>
-                    </div>
 
-                    <div className="text-[10px] text-indigo-600 font-bold flex items-center justify-between pt-1 border-t border-slate-100">
-                      <span>{isSelected ? '✓ Active Table' : 'Click to View'}</span>
-                      <span>➜</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                      <div className="text-[10px] text-indigo-600 font-bold flex items-center justify-between pt-1 border-t border-slate-100">
+                        <span>{isSelected ? '✓ Active Table' : 'Click to View'}</span>
+                        <span>➜</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* DYNAMIC ITEM TABLE FOR SELECTED MECHANIC */}
-            <div className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${currentMechanicData.avatarColor}`}>
-                    {currentMechanicData.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900">
-                      {currentMechanicData.name} &mdash; Handled Tools &amp; Parts Register
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      {currentMechanicData.role} • Shift: {currentMechanicData.shift} • {currentMechanicData.assignedLines}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleOpenMechanicCustody(currentMechanicData)}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-                >
-                  <Wrench className="w-3.5 h-3.5" />
-                  <span>Full Custody Dossier</span>
-                </button>
-              </div>
-
-              {/* Table 1: Checked-Out Tools */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                  <span>1. Checked-Out Special Tools ({currentMechanicData.checkedOutTools?.length || 0}):</span>
-                  <span className="text-[11px] font-normal text-slate-500">From Tool Crib</span>
-                </div>
-
-                {(!currentMechanicData.checkedOutTools || currentMechanicData.checkedOutTools.length === 0) ? (
-                  <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
-                    No specialized calibration tools currently logged out.
-                  </div>
-                ) : (
-                  <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
-                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
-                          <tr>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool Name</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool ID &amp; S/N</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Category</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Location</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Return Due</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Condition</th>
-                            <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Purpose</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {currentMechanicData.checkedOutTools.map((tool, idx) => (
-                            <tr key={tool.id} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-bold text-slate-900">{tool.toolName}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-[11px]">
-                                <span className="font-bold text-indigo-700">{tool.id}</span>
-                                <span className="text-slate-400 block">S/N: {tool.serialNo}</span>
-                              </td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-600">
-                                {tool.category.replace('_', ' ')}
-                              </td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-700 font-medium">{tool.location}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-amber-700 font-semibold text-[11px]">{tool.returnDue}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200">
-                                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                  {tool.condition.replace('_', ' ')}
-                                </span>
-                              </td>
-                              <td className="py-1.5 px-3 border-b border-slate-200 text-slate-500 text-[11px] max-w-xs truncate" title={tool.purpose}>
-                                {tool.purpose}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+            {currentMechanicData ? (
+              <div className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${currentMechanicData.avatarColor || 'bg-indigo-600 text-white'}`}>
+                      {currentMechanicData.name?.charAt(0) || 'M'}
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                        {currentMechanicData.name} &mdash; Handled Tools &amp; Parts Register
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        {currentMechanicData.role} • Shift: {currentMechanicData.shift} • {currentMechanicData.assignedLines}
+                      </p>
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Table 2: Active Drawn Spare Parts */}
-              <div className="space-y-2 pt-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                  <span>2. Spare Parts in Active Hand ({currentMechanicData.activePartsDrawn?.length || 0}):</span>
-                  <span className="text-[11px] font-normal text-slate-500">Drawn for Active Machine Repairs</span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenMechanicCustody(currentMechanicData)}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                  >
+                    <Wrench className="w-3.5 h-3.5" />
+                    <span>Full Custody Dossier</span>
+                  </button>
                 </div>
 
-                {(!currentMechanicData.activePartsDrawn || currentMechanicData.activePartsDrawn.length === 0) ? (
-                  <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
-                    No spare parts currently drawn from crib.
+                {/* Table 1: Checked-Out Tools */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                    <span>1. Checked-Out Special Tools ({currentMechanicData.checkedOutTools?.length || 0}):</span>
+                    <span className="text-[11px] font-normal text-slate-500">From Tool Crib</span>
                   </div>
-                ) : (
-                  <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
-                        <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
-                          <tr>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part Description</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part SKU</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Quantity</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Target Machine</th>
-                            <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Floor Line</th>
-                            <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Drawn At</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {currentMechanicData.activePartsDrawn.map((part, idx) => (
-                            <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-semibold text-slate-900">{part.partName}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-indigo-700 text-[11px] font-bold">{part.sku}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-900">
-                                {part.quantity} {part.unit}
-                              </td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-800">{part.forMachineId}</td>
-                              <td className="py-1.5 px-3 border-r border-b border-slate-200 text-emerald-700 font-medium">{part.line}</td>
-                              <td className="py-1.5 px-3 border-b border-slate-200 font-mono text-slate-500 text-[11px]">{part.drawnAt}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+
+                  {(!currentMechanicData.checkedOutTools || currentMechanicData.checkedOutTools.length === 0) ? (
+                    <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
+                      No specialized calibration tools currently logged out.
                     </div>
+                  ) : (
+                    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
+                          <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
+                            <tr>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool Name</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool ID &amp; S/N</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Category</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Location</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Return Due</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Condition</th>
+                              <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Purpose</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currentMechanicData.checkedOutTools.map((tool, idx) => (
+                              <tr key={tool.id} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-bold text-slate-900">{tool.toolName}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-[11px]">
+                                  <span className="font-bold text-indigo-700">{tool.id}</span>
+                                  <span className="text-slate-400 block">S/N: {tool.serialNo}</span>
+                                </td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-600">
+                                  {tool.category.replace('_', ' ')}
+                                </td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-700 font-medium">{tool.location}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-amber-700 font-semibold text-[11px]">{tool.returnDue}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200">
+                                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    {tool.condition.replace('_', ' ')}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-3 border-b border-slate-200 text-slate-500 text-[11px] max-w-xs truncate" title={tool.purpose}>
+                                  {tool.purpose}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Table 2: Active Drawn Spare Parts */}
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                    <span>2. Spare Parts in Active Hand ({currentMechanicData.activePartsDrawn?.length || 0}):</span>
+                    <span className="text-[11px] font-normal text-slate-500">Drawn for Active Machine Repairs</span>
                   </div>
-                )}
+
+                  {(!currentMechanicData.activePartsDrawn || currentMechanicData.activePartsDrawn.length === 0) ? (
+                    <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
+                      No spare parts currently drawn from crib.
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
+                          <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
+                            <tr>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part Description</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part SKU</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Quantity</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Target Machine</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Floor Line</th>
+                              <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Drawn At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currentMechanicData.activePartsDrawn.map((part, idx) => (
+                              <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-semibold text-slate-900">{part.partName}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-indigo-700 text-[11px] font-bold">{part.sku}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-900">
+                                  {part.quantity} {part.unit}
+                                </td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-800">{part.forMachineId}</td>
+                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-emerald-700 font-medium">{part.line}</td>
+                                <td className="py-1.5 px-3 border-b border-slate-200 font-mono text-slate-500 text-[11px]">{part.drawnAt}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         )}
 

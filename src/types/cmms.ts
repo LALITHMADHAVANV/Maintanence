@@ -248,6 +248,7 @@ export interface AppNotification {
   message: string;
   targetRole?: UserRole | 'ALL';
   targetUserId?: string;
+  targetUnit?: string;
   senderName: string;
   createdAt: string;
   acknowledged?: boolean;
@@ -285,7 +286,8 @@ export type UserRole =
   | 'SENIOR_ELECTRICIAN'
   | 'ELECTRICIAN'
   | 'STORE_PERSON'
-  | 'ASSET_MANAGER';
+  | 'ASSET_MANAGER'
+  | (string & {});
 
 export interface UserProfile {
   uid: string;
@@ -297,6 +299,8 @@ export interface UserProfile {
   department?: string;
   employeeId?: string;
   unit?: string; // Plant Unit: "All Units" | "UNIT - 1" | "UNIT-2"
+  zones?: string[]; // Assigned Factory Zones e.g. ["NETHAJI", "PEACOCK 1"]
+  company?: string; // Assigned Company Name from login / user account
   status?: 'ACTIVE' | 'INACTIVE';
   defaultPassword?: string;
   createdAt?: string;

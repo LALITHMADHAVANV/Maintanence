@@ -129,7 +129,9 @@ export default function CalendarPage() {
           const tDate = ticket.reportedAt ? ticket.reportedAt.slice(0, 10) : toDateKey(new Date());
           setSelectedDate(tDate);
           setSelectedTicket(ticket);
-          setDowntimeMinutes(ticket.urgency === 'CRITICAL' ? 35 : 20);
+          const startMs = ticket.startedAt ? new Date(ticket.startedAt).getTime() : new Date(ticket.reportedAt).getTime();
+          const elapsed = Math.max(1, Math.round((Date.now() - startMs) / 60000));
+          setDowntimeMinutes(elapsed);
           setActionTaken('');
           setSelectedPartId('');
           setSelectedPartQty(1);
@@ -175,7 +177,7 @@ export default function CalendarPage() {
   const [inlineMachineId, setInlineMachineId] = useState('');
   const [inlineTaskTitle, setInlineTaskTitle] = useState('');
   const [inlineAssignee, setInlineAssignee] = useState(() =>
-    role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'
+    role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'ROBERT'
   );
   const [inlineUrgency, setInlineUrgency] = useState<RepairUrgency>('WARNING');
   const [isSubmittingInline, setIsSubmittingInline] = useState(false);
@@ -557,7 +559,9 @@ export default function CalendarPage() {
   // Open Resolve Repair Modal
   const handleOpenResolveModal = (ticket: RepairTicket) => {
     setSelectedTicket(ticket);
-    setDowntimeMinutes(ticket.urgency === 'CRITICAL' ? 35 : 20);
+    const startMs = ticket.startedAt ? new Date(ticket.startedAt).getTime() : new Date(ticket.reportedAt).getTime();
+    const elapsed = Math.max(1, Math.round((Date.now() - startMs) / 60000));
+    setDowntimeMinutes(elapsed);
     setActionTaken('');
     setSelectedPartId('');
     setSelectedPartQty(1);
@@ -730,17 +734,20 @@ export default function CalendarPage() {
       {/* Top Header Card */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-            <CalendarDays className="w-6 h-6" />
+          <div className="w-11 h-11 rounded-2xl bg-[#059669] text-white flex items-center justify-center shadow-xs shrink-0">
+            <Clock className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                Mechanic Schedule &amp; PPM Work Orders
+                Pending Actions Desk
               </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                {repairs.filter((r) => r.status !== 'COMPLETED').length} Issues • {ppmSchedules.filter((p) => p.status !== 'COMPLETED').length} PPM Pending
+              </span>
             </div>
             <p className="text-xs text-slate-500">
-              Shift tasks, preventive maintenance milestones, breakdown repairs, and team dispatch calendar.
+              Live breakdown issues entered by plant floor personnel and scheduled preventive maintenance (PPM) overhauls.
             </p>
           </div>
         </div>
@@ -773,6 +780,72 @@ export default function CalendarPage() {
             </button>
           </div>
         )}
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────────────────
+          UPPER HORIZONTAL TABS BAR (Pending Issues, PPM Schedule, Calendar, Dispatch)
+      ────────────────────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-6 border-b border-slate-200 overflow-x-auto select-none pt-1">
+        <button
+          type="button"
+          onClick={() => {
+            setViewMode('milestones');
+            setFilterType('ALL');
+          }}
+          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+            viewMode === 'milestones' && filterType === 'ALL'
+              ? 'border-[#059669] text-[#065f46] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Clock className={`w-4 h-4 ${viewMode === 'milestones' && filterType === 'ALL' ? 'text-[#059669]' : 'text-slate-400'}`} />
+          <span>All Pending Actions</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setViewMode('milestones');
+            setFilterType('REPAIRS');
+          }}
+          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+            viewMode === 'milestones' && filterType === 'REPAIRS'
+              ? 'border-[#059669] text-[#065f46] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Wrench className={`w-4 h-4 ${viewMode === 'milestones' && filterType === 'REPAIRS' ? 'text-[#059669]' : 'text-slate-400'}`} />
+          <span>Reported Issues ({repairs.filter((r) => r.status !== 'COMPLETED').length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setViewMode('milestones');
+            setFilterType('PPM');
+          }}
+          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+            viewMode === 'milestones' && filterType === 'PPM'
+              ? 'border-[#059669] text-[#065f46] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <ShieldCheck className={`w-4 h-4 ${viewMode === 'milestones' && filterType === 'PPM' ? 'text-[#059669]' : 'text-slate-400'}`} />
+          <span>PPM Schedule ({ppmSchedules.filter((p) => p.status !== 'COMPLETED').length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewMode('month')}
+          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+            viewMode === 'month'
+              ? 'border-[#059669] text-[#065f46] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <CalendarDays className={`w-4 h-4 ${viewMode === 'month' ? 'text-[#059669]' : 'text-slate-400'}`} />
+          <span>Monthly Calendar</span>
+        </button>
       </div>
 
       {/* 3. Monthly Metrics Strip */}
@@ -1290,18 +1363,24 @@ export default function CalendarPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Downtime Spent (Mins) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={downtimeMinutes}
-                    onChange={(e) => setDowntimeMinutes(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-900 font-mono"
-                  />
+                <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-emerald-950">
+                      Auto-Calculated Downtime
+                    </label>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                      Auto
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-baseline gap-1.5">
+                    <span className="text-base font-mono font-black text-emerald-950">
+                      {downtimeMinutes}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-500">minutes</span>
+                  </div>
+                  <div className="text-[10px] text-emerald-700 mt-0.5 font-medium">
+                    Calculated automatically from work start to finish
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">

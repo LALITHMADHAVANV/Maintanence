@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { normalizeRole } from '@/lib/constants/roles';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
 import { QRCodeSVG } from 'qrcode.react';
 import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
@@ -252,7 +254,7 @@ export default function HistoryPage() {
   const isAdmin = isUserAdmin(role);
   const effectiveUnit = getUserScopedUnit(user, role);
   const isExecutiveOrAdmin = role === 'ADMIN' || role === 'ASSET_MANAGER';
-  const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('ASSETS');
+  const [adminTab, setAdminTab] = useState<'ASSETS' | 'PERSONNEL'>('PERSONNEL');
   const [items] = useState<AssetHistoryRecord[]>(INITIAL_ASSETS);
   const [liveMachines, setLiveMachines] = useState<Machine[]>([]);
   const [liveRepairs, setLiveRepairs] = useState<RepairTicket[]>([]);
@@ -1127,13 +1129,54 @@ export default function HistoryPage() {
     );
   }
 
+  const currentRole = normalizeRole(user?.role || role);
+  const isFloorTechnician = currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN';
+
   // =========================================================================
   // VIEW 1: PERSONNEL WORK HISTORY (TABLE FORM) - FOR ALL NON-ADMIN/NON-CEO PERSONS
   // =========================================================================
   if (!isExecutiveOrAdmin) {
     return (
       <div className="space-y-4 pt-0 animate-in fade-in duration-200">
-        {/* The Table Form View for all staff members, mechanics, electricians, etc. */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-2xs">
+              <CheckCircle2 className="w-5 h-5" />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                  {isFloorTechnician ? 'My Work History & Completed Works' : 'Completed TNAs: History of Completed Works'}
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  {isFloorTechnician ? 'Personal Ledger' : 'History Archive'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {isFloorTechnician
+                  ? `Completed breakdown repairs, executed PPM inspections, downtime recovered, and work order log for ${user?.name || 'Technician'}`
+                  : 'Audit ledger of all completed breakdown repairs, executed PPM overhauls, downtime recovered, and technician logs'}
+              </p>
+            </div>
+          </div>
+          {isFloorTechnician ? (
+            <Link
+              href="/dashboard/calendar"
+              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer self-start sm:self-auto"
+            >
+              <Clock className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Pending Tasks</span>
+            </Link>
+          ) : (
+            <Link
+              href="/dashboard/active-tna"
+              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer self-start sm:self-auto"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Active TNAs</span>
+            </Link>
+          )}
+        </div>
         <PersonnelWorkHistoryTable />
       </div>
     );
@@ -1145,24 +1188,43 @@ export default function HistoryPage() {
   if (adminTab === 'PERSONNEL') {
     return (
       <div className="space-y-4 pt-0 animate-in fade-in duration-200">
-        <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
-              <User className="w-4 h-4" />
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-2xs">
+              <CheckCircle2 className="w-5 h-5" />
             </span>
             <div>
-              <div className="text-xs font-bold text-slate-900">Personnel Work History Log</div>
-              <div className="text-[11px] text-slate-500">Audit technician repairs, hours logged, and parts consumption</div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                  Completed TNAs: History of Completed Works
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  History Archive
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Audit ledger of all completed breakdown repairs, executed PPM overhauls, downtime recovered, and technician logs
+              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setAdminTab('ASSETS')}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Asset Maintenance Matrix</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/active-tna"
+              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Active TNAs</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => setAdminTab('ASSETS')}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Switch to Asset Category Matrix"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Asset Category Matrix</span>
+            </button>
+          </div>
         </div>
         <PersonnelWorkHistoryTable />
       </div>
@@ -1808,29 +1870,38 @@ export default function HistoryPage() {
       {/* 1. Page Header & Personnel Quick Link */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs">
+          <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
             <Activity className="w-4 h-4" />
           </div>
           <div>
             <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-              Asset Time &amp; Action: Maintenance History Matrix
+              Completed TNAs: Issues &amp; PPM History Archive
             </h1>
             <p className="text-[11px] text-slate-500">
-              Select or group by category, mechanic, or date range to inspect service histories
+              Completed history of breakdown repair issues, resolved machine downtime, and executed PPM overhauls
             </p>
           </div>
         </div>
 
-        {/* Personnel Work Logs button for Admin / CEO */}
-        <button
-          type="button"
-          onClick={() => setAdminTab('PERSONNEL')}
-          className="h-8 px-3 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs self-start sm:self-auto"
-          title="Inspect Personnel Work History Logs"
-        >
-          <User className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Personnel Logs</span>
-        </button>
+        {/* Navigation & Toggle Controls */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Link
+            href="/dashboard/active-tna"
+            className="h-8 px-3 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>Active TNAs</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setAdminTab('PERSONNEL')}
+            className="h-8 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            title="Switch to Completed Works History Log"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>Completed Works History</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. Unified Responsive Filter & Grouping Toolbar */}

@@ -4,12 +4,16 @@ import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { canAccessRoute, normalizeRole } from '@/lib/constants/roles';
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
   const { showToast } = useToast();
+
+  const userRole = normalizeRole(user?.role || role);
+  const isAuthorized = canAccessRoute(userRole, pathname);
 
   useEffect(() => {
     if (isLoading) return;
@@ -19,41 +23,11 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 1. CEO User: Access to Executive Dashboard and Approvals
-    if (role === 'CEO') {
-      if (
-        pathname !== '/dashboard' &&
-        pathname !== '/dashboard/messages'
-      ) {
-        showToast('CEO account has access to Executive Dashboard and Approvals.', 'info');
-        router.replace('/dashboard');
-      }
-      return;
+    if (!isAuthorized) {
+      showToast('Access restricted: Your account credentials do not have permissions for this page.', 'warning');
+      router.replace('/dashboard');
     }
-
-    // 2. Admin User: Has full access to Admin tools and Senior Mechanic supervisor add-ons (Calendar, Roster, Asset Log, Indent)
-    if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
-      if (pathname.startsWith('/dashboard/store-inbox')) {
-        showToast('Monthly Store Inbound is managed by the Tool Crib & Store In-Charge.', 'info');
-        router.replace('/dashboard');
-      }
-      return;
-    }
-
-    // 3. Mechanic and Supervisor User: Restricted from Floor Workstation / Floor Tracker
-    if (
-      role === 'MECHANIC' ||
-      role === 'ELECTRICIAN' ||
-      role === 'SENIOR_MECHANIC' ||
-      role === 'SENIOR_ELECTRICIAN'
-    ) {
-      if (pathname.startsWith('/dashboard/floor-tracker')) {
-        showToast('Floor Workstations are managed by Plant Administrators.', 'info');
-        router.replace('/dashboard');
-      }
-      return;
-    }
-  }, [user, role, isLoading, pathname, router, showToast]);
+  }, [user, userRole, isLoading, pathname, router, showToast, isAuthorized]);
 
   // Prevent flash of content during loading
   if (isLoading) {
@@ -76,50 +50,13 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Prevent flash of forbidden pages for CEO
-  if (
-    role === 'CEO' &&
-    pathname !== '/dashboard' &&
-    pathname !== '/dashboard/messages'
-  ) {
+  // Prevent flash of forbidden pages for unauthorized roles
+  if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-2">
-          <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Redirecting to Executive Dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Prevent flash of forbidden pages for Admin (Store inbox is for Tool Crib In-charge)
-  if (
-    (role === 'ADMIN' || role === 'ASSET_MANAGER') &&
-    pathname.startsWith('/dashboard/store-inbox')
-  ) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center space-y-2">
-          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Redirecting to Dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Prevent flash of forbidden pages for Mechanics & Supervisors (Floor Tracker)
-  if (
-    (role === 'MECHANIC' ||
-      role === 'ELECTRICIAN' ||
-      role === 'SENIOR_MECHANIC' ||
-      role === 'SENIOR_ELECTRICIAN') &&
-    pathname.startsWith('/dashboard/floor-tracker')
-  ) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center space-y-2">
-          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Redirecting to Dashboard...</p>
+          <div className="w-8 h-8 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-slate-600">Access restricted. Redirecting to your desk...</p>
         </div>
       </div>
     );

@@ -90,6 +90,38 @@ export function initLocalSeedData(): void {
   if (!currentParts || currentParts.length < (factorySparesSeed as any).length) {
     setLocal(STORAGE_KEYS.PARTS, factorySparesSeed as unknown as SparePart[]);
   }
+
+  // Auto-flush legacy/demo repair tickets and notifications from localStorage
+  const repairsWipeVer = 'cmms_repairs_wiped_v2';
+  if (localStorage.getItem('cmms_repairs_wipe_ver') !== repairsWipeVer) {
+    localStorage.removeItem(STORAGE_KEYS.REPAIRS);
+    localStorage.removeItem('sahana_repairs');
+    localStorage.removeItem('textech_repairs');
+    localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
+    localStorage.removeItem('sahana_notifications');
+    localStorage.removeItem('textech_notifications');
+    localStorage.setItem('cmms_repairs_wipe_ver', repairsWipeVer);
+  }
+}
+
+/**
+ * Clear all demo work orders & repair tickets from MongoDB and local storage
+ */
+export async function clearAllRepairs(): Promise<void> {
+  if (typeof window !== 'undefined') {
+    setLocal(STORAGE_KEYS.REPAIRS, []);
+    setLocal(STORAGE_KEYS.NOTIFICATIONS, []);
+    localStorage.removeItem(STORAGE_KEYS.REPAIRS);
+    localStorage.removeItem('sahana_repairs');
+    localStorage.removeItem('textech_repairs');
+    notifyLocal('repairs', []);
+    notifyLocal('notifications', []);
+  }
+  try {
+    await fetch('/api/repairs?all=true', { method: 'DELETE' });
+  } catch (err) {
+    console.error('Failed to clear repairs from MongoDB:', err);
+  }
 }
 
 /**
@@ -116,14 +148,17 @@ export async function resetToSeedData(): Promise<void> {
    MACHINES SERVICE (MongoDB via /api/machines)
    ====================================================================== */
 
-export function subscribeMachines(callback: (machines: Machine[]) => void): () => void {
-  initLocalSeedData();
-  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
-  callback(current);
-  listeners.machines.add(callback);
+let lastFetchMachinesTime = 0;
+let inFlightMachines: Promise<void> | null = null;
 
-  // Fetch from MongoDB API
-  const fetchFromMongo = async () => {
+export async function fetchMachinesOnce(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastFetchMachinesTime < 3000) {
+    if (inFlightMachines) return inFlightMachines;
+    return;
+  }
+  lastFetchMachinesTime = now;
+  inFlightMachines = (async () => {
     try {
       const res = await fetch('/api/machines');
       const json = await res.json();
@@ -133,15 +168,23 @@ export function subscribeMachines(callback: (machines: Machine[]) => void): () =
       }
     } catch (err) {
       console.warn('MongoDB fetch machines fallback:', err);
+    } finally {
+      inFlightMachines = null;
     }
-  };
+  })();
+  return inFlightMachines;
+}
 
-  fetchFromMongo();
-  const interval = setInterval(fetchFromMongo, 8000);
+export function subscribeMachines(callback: (machines: Machine[]) => void): () => void {
+  initLocalSeedData();
+  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  callback(current);
+  listeners.machines.add(callback);
+
+  fetchMachinesOnce();
 
   return () => {
     listeners.machines.delete(callback);
-    clearInterval(interval);
   };
 }
 
@@ -339,13 +382,17 @@ export async function deleteMachine(machineId: string): Promise<void> {
    SPARE PARTS SERVICE (MongoDB via /api/parts)
    ====================================================================== */
 
-export function subscribeParts(callback: (parts: SparePart[]) => void): () => void {
-  initLocalSeedData();
-  const current = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
-  callback(current);
-  listeners.parts.add(callback);
+let lastFetchPartsTime = 0;
+let inFlightParts: Promise<void> | null = null;
 
-  const fetchFromMongo = async () => {
+export async function fetchPartsOnce(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastFetchPartsTime < 3000) {
+    if (inFlightParts) return inFlightParts;
+    return;
+  }
+  lastFetchPartsTime = now;
+  inFlightParts = (async () => {
     try {
       const res = await fetch('/api/parts');
       const json = await res.json();
@@ -355,15 +402,23 @@ export function subscribeParts(callback: (parts: SparePart[]) => void): () => vo
       }
     } catch (err) {
       console.warn('MongoDB fetch parts fallback:', err);
+    } finally {
+      inFlightParts = null;
     }
-  };
+  })();
+  return inFlightParts;
+}
 
-  fetchFromMongo();
-  const interval = setInterval(fetchFromMongo, 8000);
+export function subscribeParts(callback: (parts: SparePart[]) => void): () => void {
+  initLocalSeedData();
+  const current = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
+  callback(current);
+  listeners.parts.add(callback);
+
+  fetchPartsOnce();
 
   return () => {
     listeners.parts.delete(callback);
-    clearInterval(interval);
   };
 }
 
@@ -418,13 +473,17 @@ export async function restockPart(partId: string, quantity: number, poRef?: stri
    REPAIRS & WORK ORDERS SERVICE (MongoDB via /api/repairs)
    ====================================================================== */
 
-export function subscribeRepairs(callback: (repairs: RepairTicket[]) => void): () => void {
-  initLocalSeedData();
-  const current = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
-  callback(current);
-  listeners.repairs.add(callback);
+let lastFetchRepairsTime = 0;
+let inFlightRepairs: Promise<void> | null = null;
 
-  const fetchFromMongo = async () => {
+export async function fetchRepairsOnce(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastFetchRepairsTime < 3000) {
+    if (inFlightRepairs) return inFlightRepairs;
+    return;
+  }
+  lastFetchRepairsTime = now;
+  inFlightRepairs = (async () => {
     try {
       const res = await fetch('/api/repairs');
       const json = await res.json();
@@ -434,15 +493,23 @@ export function subscribeRepairs(callback: (repairs: RepairTicket[]) => void): (
       }
     } catch (err) {
       console.warn('MongoDB fetch repairs fallback:', err);
+    } finally {
+      inFlightRepairs = null;
     }
-  };
+  })();
+  return inFlightRepairs;
+}
 
-  fetchFromMongo();
-  const interval = setInterval(fetchFromMongo, 8000);
+export function subscribeRepairs(callback: (repairs: RepairTicket[]) => void): () => void {
+  initLocalSeedData();
+  const current = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
+  callback(current);
+  listeners.repairs.add(callback);
+
+  fetchRepairsOnce();
 
   return () => {
     listeners.repairs.delete(callback);
-    clearInterval(interval);
   };
 }
 
@@ -934,13 +1001,17 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
    PREVENTIVE MAINTENANCE (PPM) SERVICE (MongoDB via /api/ppm)
    ====================================================================== */
 
-export function subscribePPMSchedules(callback: (schedules: PPMSchedule[]) => void): () => void {
-  initLocalSeedData();
-  const current = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
-  callback(current);
-  listeners.ppm.add(callback);
+let lastFetchPPMTime = 0;
+let inFlightPPM: Promise<void> | null = null;
 
-  const fetchFromMongo = async () => {
+export async function fetchPPMSchedulesOnce(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastFetchPPMTime < 3000) {
+    if (inFlightPPM) return inFlightPPM;
+    return;
+  }
+  lastFetchPPMTime = now;
+  inFlightPPM = (async () => {
     try {
       const res = await fetch('/api/ppm');
       const json = await res.json();
@@ -950,15 +1021,23 @@ export function subscribePPMSchedules(callback: (schedules: PPMSchedule[]) => vo
       }
     } catch (err) {
       console.warn('MongoDB fetch ppm fallback:', err);
+    } finally {
+      inFlightPPM = null;
     }
-  };
+  })();
+  return inFlightPPM;
+}
 
-  fetchFromMongo();
-  const interval = setInterval(fetchFromMongo, 8000);
+export function subscribePPMSchedules(callback: (schedules: PPMSchedule[]) => void): () => void {
+  initLocalSeedData();
+  const current = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
+  callback(current);
+  listeners.ppm.add(callback);
+
+  fetchPPMSchedulesOnce();
 
   return () => {
     listeners.ppm.delete(callback);
-    clearInterval(interval);
   };
 }
 
@@ -1145,15 +1224,17 @@ export async function createPPMSchedule(schedule: PPMSchedule): Promise<void> {
    MONTHLY INDENTS & CRITICAL CEO REQUISITIONS (MongoDB via /api/requisitions)
    ====================================================================== */
 
-export function subscribeRequisitions(
-  callback: (requisitions: PartRequisition[]) => void
-): () => void {
-  initLocalSeedData();
-  const current = getLocal<PartRequisition[]>(STORAGE_KEYS.REQUISITIONS, []);
-  callback(current);
-  listeners.requisitions.add(callback);
+let lastFetchRequisitionsTime = 0;
+let inFlightRequisitions: Promise<void> | null = null;
 
-  const fetchFromMongo = async () => {
+export async function fetchRequisitionsOnce(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastFetchRequisitionsTime < 3000) {
+    if (inFlightRequisitions) return inFlightRequisitions;
+    return;
+  }
+  lastFetchRequisitionsTime = now;
+  inFlightRequisitions = (async () => {
     try {
       const res = await fetch('/api/requisitions');
       const json = await res.json();
@@ -1163,15 +1244,25 @@ export function subscribeRequisitions(
       }
     } catch (err) {
       console.warn('MongoDB fetch requisitions fallback:', err);
+    } finally {
+      inFlightRequisitions = null;
     }
-  };
+  })();
+  return inFlightRequisitions;
+}
 
-  fetchFromMongo();
-  const interval = setInterval(fetchFromMongo, 8000);
+export function subscribeRequisitions(
+  callback: (requisitions: PartRequisition[]) => void
+): () => void {
+  initLocalSeedData();
+  const current = getLocal<PartRequisition[]>(STORAGE_KEYS.REQUISITIONS, []);
+  callback(current);
+  listeners.requisitions.add(callback);
+
+  fetchRequisitionsOnce();
 
   return () => {
     listeners.requisitions.delete(callback);
-    clearInterval(interval);
   };
 }
 
@@ -1338,3 +1429,55 @@ export async function fulfillMonthlyIndent(
     console.error('MongoDB fulfillMonthlyIndent error:', err);
   }
 }
+
+export async function fulfillMechanicIndent(
+  id: string,
+  storePersonName: string = 'Store In-Charge',
+  storeNotes: string = 'Part verified, scrap returned, and handed over to mechanic at crib window',
+  issuedQty?: number
+): Promise<void> {
+  const currentReqs = getLocal<PartRequisition[]>(STORAGE_KEYS.REQUISITIONS, []);
+  const targetReq = currentReqs.find((r) => r.id === id);
+  if (!targetReq) return;
+
+  const updatedReqs = currentReqs.map((r) =>
+    r.id === id
+      ? {
+          ...r,
+          status: 'FULFILLED' as RequisitionStatus,
+          assignedStorePerson: storePersonName,
+          fulfilledAt: new Date().toISOString(),
+          storeNotes,
+        }
+      : r
+  );
+
+  setLocal(STORAGE_KEYS.REQUISITIONS, updatedReqs);
+  notifyLocal('requisitions', updatedReqs);
+
+  // Deduct stock from parts
+  const partId = targetReq.partId;
+  const qtyToDeduct = issuedQty || targetReq.quantity || 1;
+  if (partId) {
+    await adjustPartStock(partId, -qtyToDeduct);
+  }
+
+  try {
+    await fetch('/api/requisitions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        updates: {
+          status: 'FULFILLED',
+          assignedStorePerson: storePersonName,
+          fulfilledAt: new Date().toISOString(),
+          storeNotes,
+        },
+      }),
+    });
+  } catch (err) {
+    console.error('MongoDB fulfillMechanicIndent error:', err);
+  }
+}
+

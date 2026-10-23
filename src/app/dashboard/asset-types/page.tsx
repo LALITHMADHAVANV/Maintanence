@@ -19,6 +19,8 @@ import {
   Plus,
   RotateCcw,
   Building,
+  IndianRupee,
+  History,
 } from 'lucide-react';
 import { Machine } from '@/types/cmms';
 import { subscribeMachines, deleteMachine } from '@/lib/services/cmmsService';
@@ -27,6 +29,8 @@ import { useAuth } from '@/context/AuthContext';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import plantAssetsSeed from '@/data/plantAssetsSeed.json';
+import AllowancePage from '@/app/dashboard/allowance/page';
+import HistoryPage from '@/app/dashboard/history/page';
 
 // Preserved 4 Categories
 type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
@@ -156,6 +160,25 @@ function AssetsPageContent() {
       setSelectedPlant(user.unit);
     }
   }, [unitParam, user, role]);
+
+  // Upper horizontal tabs bar: Asset, Allowance, History
+  const tabParam = searchParams.get('tab');
+  const [activeMainTab, setActiveMainTab] = useState<'ASSET' | 'ALLOWANCE' | 'HISTORY'>(() => {
+    if (tabParam) {
+      const up = tabParam.toUpperCase();
+      if (up === 'ALLOWANCE' || up === 'HISTORY' || up === 'ASSET') return up as any;
+    }
+    return 'ASSET';
+  });
+
+  useEffect(() => {
+    if (tabParam) {
+      const up = tabParam.toUpperCase();
+      if (up === 'ALLOWANCE' || up === 'HISTORY' || up === 'ASSET') {
+        setActiveMainTab(up as any);
+      }
+    }
+  }, [tabParam]);
 
   const handlePlantChange = (newPlant: string) => {
     if (!isAdmin) return;
@@ -467,12 +490,79 @@ function AssetsPageContent() {
 
   return (
     <div className="space-y-5 pb-12">
-      {/* Top Header Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-            <Boxes className="w-6 h-6" />
-          </div>
+      {/* ─────────────────────────────────────────────────────────────────────────
+          UPPER HORIZONTAL TABS BAR (Matching Settings Tab Bar)
+      ────────────────────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-6 border-b border-slate-200 overflow-x-auto select-none pt-1">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveMainTab('ASSET');
+            window.history.replaceState({}, '', '/dashboard/asset-types?tab=asset');
+          }}
+          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+            activeMainTab === 'ASSET'
+              ? 'border-[#059669] text-[#065f46] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Boxes className={`w-4 h-4 ${activeMainTab === 'ASSET' ? 'text-[#059669]' : 'text-slate-400'}`} />
+          <span>Asset</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveMainTab('ALLOWANCE');
+            window.history.replaceState({}, '', '/dashboard/asset-types?tab=allowance');
+          }}
+          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+            activeMainTab === 'ALLOWANCE'
+              ? 'border-[#059669] text-[#065f46] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <IndianRupee className={`w-4 h-4 ${activeMainTab === 'ALLOWANCE' ? 'text-[#059669]' : 'text-slate-400'}`} />
+          <span>Allowance</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveMainTab('HISTORY');
+            window.history.replaceState({}, '', '/dashboard/asset-types?tab=history');
+          }}
+          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+            activeMainTab === 'HISTORY'
+              ? 'border-[#059669] text-[#065f46] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <History className={`w-4 h-4 ${activeMainTab === 'HISTORY' ? 'text-[#059669]' : 'text-slate-400'}`} />
+          <span>History</span>
+        </button>
+      </div>
+
+      {activeMainTab === 'ALLOWANCE' && (
+        <div className="pt-1 animate-in fade-in duration-200">
+          <AllowancePage />
+        </div>
+      )}
+
+      {activeMainTab === 'HISTORY' && (
+        <div className="pt-1 animate-in fade-in duration-200">
+          <HistoryPage />
+        </div>
+      )}
+
+      {activeMainTab === 'ASSET' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          {/* Top Header Card */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Boxes className="w-6 h-6" />
+              </div>
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">
@@ -863,7 +953,8 @@ function AssetsPageContent() {
                 <tr>
                   <th className="py-2.5 px-3 text-center border-r border-slate-300 w-14">S.No</th>
                   <th className="py-2.5 px-3 border-r border-slate-300">M/C No (Asset ID)</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300 min-w-[210px]">Machine Type & Variety</th>
+                  <th className="py-2.5 px-3 border-r border-slate-300 min-w-[130px]">Machine Type</th>
+                  <th className="py-2.5 px-3 border-r border-slate-300 min-w-[180px]">Sub Machine Type</th>
                   <th className="py-2.5 px-3 border-r border-slate-300">Machine Make</th>
                   <th className="py-2.5 px-3 border-r border-slate-300">M/C Model</th>
                   <th className="py-2.5 px-3 text-center border-r border-slate-300 w-16">Year</th>
@@ -876,7 +967,7 @@ function AssetsPageContent() {
               <tbody className="divide-y divide-slate-200">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-400 bg-white">
+                    <td colSpan={11} className="py-12 text-center text-slate-400 bg-white">
                       No assets found matching the selected filter criteria.
                     </td>
                   </tr>
@@ -906,60 +997,64 @@ function AssetsPageContent() {
                         </button>
                       </td>
 
-                      {/* 3. Machine Type & Specific Variety */}
-                      <td className="py-2.5 px-3.5 border-r border-slate-200">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-slate-900 group-hover:text-indigo-700 text-xs">
-                              {item.machineType}
+                      {/* 3. Machine Type */}
+                      <td className="py-2.5 px-3 border-r border-slate-200">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 group-hover:text-indigo-700 text-xs">
+                            {item.machineType}
+                          </span>
+                          {item.machineType === 'OVERLOCK' && (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black bg-purple-50 text-purple-700 border border-purple-200 uppercase tracking-wider">
+                              Overlock
                             </span>
-                            {item.machineType === 'OVERLOCK' && (
-                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black bg-purple-50 text-purple-700 border border-purple-200 uppercase tracking-wider">
-                                Overlock
-                              </span>
-                            )}
-                            {item.machineType === 'FLATLOCK' && (
-                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
-                                Flatlock
-                              </span>
-                            )}
-                          </div>
-                          {item.variety && (
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border w-fit ${
-                                item.machineType === 'FLATLOCK'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                  : item.machineType === 'OVERLOCK'
-                                  ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                                  : 'bg-slate-50 text-slate-700 border-slate-200'
-                              }`}
-                            >
-                              {item.variety}
+                          )}
+                          {item.machineType === 'FLATLOCK' && (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                              Flatlock
                             </span>
                           )}
                         </div>
                       </td>
 
-                      {/* 4. Machine Make */}
+                      {/* 4. Sub Machine Type */}
+                      <td className="py-2.5 px-3 border-r border-slate-200">
+                        {item.variety ? (
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border ${
+                              item.machineType === 'FLATLOCK'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : item.machineType === 'OVERLOCK'
+                                ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                : 'bg-slate-50 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {item.variety}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-mono text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* 5. Machine Make */}
                       <td className="py-2.5 px-3 border-r border-slate-200">
                         <span className="font-bold text-slate-800 uppercase">
                           {item.machineMake}
                         </span>
                       </td>
 
-                      {/* 5. M/C Model */}
+                      {/* 6. M/C Model */}
                       <td className="py-2.5 px-3 border-r border-slate-200">
                         <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100/90 px-2 py-0.5 rounded border border-slate-200 inline-block">
                           {item.model && item.model !== '—' && item.model !== item.machineType ? item.model : item.variety || '—'}
                         </span>
                       </td>
 
-                      {/* 6. Year */}
+                      {/* 7. Year */}
                       <td className="py-2.5 px-3 border-r border-slate-200 text-center font-mono text-slate-700 font-semibold text-xs">
                         {item.year || '—'}
                       </td>
 
-                      {/* 7. Location */}
+                      {/* 8. Location */}
                       <td className="py-2.5 px-3 border-r border-slate-200">
                         <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
                           <MapPin className="w-3 h-3 text-slate-400" />
@@ -967,7 +1062,7 @@ function AssetsPageContent() {
                         </span>
                       </td>
 
-                      {/* 8. Zone */}
+                      {/* 9. Zone */}
                       <td className="py-2.5 px-3 border-r border-slate-200 text-center">
                         {item.zone ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -978,7 +1073,7 @@ function AssetsPageContent() {
                         )}
                       </td>
 
-                      {/* 9. Status */}
+                      {/* 10. Status */}
                       <td className="py-2.5 px-3 border-r border-slate-200 text-center">
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -995,7 +1090,7 @@ function AssetsPageContent() {
                         </span>
                       </td>
 
-                      {/* 10. Action */}
+                      {/* 11. Action */}
                       <td className="py-2.5 px-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
@@ -1091,6 +1186,8 @@ function AssetsPageContent() {
             </div>
           </div>
         </div>
+      )}
+      </div>
       )}
 
       {/* Edit Asset Modal */}

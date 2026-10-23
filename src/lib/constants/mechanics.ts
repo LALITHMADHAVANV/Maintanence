@@ -52,6 +52,7 @@ export interface MechanicDuty {
   }[];
   trade?: 'MECHANIC' | 'ELECTRICIAN';
   unit?: string;
+  zones?: string[];
 }
 
 /**
@@ -73,6 +74,7 @@ export function userToMechanicDuty(u: any): MechanicDuty {
     name: u.name || 'Technician',
     trade: isElectrician ? 'ELECTRICIAN' : 'MECHANIC',
     unit: u.unit || 'UNIT - 1',
+    zones: Array.isArray(u.zones) ? u.zones : (u.zone ? [u.zone] : []),
     role: u.title || (isElectrician ? 'Plant Electrician' : 'Line Sewing Mechanic'),
     shift: 'General Shift (08:00 - 17:00)',
     specialty: isElectrician ? 'Electrical & Automation Systems' : 'Sewing Machine Maintenance',

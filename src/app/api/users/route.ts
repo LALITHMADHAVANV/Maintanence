@@ -54,21 +54,46 @@ export async function GET() {
       users = await collection.find({}).toArray();
     }
 
-    const fetchedUsers: UserProfile[] = users.map(({ _id, password, ...data }: any) => ({
-      uid: data.uid || String(_id),
-      name: data.name || 'Factory Staff',
-      email: data.email || '',
-      role: (data.role || 'MECHANIC') as UserRole,
-      title: data.title || getDefaultTitle((data.role as UserRole) || 'MECHANIC'),
-      phone: data.phone || '',
-      department: data.department || 'Floor Maintenance',
-      employeeId: data.employeeId || data.employee_id || `EMP-${(data.uid || '').slice(0, 4)}`,
-      unit: data.unit || 'All Units',
-      status: data.status || 'ACTIVE',
-      defaultPassword: data.defaultPassword || data.default_password || password,
-      createdAt: data.createdAt || data.created_at,
-      updatedAt: data.updatedAt || data.updated_at,
-    }));
+    const fetchedUsers: UserProfile[] = users.map(({ _id, password, ...data }: any) => {
+      const rawRole = (data.role || 'MECHANIC').toString().trim();
+      const roleUpper = rawRole.toUpperCase();
+      let normalizedRole: UserRole = rawRole as UserRole;
+      if (roleUpper === 'STORE' || roleUpper === 'STORE PERSON' || roleUpper === 'STORE_KEEPER') {
+        normalizedRole = 'STORE_PERSON';
+      } else if (roleUpper === 'MECHANIC') {
+        normalizedRole = 'MECHANIC';
+      } else if (roleUpper === 'SENIOR_MECHANIC' || roleUpper === 'SR_MECHANIC' || roleUpper === 'SR MECHANIC') {
+        normalizedRole = 'SENIOR_MECHANIC';
+      } else if (roleUpper === 'ELECTRICIAN') {
+        normalizedRole = 'ELECTRICIAN';
+      } else if (roleUpper === 'SENIOR_ELECTRICIAN' || roleUpper === 'SR_ELECTRICIAN' || roleUpper === 'SR ELECTRICIAN') {
+        normalizedRole = 'SENIOR_ELECTRICIAN';
+      } else if (roleUpper === 'ADMIN') {
+        normalizedRole = 'ADMIN';
+      } else if (roleUpper === 'CEO') {
+        normalizedRole = 'CEO';
+      } else if (roleUpper === 'ASSET_MANAGER' || roleUpper === 'ASSET MANAGER') {
+        normalizedRole = 'ASSET_MANAGER';
+      }
+
+      return {
+        uid: data.uid || String(_id),
+        name: data.name || 'Factory Staff',
+        email: data.email || '',
+        role: normalizedRole,
+        title: data.title || getDefaultTitle(normalizedRole),
+        phone: data.phone || '',
+        department: data.department || 'Floor Maintenance',
+        employeeId: data.employeeId || data.employee_id || `EMP-${(data.uid || '').slice(0, 4)}`,
+        unit: data.unit || 'All Units',
+        zones: Array.isArray(data.zones) ? data.zones : (data.zone ? [data.zone] : []),
+        company: data.company || 'Sahana Garments Ltd',
+        status: data.status || 'ACTIVE',
+        defaultPassword: data.defaultPassword || data.default_password || password,
+        createdAt: data.createdAt || data.created_at,
+        updatedAt: data.updatedAt || data.updated_at,
+      };
+    });
 
     return NextResponse.json({
       success: true,
@@ -87,7 +112,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, email, role, title, password, phone, department, employeeId, unit } = body;
+    const { name, email, role, title, password, phone, department, employeeId, unit, zones } = body;
 
     if (!name || !email || !password || !role) {
       return NextResponse.json(
@@ -109,6 +134,9 @@ export async function POST(req: Request) {
     const finalTitle = title?.trim() || getDefaultTitle(cleanRole);
     const finalEmpId = employeeId?.trim() || `EMP-${Math.floor(100 + Math.random() * 900)}`;
     const finalUnit = unit?.trim() || 'All Units';
+    const finalZones = Array.isArray(zones)
+      ? zones.filter((z) => typeof z === 'string' && z.trim().length > 0)
+      : [];
     const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
 
     const db = await getDatabase();
@@ -131,6 +159,7 @@ export async function POST(req: Request) {
             department: department?.trim() || '',
             employeeId: finalEmpId,
             unit: finalUnit,
+            zones: finalZones,
             updatedAt: new Date().toISOString(),
           },
         }
@@ -154,6 +183,7 @@ export async function POST(req: Request) {
       department: department?.trim() || 'Floor Maintenance',
       employeeId: finalEmpId,
       unit: finalUnit,
+      zones: finalZones,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -172,6 +202,7 @@ export async function POST(req: Request) {
         title: newUserDoc.title,
         employeeId: newUserDoc.employeeId,
         unit: newUserDoc.unit,
+        zones: newUserDoc.zones,
       },
     });
   } catch (err: unknown) {
@@ -252,7 +283,7 @@ export async function DELETE(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { uid, email, name, role, title, department, phone, employeeId, unit, status, password } = body;
+    const { uid, email, name, role, title, department, phone, employeeId, unit, zones, status, password } = body;
 
     if (!uid && !email) {
       return NextResponse.json({ error: 'User UID or email is required to update' }, { status: 400 });
@@ -300,6 +331,11 @@ export async function PUT(req: Request) {
     if (phone !== undefined) updateDoc.phone = phone.trim();
     if (employeeId !== undefined) updateDoc.employeeId = employeeId.trim();
     if (unit !== undefined) updateDoc.unit = unit.trim();
+    if (zones !== undefined) {
+      updateDoc.zones = Array.isArray(zones)
+        ? zones.filter((z) => typeof z === 'string' && z.trim().length > 0)
+        : [];
+    }
     if (status !== undefined) updateDoc.status = status;
 
     // Optional email change (prevent duplicate email)

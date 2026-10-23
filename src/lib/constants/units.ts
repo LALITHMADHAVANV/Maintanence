@@ -30,6 +30,222 @@ export const FACTORY_UNITS: FactoryUnitOption[] = [
   },
 ];
 
+export interface FactoryZoneOption {
+  id: string; // Machine area/zone key: "NETHAJI", "PEACOCK 1", etc.
+  name: string; // Friendly label: "NETHAJI (Main Sewing Complex)"
+  description?: string;
+  defaultLines: string[];
+}
+
+/**
+ * Plant Unit ➔ Categorized Zones & Floor Lines mapping
+ * - UNIT - 1: NETHAJI (Main Sewing Complex, Lines 01-08)
+ * - UNIT-2: PEACOCK 1, PEACOCK 2, PEACOCK 3, PEACOCK 4 (Lines 01-08)
+ */
+export const FACTORY_UNIT_ZONES: Record<string, FactoryZoneOption[]> = {
+  'UNIT - 1': [
+    {
+      id: 'NETHAJI',
+      name: 'NETHAJI (Main Sewing Complex)',
+      description: 'Main production floor, Lines 01 to 08',
+      defaultLines: ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Line 05', 'Line 06', 'Line 07', 'Line 08', 'Buffer Workshop', 'Scrap Bay'],
+    },
+    {
+      id: 'NETHAJI - Cutting Bay',
+      name: 'NETHAJI - Cutting & Fusing Bay',
+      description: 'Cutting spreading tables & fusing presses',
+      defaultLines: ['Cutting Bay 01', 'Cutting Bay 02', 'Fusing Section', 'Band Knife Section'],
+    },
+    {
+      id: 'NETHAJI - Finishing',
+      name: 'NETHAJI - Finishing & Packing',
+      description: 'Thread trimming, ironing & carton packing',
+      defaultLines: ['Ironing Table 01', 'Ironing Table 02', 'Packing Line 01', 'Inspection Bay'],
+    },
+  ],
+  'UNIT-2': [
+    {
+      id: 'PEACOCK',
+      name: 'PEACOCK (Main Sewing Floor)',
+      description: 'Main production floor, Lines 01 to 08',
+      defaultLines: ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Line 05', 'Line 06', 'Line 07', 'Line 08', 'Buffer Workshop'],
+    },
+  ],
+};
+
+export interface DynamicFactoryZone {
+  id: string;
+  name: string;
+  linesCount?: number;
+  description?: string;
+  lines?: string[];
+}
+
+export interface DynamicFactoryUnit {
+  id: string;
+  code: string;
+  name: string;
+  campus?: string;
+  totalLines?: number;
+  totalMachines?: number;
+  status?: string;
+  zones?: DynamicFactoryZone[];
+}
+
+/**
+ * Reads configured factory units from Settings page (localStorage key: cmms_settings_factory_units)
+ */
+export function getFactoryUnitsFromSettings(): DynamicFactoryUnit[] {
+  if (typeof window === 'undefined') {
+    return [
+      {
+        id: 'UNIT - 1',
+        code: 'UNIT - 1',
+        name: 'UNIT - 1',
+        totalLines: 8,
+        campus: 'Nethaji Campus',
+        zones: [
+          { id: 'NETHAJI', name: 'NETHAJI (Main Sewing Complex)', linesCount: 8 },
+          { id: 'NETHAJI - Cutting Bay', name: 'NETHAJI - Cutting & Fusing Bay', linesCount: 4 },
+          { id: 'NETHAJI - Finishing', name: 'NETHAJI - Finishing & Packing', linesCount: 4 },
+        ],
+      },
+      {
+        id: 'UNIT-2',
+        code: 'UNIT-2',
+        name: 'UNIT-2',
+        totalLines: 10,
+        campus: 'Perundurai Campus',
+        zones: [
+          { id: 'PEACOCK', name: 'PEACOCK (Main Sewing Floor)', linesCount: 8, lines: ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Line 05', 'Line 06', 'Line 07', 'Line 08'] },
+        ],
+      },
+    ];
+  }
+  try {
+    const saved = localStorage.getItem('cmms_settings_factory_units');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((item: any) => {
+          let unitZones: DynamicFactoryZone[] = [];
+          if (Array.isArray(item.zones) && item.zones.length > 0) {
+            unitZones = item.zones;
+          } else {
+            const norm = normalizeUnit(item.code || item.id);
+            if (norm === 'unit1') {
+              unitZones = [
+                { id: 'NETHAJI', name: 'NETHAJI (Main Sewing Complex)', linesCount: 8 },
+                { id: 'NETHAJI - Cutting Bay', name: 'NETHAJI - Cutting & Fusing Bay', linesCount: 4 },
+                { id: 'NETHAJI - Finishing', name: 'NETHAJI - Finishing & Packing', linesCount: 4 },
+              ];
+            } else if (norm === 'unit2') {
+              unitZones = [
+                { id: 'PEACOCK', name: 'PEACOCK (Main Sewing Floor)', linesCount: 8, lines: ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Line 05', 'Line 06', 'Line 07', 'Line 08'] },
+              ];
+            } else if (item.name) {
+              const clean = item.name.replace(/^Plant\s+Unit\s+\d+\s*[—–-]\s*/i, '').trim() || item.code;
+              unitZones = [{ id: clean, name: clean, linesCount: Number(item.totalLines) || 8 }];
+            }
+          }
+
+          return {
+            id: item.code || item.id,
+            code: item.code || item.id,
+            name: item.code || item.id, // clean unit without extra words
+            campus: item.campus || '',
+            totalLines: Number(item.totalLines) || 8,
+            totalMachines: Number(item.totalMachines) || 0,
+            status: item.status || 'ACTIVE',
+            zones: unitZones,
+          };
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Failed to read factory units from settings', err);
+  }
+  return [
+    {
+      id: 'UNIT - 1',
+      code: 'UNIT - 1',
+      name: 'UNIT - 1',
+      totalLines: 8,
+      campus: 'Nethaji Campus',
+      zones: [
+        { id: 'NETHAJI', name: 'NETHAJI (Main Sewing Complex)', linesCount: 8 },
+        { id: 'NETHAJI - Cutting Bay', name: 'NETHAJI - Cutting & Fusing Bay', linesCount: 4 },
+        { id: 'NETHAJI - Finishing', name: 'NETHAJI - Finishing & Packing', linesCount: 4 },
+      ],
+    },
+    {
+      id: 'UNIT-2',
+      code: 'UNIT-2',
+      name: 'UNIT-2',
+      totalLines: 10,
+      campus: 'Perundurai Campus',
+      zones: [
+        { id: 'PEACOCK', name: 'PEACOCK (Main Sewing Floor)', linesCount: 8, lines: ['Line 01', 'Line 02', 'Line 03', 'Line 04', 'Line 05', 'Line 06', 'Line 07', 'Line 08'] },
+      ],
+    },
+  ];
+}
+
+/**
+ * Returns available zones for a given unit, dynamically linking settings data if custom unit or multi-zone
+ */
+export function getZonesForUnit(unit?: string | null): FactoryZoneOption[] {
+  if (!unit) return FACTORY_UNIT_ZONES['UNIT - 1'];
+  const norm = normalizeUnit(unit);
+
+  // Check if unit was registered in Settings with customized zones
+  const settingsUnits = getFactoryUnitsFromSettings();
+  const matched = settingsUnits.find(
+    (u) => normalizeUnit(u.code) === norm || normalizeUnit(u.id) === norm
+  );
+
+  if (matched?.zones && matched.zones.length > 0) {
+    return matched.zones.map((z) => {
+      const numLines = z.linesCount && z.linesCount > 0 ? z.linesCount : (matched.totalLines || 8);
+      const generatedLines = z.lines && z.lines.length > 0
+        ? z.lines
+        : Array.from({ length: numLines }, (_, i) => `Line ${String(i + 1).padStart(2, '0')}`).concat(['Buffer Workshop']);
+
+      return {
+        id: z.id || z.name,
+        name: z.name || z.id,
+        description: z.description || `${z.name} lines`,
+        defaultLines: generatedLines,
+      };
+    });
+  }
+
+  if (norm === 'unit2') return FACTORY_UNIT_ZONES['UNIT-2'];
+  if (norm === 'unit1') return FACTORY_UNIT_ZONES['UNIT - 1'];
+  if (FACTORY_UNIT_ZONES[unit]) return FACTORY_UNIT_ZONES[unit];
+
+  if (matched) {
+    const numLines = matched.totalLines && matched.totalLines > 0 ? matched.totalLines : 8;
+    const generatedLines = Array.from(
+      { length: numLines },
+      (_, i) => `Line ${String(i + 1).padStart(2, '0')}`
+    );
+    generatedLines.push('Buffer Workshop');
+    const cleanZone = matched.name ? matched.name.replace(/^Plant\s+Unit\s+\d+\s*[—–-]\s*/i, '').trim() : matched.code;
+
+    return [
+      {
+        id: cleanZone || matched.code,
+        name: cleanZone || matched.code,
+        description: matched.campus || `${matched.code} production area`,
+        defaultLines: generatedLines,
+      },
+    ];
+  }
+
+  return FACTORY_UNIT_ZONES['UNIT - 1'];
+}
+
 /**
  * Normalizes unit string for fuzzy matching (strips non-alphanumerics, case-insensitive)
  * E.g., 'UNIT - 1', 'Unit 1', 'unit-1' all normalize to 'unit1'

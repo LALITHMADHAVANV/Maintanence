@@ -1,49 +1,163 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
-  Package,
+  PackageCheck,
+  Wrench,
+  Clock,
+  AlertTriangle,
   CheckCircle2,
-  Truck,
-  ArrowRight,
-  ClipboardList,
-  Boxes,
-  User,
-  Calendar,
-  AlertCircle,
-  FileText,
-  BadgeCheck,
-  Search,
+  XCircle,
   Plus,
+  Search,
+  Filter,
   ArrowUpRight,
-  Sparkles,
-  MapPin,
-  RefreshCw,
-  Trash2,
-  X,
-  IndianRupee,
-  Layers,
+  Truck,
+  User,
+  Printer,
+  FileText,
   Check,
+  X,
+  ShieldAlert,
+  Layers,
+  Boxes,
+  Zap,
+  ChevronDown,
+  Calendar,
+  MapPin,
+  RotateCcw,
+  Sparkles,
+  Phone,
+  AlertCircle,
+  IndianRupee,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { PartRequisition, SparePart, RequisitionItem } from '@/types/cmms';
+import { normalizeRole } from '@/lib/constants/roles';
+import { PartRequisition, SparePart, RequisitionStatus } from '@/types/cmms';
 import {
   subscribeRequisitions,
   subscribeParts,
-  fulfillMonthlyIndent,
+  fulfillMechanicIndent,
   createRequisition,
+  updateRequisitionStatus,
+  sendAppNotification,
+  adjustPartStock,
 } from '@/lib/services/cmmsService';
+import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 
-interface DraftIndentItem {
-  id: string;
-  partId: string;
+// Default initial urgent mechanic indents if database is empty
+const INITIAL_MECHANIC_INDENTS: PartRequisition[] = [
+  {
+    id: 'IND-2026-101',
+    type: 'URGENT_NEED',
+    partId: 'SP-001',
+    partName: 'NAVE SET',
+    sku: 'FLA-NAV-001',
+    quantity: 1,
+    unit: 'sets',
+    itemCount: 1,
+    estimatedCost: 420,
+    urgency: 'URGENT_MANAGER',
+    requiresCeoApproval: false,
+    requestedBy: 'Ramesh Kumar',
+    requestedByRole: 'MECHANIC',
+    monthYear: 'October 2026',
+    targetLine: 'Line 01',
+    targetMachineId: 'MC-FLA-101',
+    machineId: 'MC-FLA-101',
+    justification: 'Needle clamp vibration snapped nave set mounting during run. Machine stopped on Line 01.',
+    status: 'PENDING_MANAGER_APPROVAL',
+    createdAt: new Date(Date.now() - 25 * 60000).toISOString(),
+  },
+  {
+    id: 'IND-2026-102',
+    type: 'URGENT_NEED',
+    partId: 'SP-003',
+    partName: 'TENSION SET',
+    sku: 'FLA-TEN-003',
+    quantity: 2,
+    unit: 'sets',
+    itemCount: 2,
+    estimatedCost: 700,
+    urgency: 'URGENT_MANAGER',
+    requiresCeoApproval: false,
+    requestedBy: 'Murugan S.',
+    requestedByRole: 'MECHANIC',
+    monthYear: 'October 2026',
+    targetLine: 'Line 02',
+    targetMachineId: 'MC-OVK-204',
+    machineId: 'MC-OVK-204',
+    justification: 'Severe stitch skipping on rib neck attachment. Tension spring broken inside housing.',
+    status: 'PENDING_REVIEW',
+    createdAt: new Date(Date.now() - 65 * 60000).toISOString(),
+  },
+  {
+    id: 'IND-2026-103',
+    type: 'CRITICAL_CEO',
+    partId: 'SP-002',
+    partName: 'WAIST BAND CLIP',
+    sku: 'FLA-WAI-002',
+    quantity: 1,
+    unit: 'pcs',
+    itemCount: 1,
+    estimatedCost: 180,
+    urgency: 'CRITICAL_CEO_APPROVAL',
+    requiresCeoApproval: true,
+    requestedBy: 'Karthik N.',
+    requestedByRole: 'ELECTRICIAN',
+    monthYear: 'October 2026',
+    targetLine: 'Line 03',
+    targetMachineId: 'MC-SNLS-103',
+    machineId: 'MC-SNLS-103',
+    justification: 'Pneumatic folder binding clip cracked. Critical line stoppage.',
+    status: 'APPROVED_BY_CEO',
+    createdAt: new Date(Date.now() - 110 * 60000).toISOString(),
+  },
+  {
+    id: 'IND-2026-098',
+    type: 'URGENT_NEED',
+    partId: 'SP-002',
+    partName: 'WAIST BAND CLIP',
+    sku: 'FLA-WAI-002',
+    quantity: 1,
+    unit: 'pcs',
+    itemCount: 1,
+    estimatedCost: 180,
+    urgency: 'URGENT_MANAGER',
+    requiresCeoApproval: false,
+    requestedBy: 'Ramesh Kumar',
+    requestedByRole: 'MECHANIC',
+    monthYear: 'October 2026',
+    targetLine: 'Line 01',
+    targetMachineId: 'MC-FLA-108',
+    machineId: 'MC-FLA-108',
+    justification: 'Spring fatigue on waist guide. Replaced during shift preventive check.',
+    status: 'FULFILLED',
+    assignedStorePerson: 'M. Arumugam (Stores In-Charge)',
+    fulfilledAt: new Date(Date.now() - 180 * 60000).toISOString(),
+    storeNotes: 'Old sheared clip verified into scrap bin. Stock deducted and handed over to mechanic.',
+    createdAt: new Date(Date.now() - 240 * 60000).toISOString(),
+  },
+];
+
+interface GatePassData {
+  slipNo: string;
+  indentId: string;
+  date: string;
+  mechanicName: string;
+  mechanicRole: string;
+  targetLine: string;
+  targetMachineId?: string;
   partName: string;
   sku: string;
   quantity: number;
   unit: string;
   unitCost: number;
+  oldPartReturned: boolean;
+  storekeeper: string;
+  notes?: string;
 }
 
 function StoreInboxContent() {
@@ -53,47 +167,78 @@ function StoreInboxContent() {
 
   const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
   const [parts, setParts] = useState<SparePart[]>([]);
-  const [filter, setFilter] = useState<'PENDING_RECEIPT' | 'FULFILLED' | 'ALL'>('PENDING_RECEIPT');
-  const [activeModalReq, setActiveModalReq] = useState<PartRequisition | null>(null);
-  const [modalAction, setModalAction] = useState<'RECEIVE' | 'DISPATCH'>('RECEIVE');
-  const [notes, setNotes] = useState('');
-  const [challanNo, setChallanNo] = useState('');
+  const [registeredStaff, setRegisteredStaff] = useState<MechanicDuty[]>([]);
 
-  // Create New Indent Modal State
-  const [isNewIndentModalOpen, setIsNewIndentModalOpen] = useState(false);
-  const [indentMonth, setIndentMonth] = useState(
-    new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
-  );
-  const [indentLine, setIndentLine] = useState('Line 01 & Line 02');
-  const [indentJustification, setIndentJustification] = useState(
-    'Monthly spare parts quota allocation and line buffer inventory.'
-  );
-  const [indentItems, setIndentItems] = useState<DraftIndentItem[]>([
-    {
-      id: 'item-1',
-      partId: '',
-      partName: '',
-      sku: '',
-      quantity: 10,
-      unit: 'pcs',
-      unitCost: 0,
-    },
-  ]);
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'FULFILLED' | 'REJECTED'>('PENDING');
+  const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [lineFilter, setLineFilter] = useState<string>('ALL');
 
-  const isStorePerson = role === 'STORE_PERSON';
+  // Issue Action Modal State
+  const [activeIssueReq, setActiveIssueReq] = useState<PartRequisition | null>(null);
+  const [issueQty, setIssueQty] = useState<number>(1);
+  const [oldPartReturned, setOldPartReturned] = useState<boolean>(true);
+  const [issueNotes, setIssueNotes] = useState<string>('');
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState<boolean>(false);
 
-  // Check URL query to auto-open new indent modal
+  // Reject Modal State
+  const [activeRejectReq, setActiveRejectReq] = useState<PartRequisition | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('');
+  const [isSubmittingReject, setIsSubmittingReject] = useState<boolean>(false);
+
+  // Walk-In Urgent Indent Modal State
+  const [isWalkInModalOpen, setIsWalkInModalOpen] = useState(false);
+  const [walkInMechId, setWalkInMechId] = useState('');
+  const [walkInPartId, setWalkInPartId] = useState('');
+  const [walkInQty, setWalkInQty] = useState(1);
+  const [walkInLine, setWalkInLine] = useState('Line 01');
+  const [walkInMachineId, setWalkInMachineId] = useState('');
+  const [walkInReason, setWalkInReason] = useState('Shift breakdown replacement part needed immediately.');
+  const [walkInOldPartReturned, setWalkInOldPartReturned] = useState(true);
+  const [isSubmittingWalkIn, setIsSubmittingWalkIn] = useState(false);
+
+  // Gate Pass / Slip Modal State
+  const [isGatePassOpen, setIsGatePassOpen] = useState(false);
+  const [gatePassData, setGatePassData] = useState<GatePassData | null>(null);
+
+  // Fetch dynamic users for mechanic roster
   useEffect(() => {
-    if (searchParams.get('new') === 'true') {
-      setIsNewIndentModalOpen(true);
-    }
-  }, [searchParams]);
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const staff = data.users.filter((u: any) => {
+            const nr = normalizeRole(u.role);
+            return ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(nr);
+          });
+          if (staff.length > 0) {
+            setRegisteredStaff(staff.map(userToMechanicDuty));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
+  const activeStaffRoster = registeredStaff.length > 0 ? registeredStaff : FACTORY_MECHANICS_ROSTER;
+
+  // Auto-select first mechanic in walk-in modal
+  useEffect(() => {
+    if (activeStaffRoster.length > 0 && !walkInMechId) {
+      setWalkInMechId(activeStaffRoster[0].name);
+    }
+  }, [activeStaffRoster, walkInMechId]);
+
+  // Subscribe to live CMMS data
   useEffect(() => {
     const unsubReqs = subscribeRequisitions((reqs) => {
-      // Filter strictly for monthly indents assigned to the store person
-      const storeMonthlyIndents = reqs.filter((r) => r.type === 'MONTHLY_INDENT');
-      setRequisitions(storeMonthlyIndents);
+      // Exclude monthly indents; keep urgent mechanic floor indents
+      const mechanicOnly = reqs.filter((r) => r.type !== 'MONTHLY_INDENT');
+      if (mechanicOnly.length === 0) {
+        setRequisitions(INITIAL_MECHANIC_INDENTS);
+      } else {
+        setRequisitions(mechanicOnly);
+      }
     });
 
     const unsubParts = subscribeParts((allParts) => {
@@ -106,1012 +251,860 @@ function StoreInboxContent() {
     };
   }, []);
 
-  const pendingIndents = requisitions.filter(
-    (r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED'
+  // Auto-open new indent modal if ?new=true query parameter is given
+  useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      setIsWalkInModalOpen(true);
+    }
+  }, [searchParams]);
+
+  // Distinct mechanics who have placed indents
+  const requestingMechanics = useMemo(() => {
+    const set = new Set<string>();
+    requisitions.forEach((r) => {
+      if (r.requestedBy) set.add(r.requestedBy);
+    });
+    return Array.from(set);
+  }, [requisitions]);
+
+  // Filtered Indents
+  const filteredIndents = useMemo(() => {
+    return requisitions.filter((r) => {
+      // Status filter
+      if (statusFilter === 'PENDING') {
+        if (r.status === 'FULFILLED' || r.status === 'REJECTED') return false;
+      } else if (statusFilter === 'FULFILLED') {
+        if (r.status !== 'FULFILLED') return false;
+      } else if (statusFilter === 'REJECTED') {
+        if (r.status !== 'REJECTED') return false;
+      }
+
+      // Mechanic filter
+      if (selectedMechanicFilter !== 'ALL') {
+        if (r.requestedBy?.toLowerCase() !== selectedMechanicFilter.toLowerCase()) return false;
+      }
+
+      // Line filter
+      if (lineFilter !== 'ALL') {
+        if (!r.targetLine?.toLowerCase().includes(lineFilter.toLowerCase())) return false;
+      }
+
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const combined = `${r.id} ${r.requestedBy} ${r.partName} ${r.sku} ${r.targetMachineId || ''} ${r.targetLine || ''} ${r.justification || ''}`.toLowerCase();
+        if (!combined.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [requisitions, statusFilter, selectedMechanicFilter, lineFilter, searchQuery]);
+
+  // Summary counts
+  const pendingCount = useMemo(
+    () => requisitions.filter((r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED').length,
+    [requisitions]
   );
-  const fulfilledIndents = requisitions.filter((r) => r.status === 'FULFILLED');
+  const fulfilledCount = useMemo(
+    () => requisitions.filter((r) => r.status === 'FULFILLED').length,
+    [requisitions]
+  );
+  const rejectedCount = useMemo(
+    () => requisitions.filter((r) => r.status === 'REJECTED').length,
+    [requisitions]
+  );
 
-  const openActionModal = (req: PartRequisition, action: 'RECEIVE' | 'DISPATCH') => {
-    setActiveModalReq(req);
-    setModalAction(action);
-    setChallanNo(action === 'RECEIVE' ? `DC-${Math.floor(100000 + Math.random() * 900000)}` : '');
-    setNotes(
-      action === 'RECEIVE'
-        ? 'Verified physical box seal & QC pass certificate. Batch loaded into tool crib bins.'
-        : `Handed over quota to line floor runner. Received signature for ${req.targetLine || 'Floor Lines'}.`
-    );
+  // Open Issue Confirmation Modal
+  const handleOpenIssueModal = (req: PartRequisition) => {
+    setActiveIssueReq(req);
+    setIssueQty(req.quantity || 1);
+    setOldPartReturned(true);
+    setIssueNotes(`Verified scrap return and issued ${req.quantity || 1} ${req.unit || 'pcs'} to ${req.requestedBy} for ${req.targetLine || 'Floor Lines'}.`);
   };
 
-  const handleExecuteAction = async () => {
-    if (!activeModalReq) return;
-    try {
-      const fullNote = challanNo ? `[Challan #${challanNo}] ${notes}` : notes;
-      const storeOfficerName = user?.name ? `${user.name} (Store In-Charge)` : 'Store In-Charge';
-      await fulfillMonthlyIndent(
-        activeModalReq.id,
-        storeOfficerName,
-        fullNote,
-        modalAction === 'RECEIVE' ? 'RECEIVE_INTO_CRIB' : 'DISPATCH_TO_LINE'
-      );
-
-      showToast(
-        modalAction === 'RECEIVE'
-          ? `Inward monthly shipment received & stock credited to tool crib!`
-          : `Monthly supply quota dispatched to ${activeModalReq.targetLine || 'Floor Lines'}!`,
-        'success'
-      );
-      setActiveModalReq(null);
-    } catch (e) {
-      showToast('Error processing store action', 'error');
-      console.error(e);
-    }
-  };
-
-  // Add Item to Draft Indent
-  const handleAddIndentItem = () => {
-    setIndentItems((prev) => [
-      ...prev,
-      {
-        id: `item-${Date.now()}-${Math.random()}`,
-        partId: '',
-        partName: '',
-        sku: '',
-        quantity: 5,
-        unit: 'pcs',
-        unitCost: 0,
-      },
-    ]);
-  };
-
-  // Remove Item from Draft Indent
-  const handleRemoveIndentItem = (id: string) => {
-    if (indentItems.length === 1) {
-      showToast('An indent must have at least one item.', 'warning');
-      return;
-    }
-    setIndentItems((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  // Handle selecting a registered part for an item row
-  const handleItemPartSelect = (id: string, partId: string) => {
-    const selected = parts.find((p) => p.partId === partId);
-    if (!selected) return;
-    setIndentItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              partId: selected.partId,
-              partName: selected.name,
-              sku: selected.sku,
-              unit: selected.unit,
-              unitCost: selected.unitCost,
-            }
-          : item
-      )
-    );
-  };
-
-  // Update Item fields
-  const handleUpdateItemField = (id: string, field: keyof DraftIndentItem, value: any) => {
-    setIndentItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
-    );
-  };
-
-  // Calculate Draft Indent Totals
-  const draftTotalCost = useMemo(() => {
-    return indentItems.reduce((acc, it) => acc + (Number(it.quantity) || 0) * (Number(it.unitCost) || 0), 0);
-  }, [indentItems]);
-
-  const draftTotalUnits = useMemo(() => {
-    return indentItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
-  }, [indentItems]);
-
-  // Submit New Monthly Indent
-  const handleCreateNewIndent = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const validItems = indentItems.filter((i) => i.partName.trim() && (Number(i.quantity) || 0) > 0);
-    if (validItems.length === 0) {
-      showToast('Please add at least one item with a valid part name and quantity.', 'error');
-      return;
-    }
+  // Execute Issue & Dispatch
+  const handleConfirmIssue = async () => {
+    if (!activeIssueReq) return;
+    setIsSubmittingIssue(true);
 
     try {
-      const formattedItems: RequisitionItem[] = validItems.map((item) => {
-        const qty = Number(item.quantity) || 1;
-        const rate = Number(item.unitCost) || 0;
-        return {
-          partId: item.partId || `PRT-${Date.now()}`,
-          partName: item.partName.trim(),
-          sku: item.sku.trim() || 'SKU-GEN',
-          quantity: qty,
-          unit: item.unit.trim() || 'pcs',
-          unitCost: rate,
-          totalCost: qty * rate,
-        };
+      const storePersonName = user?.name ? `${user.name} (Store In-Charge)` : 'Store In-Charge';
+      await fulfillMechanicIndent(activeIssueReq.id, storePersonName, issueNotes, issueQty);
+
+      // Create Gate Pass Data
+      const targetPart = parts.find((p) => p.partId === activeIssueReq.partId || p.sku === activeIssueReq.sku);
+      const slipData: GatePassData = {
+        slipNo: `SLIP-${Math.floor(1000 + Math.random() * 9000)}`,
+        indentId: activeIssueReq.id,
+        date: new Date().toISOString(),
+        mechanicName: activeIssueReq.requestedBy || 'Mechanic',
+        mechanicRole: activeIssueReq.requestedByRole || 'MECHANIC',
+        targetLine: activeIssueReq.targetLine || 'Line 01',
+        targetMachineId: activeIssueReq.targetMachineId || activeIssueReq.machineId,
+        partName: activeIssueReq.partName || targetPart?.name || 'Spare Part',
+        sku: activeIssueReq.sku || targetPart?.sku || 'SKU-GEN',
+        quantity: issueQty,
+        unit: activeIssueReq.unit || targetPart?.unit || 'pcs',
+        unitCost: targetPart?.unitCost || 0,
+        oldPartReturned,
+        storekeeper: storePersonName,
+        notes: issueNotes,
+      };
+
+      setGatePassData(slipData);
+      setIsGatePassOpen(true);
+
+      // Notify Mechanic
+      sendAppNotification({
+        type: 'SPARE_ISSUE_RECEIPT',
+        title: `Part Issued: ${activeIssueReq.partName}`,
+        message: `${issueQty} ${activeIssueReq.unit || 'pcs'} dispatched by Store to ${activeIssueReq.requestedBy} (${activeIssueReq.targetLine || 'Floor'}).`,
+        targetRole: 'MECHANIC',
+        senderName: storePersonName,
       });
 
-      const totalCost = formattedItems.reduce((acc, it) => acc + it.totalCost, 0);
-      const totalUnits = formattedItems.reduce((acc, it) => acc + it.quantity, 0);
-      const storeOfficerName = user?.name ? `${user.name} (Store In-Charge)` : 'Store In-Charge';
-
-      await createRequisition({
-        type: 'MONTHLY_INDENT',
-        items: formattedItems,
-        itemCount: totalUnits,
-        estimatedCost: totalCost,
-        urgency: 'ROUTINE',
-        requiresCeoApproval: false,
-        requestedBy: storeOfficerName,
-        requestedByRole: 'STORE_PERSON',
-        monthYear: indentMonth,
-        targetLine: indentLine,
-        justification: indentJustification.trim() || 'Monthly tool crib spare parts quota indent.',
-        status: 'ORDERED',
-      });
-
-      showToast(`Monthly indent created with ${formattedItems.length} items!`, 'success');
-      setIsNewIndentModalOpen(false);
-
-      // Reset form
-      setIndentItems([
-        {
-          id: `item-${Date.now()}`,
-          partId: '',
-          partName: '',
-          sku: '',
-          quantity: 10,
-          unit: 'pcs',
-          unitCost: 0,
-        },
-      ]);
+      showToast(`Part "${activeIssueReq.partName}" issued successfully! Stock deducted.`, 'success');
+      setActiveIssueReq(null);
     } catch (err) {
-      console.error(err);
-      showToast('Error creating new indent.', 'error');
+      console.error('Error issuing indent part:', err);
+      showToast('Failed to issue part from store', 'error');
+    } finally {
+      setIsSubmittingIssue(false);
     }
   };
 
-  const filteredList = requisitions.filter((r) => {
-    if (filter === 'PENDING_RECEIPT') return r.status !== 'FULFILLED';
-    if (filter === 'FULFILLED') return r.status === 'FULFILLED';
-    return true;
-  });
+  // Open Reject Modal
+  const handleOpenRejectModal = (req: PartRequisition) => {
+    setActiveRejectReq(req);
+    setRejectReason('Insufficient crib stock / duplicate request for same line stoppage.');
+  };
+
+  // Confirm Reject
+  const handleConfirmReject = async () => {
+    if (!activeRejectReq) return;
+    setIsSubmittingReject(true);
+
+    try {
+      const reviewer = user?.name ? `${user.name} (Store)` : 'Store In-Charge';
+      await updateRequisitionStatus(activeRejectReq.id, 'REJECTED', `Rejected by ${reviewer}: ${rejectReason}`);
+
+      sendAppNotification({
+        type: 'GENERAL',
+        title: `Indent Rejected: ${activeRejectReq.partName}`,
+        message: `Order #${activeRejectReq.id} was rejected by store. Reason: ${rejectReason}`,
+        targetRole: 'MECHANIC',
+        senderName: reviewer,
+      });
+
+      showToast(`Indent #${activeRejectReq.id} marked as rejected.`, 'info');
+      setActiveRejectReq(null);
+    } catch (err) {
+      console.error('Error rejecting indent:', err);
+      showToast('Failed to reject indent', 'error');
+    } finally {
+      setIsSubmittingReject(false);
+    }
+  };
+
+  // Submit Walk-In Urgent Indent & Immediate Issue
+  const handleCreateWalkInIndent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!walkInPartId) {
+      showToast('Please select a spare part from the catalog', 'error');
+      return;
+    }
+
+    const selectedPart = parts.find((p) => p.partId === walkInPartId);
+    if (!selectedPart) {
+      showToast('Selected part not found in stock catalog', 'error');
+      return;
+    }
+
+    setIsSubmittingWalkIn(true);
+    try {
+      const storePersonName = user?.name ? `${user.name} (Store In-Charge)` : 'Store In-Charge';
+      const reqId = await createRequisition({
+        type: 'URGENT_NEED',
+        partId: selectedPart.partId,
+        partName: selectedPart.name,
+        sku: selectedPart.sku,
+        quantity: Number(walkInQty) || 1,
+        unit: selectedPart.unit || 'pcs',
+        itemCount: Number(walkInQty) || 1,
+        estimatedCost: (Number(walkInQty) || 1) * (selectedPart.unitCost || 0),
+        urgency: 'URGENT_MANAGER',
+        requiresCeoApproval: false,
+        requestedBy: walkInMechId || 'Walk-In Mechanic',
+        requestedByRole: 'MECHANIC',
+        monthYear: new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+        targetLine: walkInLine,
+        targetMachineId: walkInMachineId.trim() || undefined,
+        machineId: walkInMachineId.trim() || undefined,
+        justification: walkInReason.trim() || 'Floor emergency part issue at crib counter.',
+      });
+
+      // Immediately fulfill & deduct stock
+      await fulfillMechanicIndent(
+        reqId,
+        storePersonName,
+        `Walk-in counter issue: Old part returned = ${walkInOldPartReturned ? 'YES' : 'NO'}. Stock issued immediately.`,
+        Number(walkInQty) || 1
+      );
+
+      // Gate Pass
+      const slipData: GatePassData = {
+        slipNo: `SLIP-${Math.floor(1000 + Math.random() * 9000)}`,
+        indentId: reqId,
+        date: new Date().toISOString(),
+        mechanicName: walkInMechId || 'Walk-In Mechanic',
+        mechanicRole: 'MECHANIC',
+        targetLine: walkInLine,
+        targetMachineId: walkInMachineId.trim() || undefined,
+        partName: selectedPart.name,
+        sku: selectedPart.sku,
+        quantity: Number(walkInQty) || 1,
+        unit: selectedPart.unit || 'pcs',
+        unitCost: selectedPart.unitCost || 0,
+        oldPartReturned: walkInOldPartReturned,
+        storekeeper: storePersonName,
+        notes: walkInReason,
+      };
+
+      setGatePassData(slipData);
+      setIsGatePassOpen(true);
+
+      showToast(`Urgent indent ${reqId} created and dispatched to ${walkInMechId}!`, 'success');
+      setIsWalkInModalOpen(false);
+      setWalkInPartId('');
+      setWalkInQty(1);
+    } catch (err) {
+      console.error('Walk-in indent error:', err);
+      showToast('Failed to process walk-in indent', 'error');
+    } finally {
+      setIsSubmittingWalkIn(false);
+    }
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* Store Terminal Header */}
-      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
-              <Boxes className="w-6 h-6" />
+    <div className="space-y-6">
+      {/* ─── 1. TOP HERO HEADER ─────────────────────────────────────────────────── */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <PackageCheck className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <Boxes className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Tool Crib & Store Receiving Custody</span>
-                </span>
-                <span className="text-xs text-slate-500 font-mono">
-                  Assigned to: {user?.name || 'Store In-Charge'} (Tool Crib Storekeeper)
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+                  Mechanic Indent Receiving Desk
+                </h1>
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse flex items-center gap-1">
+                  <Zap className="w-3 h-3" />
+                  <span>Urgent Floor Indents</span>
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                Monthly Indent Products &amp; Intake Receiving
-              </h1>
-              <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-                Manage monthly factory spare part indents. Add new indent requisitions, receive bulk supplier deliveries into bins, and dispatch quotas to sewing lines.
+              <p className="text-xs text-slate-500 mt-0.5">
+                Live queue of urgent spare part orders placed by floor mechanics. Verify crib stock, validate scrap returns, and issue replacement parts directly.
               </p>
             </div>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
-            {/* ADD NEW INDENT BUTTON */}
-            <button
-              onClick={() => setIsNewIndentModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-              title="Add a new monthly indent requisition with items"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add New Indent</span>
-            </button>
+        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsWalkInModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Walk-In Issue / Urgent Indent</span>
+          </button>
+        </div>
+      </div>
 
-            <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2 text-right">
-              <span className="block text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
-                Pending Receiving
-              </span>
-              <span className="text-xl font-black text-amber-600">{pendingIndents.length} Indents</span>
+      {/* ─── 2. KPI METRICS STRIP ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+              Pending Issue
+            </span>
+            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+              <Zap className="w-4 h-4" />
             </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-slate-900">{pendingCount}</span>
+            <span className="text-xs text-rose-600 font-semibold">Awaiting Store</span>
+          </div>
+        </div>
 
-            <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2 text-right">
-              <span className="block text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
-                Completed
-              </span>
-              <span className="text-xl font-black text-emerald-600">{fulfilledIndents.length}</span>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+              Issued &amp; Dispatched
+            </span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-[#059669] flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4" />
             </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-slate-900">{fulfilledCount}</span>
+            <span className="text-xs text-[#059669] font-semibold">Completed Orders</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+              Requesting Mechanics
+            </span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <Wrench className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-slate-900">{requestingMechanics.length}</span>
+            <span className="text-xs text-indigo-600 font-semibold">Active Floor Staff</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+              Crib Catalog Parts
+            </span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Boxes className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-slate-900">{parts.length}</span>
+            <span className="text-xs text-slate-500 font-semibold">SKUs in Stock List</span>
           </div>
         </div>
       </div>
 
-      {/* Role Authority Advisory Banner */}
-      {!isStorePerson && (
-        <div className="bg-blue-50 border border-blue-300 p-4 rounded-2xl flex items-center justify-between text-xs text-blue-900 shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-200 text-blue-800 flex items-center justify-center font-bold shrink-0">
-              <Package className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-bold">Store Person Custody Only:</span> You are viewing the Monthly Store Indents in read-only mode as <span className="font-mono font-bold uppercase">{role || 'GUEST'}</span>. Only <strong>Store Manager / Store Person</strong> has authority to receive inward stock and dispatch parts to sewing lines.
-            </div>
+      {/* ─── 3. MECHANIC-WISE QUICK FILTER TABS ─────────────────────────────────── */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider">
+            <User className="w-4 h-4 text-[#059669]" />
+            <span>Filter Indents By Requesting Mechanic</span>
           </div>
+          {selectedMechanicFilter !== 'ALL' && (
+            <button
+              type="button"
+              onClick={() => setSelectedMechanicFilter('ALL')}
+              className="text-xs text-[#059669] hover:underline cursor-pointer font-semibold"
+            >
+              Show All Mechanics
+            </button>
+          )}
         </div>
-      )}
 
-      {/* Main Grid: Store Inbox Orders & Crib Current Stock Shelf */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Monthly Products Assigned to Storekeeper */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="w-4 h-4 text-emerald-600" />
-              <h2 className="text-sm font-bold text-slate-900">
-                Monthly Supply Indents Under Your Name ({filteredList.length})
-              </h2>
-            </div>
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setSelectedMechanicFilter('ALL')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+              selectedMechanicFilter === 'ALL'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            All Mechanics ({requisitions.length})
+          </button>
 
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                <button
-                  onClick={() => setFilter('PENDING_RECEIPT')}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
-                    filter === 'PENDING_RECEIPT'
-                      ? 'bg-white text-emerald-700 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  To Receive &amp; Dispatch ({pendingIndents.length})
-                </button>
-                <button
-                  onClick={() => setFilter('FULFILLED')}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
-                    filter === 'FULFILLED'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Fulfilled ({fulfilledIndents.length})
-                </button>
-                <button
-                  onClick={() => setFilter('ALL')}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md transition cursor-pointer ${
-                    filter === 'ALL'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  All ({requisitions.length})
-                </button>
-              </div>
+          {requestingMechanics.map((mechName) => {
+            const count = requisitions.filter(
+              (r) => r.requestedBy?.toLowerCase() === mechName.toLowerCase()
+            ).length;
+            const pendingMechCount = requisitions.filter(
+              (r) =>
+                r.requestedBy?.toLowerCase() === mechName.toLowerCase() &&
+                r.status !== 'FULFILLED' &&
+                r.status !== 'REJECTED'
+            ).length;
 
+            return (
               <button
-                onClick={() => setIsNewIndentModalOpen(true)}
-                className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                key={mechName}
+                type="button"
+                onClick={() => setSelectedMechanicFilter(mechName)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                  selectedMechanicFilter.toLowerCase() === mechName.toLowerCase()
+                    ? 'bg-[#059669] text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New</span>
+                <span>{mechName}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    selectedMechanicFilter.toLowerCase() === mechName.toLowerCase()
+                      ? 'bg-white/20 text-white'
+                      : pendingMechCount > 0
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {count}
+                </span>
               </button>
-            </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── 4. SEARCH & STATUS CONTROLS BAR ───────────────────────────────────── */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+        {/* Status Filter Tabs */}
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('PENDING')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer flex-1 md:flex-initial justify-center ${
+              statusFilter === 'PENDING'
+                ? 'bg-white text-rose-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-rose-600" />
+            <span>Pending Issue</span>
+            {pendingCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-black">
+                {pendingCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('FULFILLED')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer flex-1 md:flex-initial justify-center ${
+              statusFilter === 'FULFILLED'
+                ? 'bg-white text-[#059669] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#059669]" />
+            <span>Issued / Dispatched</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-bold">
+              {fulfilledCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('REJECTED')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer flex-1 md:flex-initial justify-center ${
+              statusFilter === 'REJECTED'
+                ? 'bg-white text-slate-800 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <XCircle className="w-3.5 h-3.5 text-slate-500" />
+            <span>Rejected</span>
+            {rejectedCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-bold">
+                {rejectedCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('ALL')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer flex-1 md:flex-initial justify-center ${
+              statusFilter === 'ALL'
+                ? 'bg-white text-slate-800 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>All ({requisitions.length})</span>
+          </button>
+        </div>
+
+        {/* Search input & Line filter */}
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="relative flex-grow md:w-72">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search part, mechanic, machine..."
+              className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#059669] transition"
+            />
           </div>
 
-          {filteredList.length === 0 ? (
-            <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-xs space-y-3">
-              <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2">
-                <CheckCircle2 className="w-7 h-7" />
-              </div>
-              <h3 className="text-base font-bold text-slate-800">No Monthly Indents Pending</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                No active monthly indents found matching your filter. Create a new monthly indent to begin tracking stock allocation.
-              </p>
-              <button
-                onClick={() => setIsNewIndentModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Create First Monthly Indent</span>
-              </button>
-            </div>
-          ) : (
-            filteredList.map((req) => {
-              const isFulfilled = req.status === 'FULFILLED';
-              const isOrdered = req.status === 'ORDERED';
+          <select
+            value={lineFilter}
+            onChange={(e) => setLineFilter(e.target.value)}
+            className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 outline-none font-bold text-slate-700 cursor-pointer shrink-0"
+          >
+            <option value="ALL">All Floor Lines</option>
+            <option value="Line 01">Line 01</option>
+            <option value="Line 02">Line 02</option>
+            <option value="Line 03">Line 03</option>
+            <option value="Line 04">Line 04</option>
+            <option value="Buffer Workshop">Buffer Workshop</option>
+          </select>
+        </div>
+      </div>
 
-              return (
-                <div
-                  key={req.id}
-                  className={`bg-white rounded-2xl border transition shadow-xs overflow-hidden ${
-                    isFulfilled
-                      ? 'border-emerald-200'
-                      : isOrdered
-                      ? 'border-indigo-200'
-                      : 'border-amber-300 ring-2 ring-amber-500/10'
-                  }`}
-                >
-                  {/* Indent Header Strip */}
-                  <div
-                    className={`px-5 py-3 flex items-center justify-between ${
-                      isFulfilled
-                        ? 'bg-emerald-50 text-emerald-900 border-b border-emerald-100'
-                        : isOrdered
-                        ? 'bg-indigo-50 text-indigo-900 border-b border-indigo-100'
-                        : 'bg-amber-50 text-amber-900 border-b border-amber-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-emerald-600" />
-                      <span className="text-xs font-extrabold uppercase tracking-wide">
-                        {req.monthYear} • Monthly Parts Indent
+      {/* ─── 5. URGENT INDENT QUEUE CARDS ───────────────────────────────────────── */}
+      {filteredIndents.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <PackageCheck className="w-6 h-6" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-800">No Mechanic Indents Found</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+            {statusFilter === 'PENDING'
+              ? 'No pending urgent indents awaiting store issuance at this time.'
+              : 'No indents match your active filters or search criteria.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsWalkInModalOpen(true)}
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl transition cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Walk-In Urgent Indent</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredIndents.map((indent) => {
+            const isFulfilled = indent.status === 'FULFILLED';
+            const isRejected = indent.status === 'REJECTED';
+            const isPending = !isFulfilled && !isRejected;
+
+            // Find stock level in store
+            const matchedPart = parts.find(
+              (p) => p.partId === indent.partId || p.sku === indent.sku
+            );
+            const stockQty = matchedPart?.stock ?? 15;
+            const hasSufficientStock = stockQty >= (indent.quantity || 1);
+
+            return (
+              <div
+                key={indent.id}
+                className={`bg-white border rounded-2xl p-5 shadow-2xs hover:shadow-md transition flex flex-col justify-between space-y-4 ${
+                  isPending
+                    ? 'border-rose-200/90 ring-1 ring-rose-500/10'
+                    : isFulfilled
+                    ? 'border-emerald-200/80'
+                    : 'border-slate-200 opacity-80'
+                }`}
+              >
+                <div className="space-y-3.5">
+                  {/* Card Header: Indent ID, Urgency, Timestamp */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        {indent.id}
                       </span>
+                      {isPending ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
+                          <Zap className="w-3 h-3" />
+                          <span>URGENT ORDER</span>
+                        </span>
+                      ) : isFulfilled ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <Check className="w-3 h-3 text-[#059669]" />
+                          <span>ISSUED &amp; DISPATCHED</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          <X className="w-3 h-3 text-slate-500" />
+                          <span>REJECTED</span>
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          isFulfilled
-                            ? 'bg-emerald-200 text-emerald-800'
-                            : isOrdered
-                            ? 'bg-indigo-200 text-indigo-800'
-                            : 'bg-amber-200 text-amber-800'
-                        }`}
-                      >
-                        {isFulfilled ? 'Stock Dispatched to Lines' : isOrdered ? 'In Tool Crib' : 'Awaiting Store Intake'}
+                    <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0">
+                      <Clock className="w-3 h-3" />
+                      <span>
+                        {indent.createdAt
+                          ? new Date(indent.createdAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : 'Recent'}
                       </span>
-                      <span className="text-xs font-mono font-bold">{req.id}</span>
                     </div>
                   </div>
 
-                  {/* Body Content */}
-                  <div className="p-5 space-y-4">
-                    {/* Meta details */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="font-semibold text-slate-700">Target Production Lines:</span>
-                        <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
-                          {req.targetLine || 'All Lines'}
-                        </span>
+                  {/* Mechanic & Location Strip */}
+                  <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-3 flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#059669] flex items-center justify-center font-bold text-xs shrink-0">
+                        {indent.requestedBy ? indent.requestedBy.charAt(0) : 'M'}
                       </div>
-
-                      <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Requested by: </span>
-                        <strong className="text-slate-800">{req.requestedBy}</strong>
-                      </div>
-                    </div>
-
-                    {/* Itemized Parts Table */}
-                    <div>
-                      <div className="text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <Package className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Monthly Products Required Under Store Custody ({req.items?.length || (req.partName ? 1 : 0)} Parts):</span>
-                        </span>
-                        <span className="text-slate-500 font-mono">
-                          Allocation Total: <strong className="text-slate-900">₹{req.estimatedCost?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
-                        </span>
-                      </div>
-
-                      <div className="border border-slate-300 rounded-lg overflow-hidden shadow-2xs">
-                        <table className="w-full text-left text-xs border-collapse border border-slate-300">
-                          <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
-                            <tr>
-                              <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Part Name &amp; Specs</th>
-                              <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 font-mono">SKU</th>
-                              <th className="py-2.5 px-3 text-right bg-slate-100 border-r border-b border-slate-300 font-mono">Quota Quantity</th>
-                              <th className="py-2.5 px-3 text-right bg-slate-100 border-r border-b border-slate-300 font-mono">Unit Rate (₹)</th>
-                              <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-300 font-mono">Subtotal (₹)</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 bg-white font-medium">
-                            {req.items && req.items.length > 0 ? (
-                              req.items.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
-                                  <td className="py-2 px-3 font-semibold text-slate-900 border-r border-b border-slate-200">
-                                    {item.partName}
-                                  </td>
-                                  <td className="py-2 px-3 font-mono text-slate-600 text-[11px] border-r border-b border-slate-200">
-                                    {item.sku}
-                                  </td>
-                                  <td className="py-2 px-3 text-right font-bold text-indigo-700 font-mono border-r border-b border-slate-200 tabular-nums">
-                                    {item.quantity} {item.unit}
-                                  </td>
-                                  <td className="py-2 px-3 text-right text-slate-700 font-mono border-r border-b border-slate-200 tabular-nums">
-                                    ₹{item.unitCost?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                  </td>
-                                  <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono border-b border-slate-200 tabular-nums">
-                                    ₹{item.totalCost?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                  </td>
-                                </tr>
-                              ))
-                            ) : (
-                              <tr className="hover:bg-blue-50/60 transition">
-                                <td className="py-2 px-3 font-semibold text-slate-900 border-r border-b border-slate-200">
-                                  {req.partName || 'Spare Part'}
-                                </td>
-                                <td className="py-2 px-3 font-mono text-slate-600 text-[11px] border-r border-b border-slate-200">
-                                  {req.sku || 'N/A'}
-                                </td>
-                                <td className="py-2 px-3 text-right font-bold text-indigo-700 font-mono border-r border-b border-slate-200 tabular-nums">
-                                  {req.quantity} {req.unit || 'pcs'}
-                                </td>
-                                <td className="py-2 px-3 text-right text-slate-700 font-mono border-r border-b border-slate-200 tabular-nums">
-                                  ₹{((req.estimatedCost || 0) / (req.quantity || 1)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                </td>
-                                <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono border-b border-slate-200 tabular-nums">
-                                  ₹{req.estimatedCost?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Operational Notes / Remarks */}
-                    {req.storeNotes && (
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
-                        <span className="font-bold text-slate-700 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Store Receiving Log:</span>
-                        </span>
-                        <p className="text-slate-600 italic">&ldquo;{req.storeNotes}&rdquo;</p>
-                        <div className="text-[10px] text-slate-400 pt-0.5">
-                          Handled by {req.assignedStorePerson || user?.name || 'Store In-Charge'} on {new Date(req.fulfilledAt || req.createdAt).toLocaleString()}
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 truncate">
+                          {indent.requestedBy || 'Mechanic'}
                         </div>
-                      </div>
-                    )}
-
-                    {/* Action Bar */}
-                    <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
-                      <div className="text-xs text-slate-500 italic">
-                        {req.justification ? `“${req.justification}”` : 'Monthly maintenance replenishment quota.'}
-                      </div>
-
-                      {isStorePerson ? (
-                        <div className="flex items-center gap-2">
-                          {!isFulfilled && (
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
+                          <MapPin className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                          <span>{indent.targetLine || 'Floor Line'}</span>
+                          {indent.targetMachineId && (
                             <>
-                              <button
-                                onClick={() => openActionModal(req, 'RECEIVE')}
-                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                              >
-                                <Truck className="w-3.5 h-3.5" />
-                                <span>Receive Stock Intake</span>
-                              </button>
-                              <button
-                                onClick={() => openActionModal(req, 'DISPATCH')}
-                                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                              >
-                                <ArrowRight className="w-3.5 h-3.5" />
-                                <span>Dispatch to Line Floor</span>
-                              </button>
+                              <span>•</span>
+                              <span className="font-mono text-slate-700 font-semibold">
+                                {indent.targetMachineId}
+                              </span>
                             </>
                           )}
-                          {isFulfilled && (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Fulfilled &amp; Signed Off</span>
-                            </span>
-                          )}
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                        Role
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-700">
+                        {indent.requestedByRole || 'Mechanic'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Spare Part Details & Stock Health */}
+                  <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                          Requested Spare Part
+                        </span>
+                        <div className="font-bold text-sm text-slate-900 truncate" title={indent.partName}>
+                          {indent.partName}
+                        </div>
+                        {indent.sku && (
+                          <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                            SKU: {indent.sku}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                          Quantity
+                        </span>
+                        <span className="font-mono text-base font-black text-slate-900">
+                          {indent.quantity || 1}{' '}
+                          <span className="text-xs font-normal text-slate-500">
+                            {indent.unit || 'pcs'}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Stock Status Indicator */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <Boxes className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-[11px] text-slate-500">Crib Stock:</span>
+                        <span
+                          className={`font-bold text-[11px] ${
+                            hasSufficientStock ? 'text-[#059669]' : 'text-rose-600'
+                          }`}
+                        >
+                          {stockQty} {indent.unit || 'pcs'} available
+                        </span>
+                      </div>
+
+                      {hasSufficientStock ? (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-[#059669] border border-emerald-200">
+                          Ready to Issue
+                        </span>
                       ) : (
-                        <span className="text-xs text-slate-400 italic">
-                          Fulfillment requires Store Manager / Store Person
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          Low Stock Buffer
                         </span>
                       )}
                     </div>
                   </div>
-                </div>
-              );
-            })
-          )}
-        </div>
 
-        {/* Right Col: Crib Shelf Inventory Tracker */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-              <div className="flex items-center gap-2">
-                <Boxes className="w-4 h-4 text-emerald-600" />
-                <h3 className="text-sm font-bold text-slate-900">Current Crib Stock Bins</h3>
-              </div>
-              <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono font-bold text-slate-600">
-                {parts.length} Active SKUs
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mb-3">
-              Live inventory balances in Tool Crib for active factory lines:
-            </p>
+                  {/* Justification & Breakdown reason */}
+                  {indent.justification && (
+                    <div className="text-xs text-slate-600 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                      <span className="font-bold text-slate-700 block text-[10px] uppercase tracking-wider mb-0.5">
+                        Breakdown Justification:
+                      </span>
+                      <p className="line-clamp-2 leading-relaxed">{indent.justification}</p>
+                    </div>
+                  )}
 
-            <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-              {parts.map((p) => {
-                const isLow = p.stock <= p.minStock;
-                const isCritical = p.stock <= Math.floor(p.minStock * 0.5);
-                const maxRef = Math.max(p.minStock * 2, 20);
-                const healthPct = Math.min(100, Math.round((p.stock / maxRef) * 100));
-                const shelf = p.shelfLocation || 'Tool Crib';
-                const returnRequired =
-                  p.oldPartReturnRequired ??
-                  (p.category === 'Hooks & Loopers' ||
-                    p.category === 'Motors & Electrical' ||
-                    p.unitCost > 400);
-
-                return (
-                  <div
-                    key={p.partId}
-                    className="p-3 rounded-2xl border border-slate-100 hover:border-slate-200 bg-slate-50/70 space-y-2 text-xs transition"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-bold text-slate-900 truncate">{p.name}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5 font-mono text-[11px] text-slate-500">
-                          <span className="font-bold text-indigo-700">{p.sku}</span>
-                          <span>&bull;</span>
-                          <span className="inline-flex items-center gap-1 text-slate-600">
-                            <MapPin className="w-2.5 h-2.5 text-indigo-600" />
-                            {shelf}
-                          </span>
+                  {/* Fulfilled Notes or Review Notes if completed */}
+                  {isFulfilled && indent.fulfilledAt && (
+                    <div className="text-[11px] text-emerald-800 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200/60 flex items-start gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#059669] shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold">
+                          Issued by {indent.assignedStorePerson || 'Store'}
+                        </div>
+                        <div className="text-[10px] text-emerald-700 mt-0.5">
+                          {indent.storeNotes || 'Stock balance updated.'}
                         </div>
                       </div>
-
-                      <div className="text-right shrink-0">
-                        <span
-                          className={`text-xs font-black px-2 py-0.5 rounded-md ${
-                            isLow
-                              ? 'bg-rose-100 text-rose-700 font-extrabold'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {p.stock} {p.unit}
-                        </span>
-                      </div>
                     </div>
+                  )}
+                </div>
 
-                    {/* Live Stock Health Progress Bar */}
-                    <div className="space-y-1">
-                      <div className="w-full bg-slate-200/80 rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            isCritical
-                              ? 'bg-rose-600'
-                              : isLow
-                              ? 'bg-rose-500'
-                              : 'bg-emerald-500'
-                          }`}
-                          style={{ width: `${Math.max(8, healthPct)}%` }}
-                        />
+                {/* Card Footer Actions */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                  {isPending ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenRejectModal(indent)}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                      >
+                        Reject
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenIssueModal(indent)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Issue &amp; Dispatch Part</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-[11px] text-slate-400">
+                        {isFulfilled ? 'Completed & Logged' : 'Declined Order'}
                       </div>
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400">
-                          Min Safe: {p.minStock} {p.unit}
-                        </span>
-                        {returnRequired ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700">
-                            <RefreshCw className="w-2.5 h-2.5 text-rose-600" />
-                            1:1 Scrap Return
-                          </span>
-                        ) : (
-                          <span className="text-emerald-700 font-medium">Standard</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Store Person Duty Guidelines */}
-          <div className="bg-emerald-50/70 rounded-2xl p-5 border border-emerald-200 space-y-2.5">
-            <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
-              <BadgeCheck className="w-4 h-4 text-emerald-700" />
-              <span>Storekeeper Operating Protocol</span>
-            </h4>
-            <ul className="text-xs text-emerald-900/80 space-y-1.5">
-              <li>• Always cross-check supplier delivery challan before receiving into bins.</li>
-              <li>• Needles and oil must be stored in humidity-controlled Tool Crib Bin A-04.</li>
-              <li>• Mechanics must sign the floor issue chit upon collection for Line 01-04.</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      {/* CREATE NEW INDENT MODAL */}
-      {isNewIndentModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                  <Package className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Create New Monthly Store Indent
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Request monthly spare parts quota and buffer items for tool crib custody
-                  </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetPart = parts.find(
+                            (p) => p.partId === indent.partId || p.sku === indent.sku
+                          );
+                          const slipData: GatePassData = {
+                            slipNo: `SLIP-${Math.floor(1000 + Math.random() * 9000)}`,
+                            indentId: indent.id,
+                            date: indent.fulfilledAt || indent.createdAt,
+                            mechanicName: indent.requestedBy || 'Mechanic',
+                            mechanicRole: indent.requestedByRole || 'MECHANIC',
+                            targetLine: indent.targetLine || 'Line 01',
+                            targetMachineId: indent.targetMachineId || indent.machineId,
+                            partName: indent.partName || targetPart?.name || 'Spare Part',
+                            sku: indent.sku || targetPart?.sku || 'SKU-GEN',
+                            quantity: indent.quantity || 1,
+                            unit: indent.unit || 'pcs',
+                            unitCost: targetPart?.unitCost || 0,
+                            oldPartReturned: true,
+                            storekeeper: indent.assignedStorePerson || 'Store In-Charge',
+                            notes: indent.storeNotes || indent.justification,
+                          };
+                          setGatePassData(slipData);
+                          setIsGatePassOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>View / Print Gate Slip</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsNewIndentModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateNewIndent} className="space-y-4 overflow-y-auto flex-1 pr-1">
-              {/* Config Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
-                    Month &amp; Year
-                  </label>
-                  <input
-                    type="text"
-                    value={indentMonth}
-                    onChange={(e) => setIndentMonth(e.target.value)}
-                    placeholder="e.g. October 2026"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
-                    Target Line / Area
-                  </label>
-                  <select
-                    value={indentLine}
-                    onChange={(e) => setIndentLine(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden cursor-pointer"
-                  >
-                    <option value="Line 01 & Line 02">Line 01 &amp; Line 02</option>
-                    <option value="Line 01">Line 01 (Overlock &amp; SNLS)</option>
-                    <option value="Line 02">Line 02 (Lockstitch &amp; Special)</option>
-                    <option value="Line 03">Line 03</option>
-                    <option value="Line 04">Line 04</option>
-                    <option value="Line 05">Line 05</option>
-                    <option value="Cutting Section">Cutting Section</option>
-                    <option value="Finishing Bay">Finishing Bay</option>
-                    <option value="Utility Plant">Utility Plant</option>
-                    <option value="All Factory Lines">All Factory Lines (Plant-wide)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
-                    Requested By
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={user?.name ? `${user.name} (Store In-Charge)` : 'Store In-Charge'}
-                    className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 cursor-not-allowed"
-                  />
-                </div>
-              </div>
-
-              {/* Items Section ("add things") */}
-              <div className="space-y-2.5 pt-1">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Indent Line Items ({indentItems.length} Products)</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      Add the parts and components needed for the monthly store quota
-                    </p>
-                  </div>
-
-                  {/* BUTTON TO ADD THINGS */}
-                  <button
-                    type="button"
-                    onClick={handleAddIndentItem}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Item</span>
-                  </button>
-                </div>
-
-                {/* Items Table / Form List */}
-                <div className="border border-slate-300 rounded-xl overflow-hidden shadow-2xs">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
-                      <tr>
-                        <th className="py-2.5 px-3 border-r border-slate-300 min-w-[190px]">
-                          Select or Enter Part Name
-                        </th>
-                        <th className="py-2.5 px-3 border-r border-slate-300 font-mono w-28">
-                          SKU
-                        </th>
-                        <th className="py-2.5 px-3 border-r border-slate-300 w-20 text-center">
-                          Qty
-                        </th>
-                        <th className="py-2.5 px-3 border-r border-slate-300 w-20 text-center">
-                          Unit
-                        </th>
-                        <th className="py-2.5 px-3 border-r border-slate-300 w-24 text-right font-mono">
-                          Rate (₹)
-                        </th>
-                        <th className="py-2.5 px-3 border-r border-slate-300 w-28 text-right font-mono">
-                          Subtotal (₹)
-                        </th>
-                        <th className="py-2.5 px-2 text-center w-10">
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      {indentItems.map((item, idx) => {
-                        const lineSubtotal = (Number(item.quantity) || 0) * (Number(item.unitCost) || 0);
-
-                        return (
-                          <tr key={item.id} className="hover:bg-slate-50/60 transition">
-                            {/* Part Name & Selection Dropdown */}
-                            <td className="py-2 px-3 border-r border-slate-200">
-                              <div className="space-y-1">
-                                {parts.length > 0 && (
-                                  <select
-                                    value={item.partId}
-                                    onChange={(e) => handleItemPartSelect(item.id, e.target.value)}
-                                    className="w-full text-[11px] p-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 cursor-pointer"
-                                  >
-                                    <option value="">-- Choose from Catalog --</option>
-                                    {parts.map((p) => (
-                                      <option key={p.partId} value={p.partId}>
-                                        {p.name} ({p.sku}) - ₹{p.unitCost}
-                                      </option>
-                                    ))}
-                                  </select>
-                                )}
-                                <input
-                                  type="text"
-                                  value={item.partName}
-                                  onChange={(e) => handleUpdateItemField(item.id, 'partName', e.target.value)}
-                                  placeholder="Or type part name..."
-                                  className="w-full text-xs px-2 py-1 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500 font-medium"
-                                  required
-                                />
-                              </div>
-                            </td>
-
-                            {/* SKU */}
-                            <td className="py-2 px-3 border-r border-slate-200">
-                              <input
-                                type="text"
-                                value={item.sku}
-                                onChange={(e) => handleUpdateItemField(item.id, 'sku', e.target.value)}
-                                placeholder="SKU-XXX"
-                                className="w-full text-[11px] font-mono px-2 py-1 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500"
-                              />
-                            </td>
-
-                            {/* Quantity */}
-                            <td className="py-2 px-2 border-r border-slate-200 text-center">
-                              <input
-                                type="number"
-                                min={1}
-                                value={item.quantity}
-                                onChange={(e) => handleUpdateItemField(item.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
-                                className="w-full text-xs font-mono font-bold text-center px-1 py-1 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500"
-                                required
-                              />
-                            </td>
-
-                            {/* Unit */}
-                            <td className="py-2 px-2 border-r border-slate-200 text-center">
-                              <select
-                                value={item.unit}
-                                onChange={(e) => handleUpdateItemField(item.id, 'unit', e.target.value)}
-                                className="w-full text-[11px] px-1 py-1 bg-white border border-slate-200 rounded-lg text-center cursor-pointer"
-                              >
-                                <option value="pcs">pcs</option>
-                                <option value="units">units</option>
-                                <option value="sets">sets</option>
-                                <option value="boxes">boxes</option>
-                                <option value="jugs">jugs</option>
-                                <option value="litres">litres</option>
-                              </select>
-                            </td>
-
-                            {/* Unit Cost */}
-                            <td className="py-2 px-2 border-r border-slate-200 text-right">
-                              <input
-                                type="number"
-                                min={0}
-                                step="any"
-                                value={item.unitCost}
-                                onChange={(e) => handleUpdateItemField(item.id, 'unitCost', Math.max(0, parseFloat(e.target.value) || 0))}
-                                className="w-full text-xs font-mono text-right px-2 py-1 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500"
-                              />
-                            </td>
-
-                            {/* Subtotal */}
-                            <td className="py-2 px-3 border-r border-slate-200 text-right font-mono font-bold text-slate-800">
-                              ₹{lineSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </td>
-
-                            {/* Remove Action */}
-                            <td className="py-2 px-2 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveIndentItem(item.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1 rounded-md transition cursor-pointer"
-                                title="Remove Item"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot className="bg-slate-50 font-bold border-t border-slate-300 text-xs">
-                      <tr>
-                        <td colSpan={2} className="py-2.5 px-3 text-slate-700">
-                          Total Indent Allocation
-                        </td>
-                        <td className="py-2.5 px-2 text-center font-mono text-indigo-700">
-                          {draftTotalUnits}
-                        </td>
-                        <td colSpan={2} className="py-2.5 px-3 text-right text-slate-600 font-mono">
-                          Grand Total:
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900 text-sm">
-                          ₹{draftTotalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-
-              {/* Justification & Remarks */}
-              <div className="text-xs space-y-1">
-                <label className="block text-[11px] font-semibold text-slate-600 uppercase">
-                  Indent Justification &amp; Purpose
-                </label>
-                <textarea
-                  rows={2}
-                  value={indentJustification}
-                  onChange={(e) => setIndentJustification(e.target.value)}
-                  placeholder="State the purpose for this monthly indent allocation..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              {/* Modal Footer Buttons */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100 shrink-0">
-                <div className="text-xs text-slate-500">
-                  <strong className="text-slate-800">{indentItems.length}</strong> items • Estimated CapEx:{' '}
-                  <strong className="text-slate-900 font-mono">
-                    ₹{draftTotalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </strong>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewIndentModalOpen(false)}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Create &amp; Dispatch Indent</span>
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Interactive Action Modal: Receive or Dispatch */}
-      {activeModalReq && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      {/* ─── 6. ISSUE CONFIRMATION MODAL ───────────────────────────────────────── */}
+      {activeIssueReq && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-100">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                    modalAction === 'RECEIVE'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-indigo-100 text-indigo-700'
-                  }`}
-                >
-                  {modalAction === 'RECEIVE' ? <Truck className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-[#059669] flex items-center justify-center">
+                  <Check className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    {modalAction === 'RECEIVE'
-                      ? 'Inward Delivery Receiving Intake'
-                      : 'Dispatch Monthly Products to Floor'}
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Confirm Part Issue &amp; Dispatch
                   </h3>
-                  <p className="text-xs text-slate-500 font-mono">
-                    Indent Ref: {activeModalReq.id} ({activeModalReq.monthYear})
-                  </p>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Indent #{activeIssueReq.id}
+                  </span>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setActiveModalReq(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                onClick={() => setActiveIssueReq(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div className="font-bold text-slate-700 mb-1">Products Being Transferred:</div>
-                <ul className="space-y-1 text-slate-600">
-                  {activeModalReq.items && activeModalReq.items.length > 0 ? (
-                    activeModalReq.items.map((item, i) => (
-                      <li key={i} className="flex justify-between">
-                        <span>• {item.partName}</span>
-                        <strong className="text-indigo-700">
-                          {item.quantity} {item.unit}
-                        </strong>
-                      </li>
-                    ))
-                  ) : (
-                    <li className="flex justify-between">
-                      <span>• {activeModalReq.partName || 'Spare Part'}</span>
-                      <strong className="text-indigo-700">
-                        {activeModalReq.quantity} {activeModalReq.unit || 'pcs'}
-                      </strong>
-                    </li>
-                  )}
-                </ul>
+            <div className="space-y-4 text-xs">
+              {/* Part & Mechanic Summary */}
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Spare Part:</span>
+                  <span className="font-bold text-slate-900">{activeIssueReq.partName}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">SKU &amp; Code:</span>
+                  <span className="font-mono text-slate-700">{activeIssueReq.sku || 'SKU-GEN'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold">Requesting Mechanic:</span>
+                  <span className="font-semibold text-slate-800">
+                    {activeIssueReq.requestedBy} ({activeIssueReq.targetLine})
+                  </span>
+                </div>
               </div>
 
-              {modalAction === 'RECEIVE' && (
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
-                    Supplier Delivery Challan / Invoice #
-                  </label>
-                  <input
-                    type="text"
-                    value={challanNo}
-                    onChange={(e) => setChallanNo(e.target.value)}
-                    placeholder="e.g. DC-984210"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 font-mono"
-                  />
-                </div>
-              )}
-
+              {/* Quantity to Issue */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
-                  Store Notes / Verification Comments
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Quantity to Issue ({activeIssueReq.unit || 'pcs'}):
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={issueQty}
+                  onChange={(e) => setIssueQty(Number(e.target.value) || 1)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#059669]"
+                />
+              </div>
+
+              {/* Scrap Return Verification */}
+              <div className="flex items-center gap-2 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl">
+                <input
+                  type="checkbox"
+                  id="scrapReturnCheck"
+                  checked={oldPartReturned}
+                  onChange={(e) => setOldPartReturned(e.target.checked)}
+                  className="rounded text-[#059669] focus:ring-[#059669] w-4 h-4"
+                />
+                <label htmlFor="scrapReturnCheck" className="text-xs font-semibold text-amber-900 cursor-pointer">
+                  Defective / broken part received back into scrap bin
+                </label>
+              </div>
+
+              {/* Storekeeper remarks */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Storekeeper Notes / Gate Pass Remarks:
                 </label>
                 <textarea
-                  rows={3}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                  rows={2}
+                  value={issueNotes}
+                  onChange={(e) => setIssueNotes(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#059669]"
                 />
               </div>
             </div>
@@ -1119,24 +1112,343 @@ function StoreInboxContent() {
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setActiveModalReq(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                onClick={() => setActiveIssueReq(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleExecuteAction}
-                className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
-                  modalAction === 'RECEIVE'
-                    ? 'bg-emerald-600 hover:bg-emerald-700'
-                    : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}
+                disabled={isSubmittingIssue}
+                onClick={handleConfirmIssue}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition flex items-center gap-1.5"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  {modalAction === 'RECEIVE' ? 'Confirm Inward Stock Intake' : 'Confirm Floor Dispatch'}
-                </span>
+                {isSubmittingIssue ? (
+                  <span>Processing...</span>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Confirm &amp; Deduct Stock</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 7. REJECT MODAL ───────────────────────────────────────────────────── */}
+      {activeRejectReq && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <XCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Reject Indent Order</h3>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Indent #{activeRejectReq.id}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveRejectReq(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-600">
+                Please state the reason for rejecting {activeRejectReq.requestedBy}&apos;s indent for{' '}
+                <span className="font-bold text-slate-900">{activeRejectReq.partName}</span>.
+              </p>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Rejection Reason:
+                </label>
+                <textarea
+                  rows={3}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setActiveRejectReq(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingReject}
+                onClick={handleConfirmReject}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition"
+              >
+                {isSubmittingReject ? 'Rejecting...' : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 8. WALK-IN URGENT INDENT MODAL ─────────────────────────────────────── */}
+      {isWalkInModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-[#059669] flex items-center justify-center">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Walk-In Urgent Part Issue
+                  </h3>
+                  <p className="text-[10px] text-slate-500">
+                    Record &amp; dispatch an urgent part order directly to a mechanic at the crib window.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWalkInModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateWalkInIndent} className="space-y-4 text-xs">
+              {/* Select Mechanic */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Requesting Floor Mechanic:
+                </label>
+                <select
+                  value={walkInMechId}
+                  onChange={(e) => setWalkInMechId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none font-semibold text-slate-800"
+                >
+                  {activeStaffRoster.map((m) => (
+                    <option key={m.id} value={m.name}>
+                      {m.name} ({m.id}) • {m.assignedLines || 'Floor Line'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Target Line & Machine */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Production Floor Line:
+                  </label>
+                  <select
+                    value={walkInLine}
+                    onChange={(e) => setWalkInLine(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none font-semibold text-slate-800"
+                  >
+                    <option value="Line 01">Line 01</option>
+                    <option value="Line 02">Line 02</option>
+                    <option value="Line 03">Line 03</option>
+                    <option value="Line 04">Line 04</option>
+                    <option value="Buffer Workshop">Buffer Workshop</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Machine ID (Optional):
+                  </label>
+                  <input
+                    type="text"
+                    value={walkInMachineId}
+                    onChange={(e) => setWalkInMachineId(e.target.value)}
+                    placeholder="e.g. MC-OVK-204"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Select Spare Part */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Select Spare Part from Catalog ({parts.length} available):
+                </label>
+                <select
+                  value={walkInPartId}
+                  onChange={(e) => setWalkInPartId(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none font-bold text-slate-800"
+                >
+                  <option value="">-- Choose Spare Part --</option>
+                  {parts.map((p) => (
+                    <option key={p.partId} value={p.partId}>
+                      {p.name} ({p.sku}) • Stock: {p.stock} {p.unit} [₹{p.unitCost}]
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quantity */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Quantity to Issue:
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={walkInQty}
+                    onChange={(e) => setWalkInQty(Number(e.target.value) || 1)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none font-semibold"
+                  />
+                </div>
+
+                <div className="flex items-center pt-5">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={walkInOldPartReturned}
+                      onChange={(e) => setWalkInOldPartReturned(e.target.checked)}
+                      className="rounded text-[#059669] focus:ring-[#059669] w-4 h-4"
+                    />
+                    <span>Old scrap part returned</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Breakdown / Shift Urgency Reason:
+                </label>
+                <textarea
+                  rows={2}
+                  value={walkInReason}
+                  onChange={(e) => setWalkInReason(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsWalkInModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingWalkIn}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition"
+                >
+                  {isSubmittingWalkIn ? 'Issuing...' : 'Create & Issue Immediately'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 9. GATE PASS / STORE ISSUE SLIP PRINT MODAL ───────────────────────── */}
+      {isGatePassOpen && gatePassData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-100">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4 animate-in zoom-in-95 duration-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-[#059669]" />
+                <h3 className="font-bold text-sm text-slate-900">Store Gate Pass / Issue Slip</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsGatePassOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Printable Slip Preview */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 font-mono text-xs text-slate-800">
+              <div className="text-center pb-2 border-b border-slate-200">
+                <div className="font-bold text-sm text-slate-900">SAHANA CLOTHING FACTORY</div>
+                <div className="text-[10px] text-slate-500">CENTRAL SPARE PARTS CRIB • TIRUPUR</div>
+                <div className="text-[10px] font-bold text-[#059669] mt-0.5">
+                  GATE PASS SLIP: {gatePassData.slipNo}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block text-[9px]">INDENT NO:</span>
+                  <span className="font-bold">{gatePassData.indentId}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block text-[9px]">DATE &amp; TIME:</span>
+                  <span>{new Date(gatePassData.date).toLocaleDateString()} {new Date(gatePassData.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-2 text-[11px] space-y-1">
+                <div>
+                  <span className="text-slate-400 block text-[9px]">MECHANIC:</span>
+                  <span className="font-bold">{gatePassData.mechanicName} ({gatePassData.targetLine})</span>
+                </div>
+                {gatePassData.targetMachineId && (
+                  <div>
+                    <span className="text-slate-400 block text-[9px]">MACHINE:</span>
+                    <span>{gatePassData.targetMachineId}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-slate-400 block text-[9px]">PART ISSUED:</span>
+                  <span className="font-bold text-slate-900">{gatePassData.partName}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>SKU: {gatePassData.sku}</span>
+                  <span className="font-bold">QTY: {gatePassData.quantity} {gatePassData.unit}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[9px]">OLD SCRAP PART:</span>
+                  <span className={gatePassData.oldPartReturned ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
+                    {gatePassData.oldPartReturned ? '✓ RECEIVED IN SCRAP CRIB' : '⚠ PENDING SUBMISSION'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-2 text-[10px] flex items-center justify-between text-slate-500">
+                <div>ISSUED BY: {gatePassData.storekeeper}</div>
+                <div>STORE SEAL: VERIFIED</div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsGatePassOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition flex items-center gap-1.5"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Gate Pass</span>
               </button>
             </div>
           </div>
@@ -1148,7 +1460,14 @@ function StoreInboxContent() {
 
 export default function StoreInboxPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Loading store inbox...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+          <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <span>Loading mechanic indents queue...</span>
+        </div>
+      }
+    >
       <StoreInboxContent />
     </Suspense>
   );
