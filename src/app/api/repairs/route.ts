@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         const targetUnit = ticket.unit || (machine as any)?.unit || 'UNIT - 1';
         const attender = ticket.attendedBy || (ticket as any).assignedTo || undefined;
 
-        sendTelegramAlert({
+        const tgRes = await sendTelegramAlert({
           category: 'BREAKDOWN',
           ticketId: ticket.id,
           title: ticket.faultCategory || 'Machine Breakdown',
@@ -60,7 +60,8 @@ export async function POST(req: Request) {
           issue: ticket.faultDetails || ticket.faultCategory || 'Breakdown reported',
           severity: ticket.urgency === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
           assignedTo: attender,
-        }).catch((e) => console.warn('Telegram alert error:', e));
+        });
+        console.log(`[API Repairs] Breakdown alert dispatched for ${ticket.id}:`, tgRes);
       } catch (tgErr) {
         console.warn('Telegram dispatch error:', tgErr);
       }
@@ -96,7 +97,7 @@ export async function PATCH(req: Request) {
         const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
         const attender = updates.attendedBy || ticket?.attendedBy || 'Technician';
 
-        sendTelegramAlert({
+        const tgRes = await sendTelegramAlert({
           category: 'STARTED',
           ticketId: id,
           title: 'Technician Started Work',
@@ -108,7 +109,8 @@ export async function PATCH(req: Request) {
           issue: ticket?.faultDetails || ticket?.faultCategory || 'Breakdown repair commenced',
           severity: 'HIGH',
           assignedTo: attender,
-        }).catch((e) => console.warn('Telegram started alert error:', e));
+        });
+        console.log(`[API Repairs] Started alert dispatched for ${id}:`, tgRes);
       } catch (err) {
         console.warn('Error sending Telegram started alert:', err);
       }
@@ -158,7 +160,7 @@ export async function PATCH(req: Request) {
           timeSpentMins = updates.downtimeMinutes;
         }
 
-        sendTelegramAlert({
+        const tgRes = await sendTelegramAlert({
           category: 'RESOLVED',
           ticketId: id,
           title: 'Breakdown Resolved & Restored',
@@ -173,7 +175,8 @@ export async function PATCH(req: Request) {
           startedAtTime: startedTimeStr,
           severity: 'LOW',
           assignedTo: completedBy,
-        }).catch((e) => console.warn('Telegram resolved alert error:', e));
+        });
+        console.log(`[API Repairs] Resolved alert dispatched for ${id}:`, tgRes);
       } catch (err) {
         console.warn('Error sending Telegram resolution alert:', err);
       }
@@ -195,7 +198,7 @@ export async function PATCH(req: Request) {
         const rejectedBy = updates.attendedBy || updates.rejectedBy || ticket?.attendedBy || 'Supervisor';
         const reason = updates.actionTaken || updates.rejectionReason || ticket?.actionTaken || 'False alarm / operator cleared';
 
-        sendTelegramAlert({
+        const tgRes = await sendTelegramAlert({
           category: 'REJECTED',
           ticketId: id,
           title: 'Issue Rejected / Cancelled',
@@ -207,7 +210,8 @@ export async function PATCH(req: Request) {
           actionTaken: reason,
           severity: 'WARNING',
           assignedTo: rejectedBy,
-        }).catch((e) => console.warn('Telegram rejected alert error:', e));
+        });
+        console.log(`[API Repairs] Rejected alert dispatched for ${id}:`, tgRes);
       } catch (err) {
         console.warn('Error sending Telegram rejection alert:', err);
       }

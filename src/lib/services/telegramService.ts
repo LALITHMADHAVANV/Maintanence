@@ -23,6 +23,14 @@ export interface TelegramAlertPayload {
   targetChatId?: string | number;
 }
 
+function escapeHtml(text?: string): string {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function formatDuration(minutes?: number): string {
   if (!minutes || minutes <= 0) return 'Few minutes';
   if (minutes < 60) return `${minutes} min${minutes > 1 ? 's' : ''}`;
@@ -47,13 +55,13 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     year: 'numeric',
   });
 
-  const unitTag = payload.unit ? ` [${payload.unit.toUpperCase()}]` : '';
+  const unitTag = payload.unit ? ` [${escapeHtml(payload.unit.toUpperCase())}]` : '';
 
   if (payload.category === 'TEST') {
     return (
       `🔔 <b>TexTech CMMS • Telegram Notification Active</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `🏢 <b>Unit:</b> ${payload.unit || 'UNIT - 1'}\n` +
+      `🏢 <b>Unit:</b> ${escapeHtml(payload.unit || 'UNIT - 1')}\n` +
       `✅ <b>Status:</b> Bot successfully connected and verified\n` +
       `⏱️ <b>Timestamp:</b> ${date} at ${time}\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -65,12 +73,12 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `❌ <b>ISSUE REJECTED / DECLINED${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
-      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
-      (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
-      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
-      `👨‍💼 <b>Rejected By:</b> <b>${payload.assignedTo || 'Supervisor'}</b>\n` +
-      `📝 <b>Reason:</b> ${payload.actionTaken || payload.issue || 'False alarm / cancelled'}\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
+      `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
+      (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
+      `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
+      `👨‍💼 <b>Rejected By:</b> <b>${escapeHtml(payload.assignedTo || 'Supervisor')}</b>\n` +
+      `📝 <b>Reason:</b> ${escapeHtml(payload.actionTaken || payload.issue || 'False alarm / cancelled')}\n` +
       `⏱️ <b>Time:</b> ${time} (${date})\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `<i>Issue rejected & closed. Machine restored to ACTIVE service.</i>`
@@ -81,9 +89,9 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `📦 <b>SPARE PART STOCK ALERT${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `🏷️ <b>Part:</b> ${payload.machineName || payload.title}\n` +
-      `⚠️ <b>Alert:</b> ${payload.issue || payload.details || 'Stock level below safety threshold'}\n` +
-      `🏢 <b>Unit:</b> ${payload.unit || 'UNIT - 1'}\n` +
+      `🏷️ <b>Part:</b> ${escapeHtml(payload.machineName || payload.title)}\n` +
+      `⚠️ <b>Alert:</b> ${escapeHtml(payload.issue || payload.details || 'Stock level below safety threshold')}\n` +
+      `🏢 <b>Unit:</b> ${escapeHtml(payload.unit || 'UNIT - 1')}\n` +
       `⏱️ <b>Time:</b> ${time} (${date})\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `<i>Please generate indent for inventory replenishment.</i>`
@@ -95,10 +103,10 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
       `🚨 <b>CRITICAL: 5-MIN SLA BREACH${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `⚠️ <b>Alert:</b> Machine Breakdown Unattended > 5 Mins\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
-      `🏷️ <b>Machine:</b> <code>${payload.machineId || 'N/A'}</code> ${payload.machineName ? `(${payload.machineName})` : ''}\n` +
-      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
-      `🛠️ <b>Reported Fault:</b> ${payload.issue || 'Defect reported'}\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
+      `🏷️ <b>Machine:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code> ${payload.machineName ? `(${escapeHtml(payload.machineName)})` : ''}\n` +
+      `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
+      `🛠️ <b>Reported Fault:</b> ${escapeHtml(payload.issue || 'Defect reported')}\n` +
       `⏱️ <b>Time Elapsed:</b> > 5 mins without technician assignment\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `⚠️ <b>Supervisor Action: Immediate technician dispatch required!</b>`
@@ -109,13 +117,13 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `🛠️ <b>TECHNICIAN STARTED WORK${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
-      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
-      (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
-      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
-      `👨‍🔧 <b>Attender / Technician:</b> <b>${payload.assignedTo || 'Technician'}</b>\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
+      `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
+      (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
+      `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
+      `👨‍🔧 <b>Attender / Technician:</b> <b>${escapeHtml(payload.assignedTo || 'Technician')}</b>\n` +
       `⏱️ <b>Started At:</b> ${time} (${date})\n` +
-      (payload.issue ? `⚠️ <b>Defect:</b> ${payload.issue}\n` : '') +
+      (payload.issue ? `⚠️ <b>Defect:</b> ${escapeHtml(payload.issue)}\n` : '') +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `<i>Technician has commenced active maintenance on this machine.</i>`
     );
@@ -129,15 +137,15 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `✅ <b>ISSUE COMPLETED • RESTORED TO SERVICE${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
-      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
-      (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
-      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
-      `👨‍🔧 <b>Completed By:</b> <b>${payload.assignedTo || 'Technician'}</b>\n` +
-      `🔧 <b>Action Taken:</b> ${payload.actionTaken || payload.issue || 'Repair completed successfully'}\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
+      `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
+      (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
+      `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
+      `👨‍🔧 <b>Completed By:</b> <b>${escapeHtml(payload.assignedTo || 'Technician')}</b>\n` +
+      `🔧 <b>Action Taken:</b> ${escapeHtml(payload.actionTaken || payload.issue || 'Repair completed successfully')}\n` +
       `⏳ <b>Time Spent (Work Duration):</b> <b>${timeSpentFormatted}</b>\n` +
       (totalDowntimeFormatted && totalDowntimeFormatted !== timeSpentFormatted ? `⏱️ <b>Total Machine Downtime:</b> ${totalDowntimeFormatted}\n` : '') +
-      (payload.startedAtTime ? `🕒 <b>Started:</b> ${payload.startedAtTime} ➔ <b>Completed:</b> ${time}\n` : `🏁 <b>Completed At:</b> ${time} (${date})\n`) +
+      (payload.startedAtTime ? `🕒 <b>Started:</b> ${escapeHtml(payload.startedAtTime)} ➔ <b>Completed:</b> ${time}\n` : `🏁 <b>Completed At:</b> ${time} (${date})\n`) +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `<i>Machine is verified active and returned to production floor.</i>`
     );
@@ -147,10 +155,10 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `🛠️ <b>PREVENTIVE MAINTENANCE (PPM) ALERT${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
-      `⚙️ <b>Task:</b> ${payload.title || 'Scheduled Service'}\n` +
-      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
-      (payload.assignedTo ? `👨‍🔧 <b>Assigned Staff:</b> ${payload.assignedTo}\n` : '') +
+      `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
+      `⚙️ <b>Task:</b> ${escapeHtml(payload.title || 'Scheduled Service')}\n` +
+      `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
+      (payload.assignedTo ? `👨‍🔧 <b>Assigned Staff:</b> ${escapeHtml(payload.assignedTo)}\n` : '') +
       `⏱️ <b>Scheduled Time:</b> ${time} (${date})\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `<i>PPM checklist available on technician workstation.</i>`
@@ -160,27 +168,27 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
   // Default: BREAKDOWN or DISPATCH alert (Issue created)
   const headerIcon = payload.severity === 'CRITICAL' ? '🚨' : '⚠️';
   const attenderDisplay = payload.assignedTo
-    ? `<b>${payload.assignedTo}</b>`
+    ? `<b>${escapeHtml(payload.assignedTo)}</b>`
     : `<i>Awaiting Attender Assignment</i>`;
 
   return (
     `${headerIcon} <b>NEW ISSUE REPORTED${unitTag}</b>\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
-    `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
-    (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
-    `📍 <b>Floor Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
-    `⚠️ <b>Problem:</b> ${payload.issue || payload.title}\n` +
-    `⚡ <b>Urgency:</b> ${payload.severity || 'HIGH'}\n` +
+    (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
+    `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
+    (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
+    `📍 <b>Floor Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
+    `⚠️ <b>Problem:</b> ${escapeHtml(payload.issue || payload.title)}\n` +
+    `⚡ <b>Urgency:</b> ${escapeHtml(payload.severity || 'HIGH')}\n` +
     `👨‍🔧 <b>Attender:</b> ${attenderDisplay}\n` +
     `⏱️ <b>Reported At:</b> ${time} (${date})\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `<i>Broadcast to ${payload.unit || 'Unit'} maintenance team.</i>`
+    `<i>Broadcast to ${escapeHtml(payload.unit || 'Unit')} maintenance team.</i>`
   );
 }
 
 /**
- * Dispatch Telegram message via Bot API with automatic chat ID resolution & fallback.
+ * Dispatch Telegram message via Bot API with automatic chat ID resolution, dual delivery (Unit + Admin) & HTML fallback.
  */
 export async function sendTelegramAlert(
   payload: TelegramAlertPayload,
@@ -195,33 +203,32 @@ export async function sendTelegramAlert(
     };
   }
 
-  // Resolve chat ID based on Unit or target
-  let targetChatId = payload.targetChatId;
-
-  if (!targetChatId) {
+  // Resolve chat IDs
+  const targetChatIds: (string | number)[] = [];
+  if (payload.targetChatId) {
+    targetChatIds.push(payload.targetChatId);
+  } else {
     const unitUpper = (payload.unit || '').toUpperCase();
     if (unitUpper.includes('UNIT-2') || unitUpper.includes('UNIT 2')) {
-      targetChatId = process.env.TELEGRAM_CHAT_ID_UNIT2 || '-5371815915';
+      targetChatIds.push(process.env.TELEGRAM_CHAT_ID_UNIT2 || '-5371815915');
     } else {
-      // Default to Unit 1
-      targetChatId = process.env.TELEGRAM_CHAT_ID_UNIT1 || '-5302045233';
+      targetChatIds.push(process.env.TELEGRAM_CHAT_ID_UNIT1 || '-5302045233');
+    }
+
+    // Also send a copy to Admin direct chat so administrators/supervisors receive it directly
+    const adminChat = process.env.TELEGRAM_ADMIN_CHAT_ID || '8853985508';
+    if (adminChat && !targetChatIds.map(String).includes(String(adminChat))) {
+      targetChatIds.push(adminChat);
     }
   }
 
   const messageText = buildTelegramMessage(payload);
-
-  // Try sending to the targetChatId. If it fails and looks like standard group, also try with -100 prefix.
-  const chatCandidates: (string | number)[] = [targetChatId];
-  const strId = String(targetChatId);
-  if (strId.startsWith('-') && !strId.startsWith('-100')) {
-    chatCandidates.push(`-100${strId.slice(1)}`);
-  }
-
   let lastError = '';
+  let deliveredMessageId: number | undefined;
 
-  for (const chatId of chatCandidates) {
+  for (const chatId of targetChatIds) {
     try {
-      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      let res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -232,14 +239,37 @@ export async function sendTelegramAlert(
         }),
       });
 
-      const data = await res.json();
-      if (data.ok) {
-        return { success: true, messageId: data.result?.message_id };
+      let data = await res.json();
+
+      // If Telegram fails to parse entities, automatically retry as plain text (strip tags)
+      if (!data.ok && data.description && data.description.includes('parse entities')) {
+        const plainText = messageText.replace(/<[^>]+>/g, '');
+        res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: plainText,
+            disable_web_page_preview: true,
+          }),
+        });
+        data = await res.json();
       }
-      lastError = data.description || 'Unknown Telegram API error';
+
+      if (data.ok) {
+        deliveredMessageId = data.result?.message_id;
+      } else {
+        lastError = data.description || 'Unknown Telegram API error';
+        console.warn(`[Telegram Alert] Failed to send to ${chatId}:`, data.description);
+      }
     } catch (err: any) {
       lastError = err.message || 'Network request to Telegram failed';
+      console.warn(`[Telegram Alert] Network error for ${chatId}:`, lastError);
     }
+  }
+
+  if (deliveredMessageId !== undefined) {
+    return { success: true, messageId: deliveredMessageId };
   }
 
   return { success: false, error: lastError };

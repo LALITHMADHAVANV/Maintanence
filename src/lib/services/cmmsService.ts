@@ -64,6 +64,11 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
   });
 }
 
+export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const target = url.startsWith('/api') ? `/maintenance${url}` : url;
+  return fetch(target, init);
+}
+
 /**
  * Initialize local storage state
  */
@@ -118,7 +123,7 @@ export async function clearAllRepairs(): Promise<void> {
     notifyLocal('notifications', []);
   }
   try {
-    await fetch('/api/repairs?all=true', { method: 'DELETE' });
+    await apiFetch('/api/repairs?all=true', { method: 'DELETE' });
   } catch (err) {
     console.error('Failed to clear repairs from MongoDB:', err);
   }
@@ -160,7 +165,7 @@ export async function fetchMachinesOnce(force = false): Promise<void> {
   lastFetchMachinesTime = now;
   inFlightMachines = (async () => {
     try {
-      const res = await fetch('/api/machines');
+      const res = await apiFetch('/api/machines');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setLocal(STORAGE_KEYS.MACHINES, json.data);
@@ -203,7 +208,7 @@ export async function createMachine(machine: Machine): Promise<void> {
   notifyLocal('machines', updated);
 
   try {
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(machine),
@@ -286,7 +291,7 @@ export async function relocateMachine(
   notifyLocal('repairs', updatedRepairs);
 
   try {
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -307,7 +312,7 @@ export async function relocateMachine(
       }),
     });
 
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(relocationRecord),
@@ -329,7 +334,7 @@ export async function updateMachineStatus(
   notifyLocal('machines', updatedMachines);
 
   try {
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: machineId, updates: { status } }),
@@ -351,7 +356,7 @@ export async function updateMachine(
   notifyLocal('machines', updatedMachines);
 
   try {
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: machineId, updates }),
@@ -368,7 +373,7 @@ export async function deleteMachine(machineId: string): Promise<void> {
   notifyLocal('machines', updatedMachines);
 
   try {
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: machineId }),
@@ -394,7 +399,7 @@ export async function fetchPartsOnce(force = false): Promise<void> {
   lastFetchPartsTime = now;
   inFlightParts = (async () => {
     try {
-      const res = await fetch('/api/parts');
+      const res = await apiFetch('/api/parts');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setLocal(STORAGE_KEYS.PARTS, json.data);
@@ -435,7 +440,7 @@ export async function adjustPartStock(partId: string, delta: number): Promise<vo
   notifyLocal('parts', updatedParts);
 
   try {
-    await fetch('/api/parts', {
+    await apiFetch('/api/parts', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ partId, updates: { stock: newStock } }),
@@ -459,7 +464,7 @@ export async function restockPart(partId: string, quantity: number, poRef?: stri
   notifyLocal('parts', updatedParts);
 
   try {
-    await fetch('/api/parts', {
+    await apiFetch('/api/parts', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ partId, updates: { stock: newStock } }),
@@ -485,7 +490,7 @@ export async function fetchRepairsOnce(force = false): Promise<void> {
   lastFetchRepairsTime = now;
   inFlightRepairs = (async () => {
     try {
-      const res = await fetch('/api/repairs');
+      const res = await apiFetch('/api/repairs');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setLocal(STORAGE_KEYS.REPAIRS, json.data);
@@ -547,12 +552,12 @@ export async function createBreakdownTicket(
   notifyLocal('machines', updatedMachines);
 
   try {
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTicket),
     });
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: ticketData.machineId, updates: { status: 'BREAKDOWN' } }),
@@ -581,7 +586,7 @@ export async function startRepairTicket(ticketId: string, attendedBy?: string): 
   notifyLocal('repairs', updatedRepairs);
 
   try {
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -632,7 +637,7 @@ export async function stopRepairTicket(ticketId: string, notes?: string): Promis
   notifyLocal('repairs', updatedRepairs);
 
   try {
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -691,7 +696,7 @@ export async function rejectRepairTicket(
   notifyLocal('machines', updatedMachines);
 
   try {
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -708,7 +713,7 @@ export async function rejectRepairTicket(
       }),
     });
 
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -825,7 +830,7 @@ export async function resolveRepairTicket(
   notifyLocal('machines', updatedMachines);
 
   try {
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -850,7 +855,7 @@ export async function resolveRepairTicket(
     for (const p of resolvedPartsUsed) {
       const partDoc = currentParts.find((cp) => cp.partId === p.partId);
       if (partDoc) {
-        await fetch('/api/parts', {
+        await apiFetch('/api/parts', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -863,7 +868,7 @@ export async function resolveRepairTicket(
 
     const machineDoc = currentMachines.find((m) => m.id === ticket.machineId);
     if (machineDoc) {
-      await fetch('/api/machines', {
+      await apiFetch('/api/machines', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -949,7 +954,7 @@ export async function assignRepairTicket(
   notifyLocal('repairs', updatedRepairs);
 
   try {
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1029,7 +1034,7 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
     notifyLocal('machines', updatedMachines);
 
     try {
-      await fetch('/api/machines', {
+      await apiFetch('/api/machines', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: targetMachine.id, updates: { status: newStatus } }),
@@ -1040,7 +1045,7 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
   }
 
   try {
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTicket),
@@ -1066,7 +1071,7 @@ export async function assignMechanicTask(input: AssignMechanicTaskInput): Promis
     notifyLocal('ppm', updatedPpm);
 
     try {
-      await fetch('/api/ppm', {
+      await apiFetch('/api/ppm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPPM),
@@ -1095,7 +1100,7 @@ export async function fetchPPMSchedulesOnce(force = false): Promise<void> {
   lastFetchPPMTime = now;
   inFlightPPM = (async () => {
     try {
-      const res = await fetch('/api/ppm');
+      const res = await apiFetch('/api/ppm');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setLocal(STORAGE_KEYS.PPM, json.data);
@@ -1144,7 +1149,7 @@ export async function startPPMTask(
   notifyLocal('ppm', updatedSchedules);
 
   try {
-    await fetch('/api/ppm', {
+    await apiFetch('/api/ppm', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1176,7 +1181,7 @@ export async function stopPPMTask(scheduleId: string): Promise<void> {
   notifyLocal('ppm', updatedSchedules);
 
   try {
-    await fetch('/api/ppm', {
+    await apiFetch('/api/ppm', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1259,7 +1264,7 @@ export async function completePPMTask(
   notifyLocal('repairs', updatedRepairs);
 
   try {
-    await fetch('/api/ppm', {
+    await apiFetch('/api/ppm', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1275,7 +1280,7 @@ export async function completePPMTask(
       }),
     });
 
-    await fetch('/api/repairs', {
+    await apiFetch('/api/repairs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ppmHistoryEntry),
@@ -1292,7 +1297,7 @@ export async function createPPMSchedule(schedule: PPMSchedule): Promise<void> {
   notifyLocal('ppm', updatedSchedules);
 
   try {
-    await fetch('/api/ppm', {
+    await apiFetch('/api/ppm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(schedule),
@@ -1318,7 +1323,7 @@ export async function fetchRequisitionsOnce(force = false): Promise<void> {
   lastFetchRequisitionsTime = now;
   inFlightRequisitions = (async () => {
     try {
-      const res = await fetch('/api/requisitions');
+      const res = await apiFetch('/api/requisitions');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setLocal(STORAGE_KEYS.REQUISITIONS, json.data);
@@ -1375,7 +1380,7 @@ export async function createRequisition(
   notifyLocal('requisitions', updated);
 
   try {
-    await fetch('/api/requisitions', {
+    await apiFetch('/api/requisitions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newReq),
@@ -1400,7 +1405,7 @@ export async function updateRequisitionStatus(
   notifyLocal('requisitions', updated);
 
   try {
-    await fetch('/api/requisitions', {
+    await apiFetch('/api/requisitions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1478,7 +1483,7 @@ export async function fulfillMonthlyIndent(
       for (const item of targetReq.items) {
         const partDoc = currentParts.find((p) => p.partId === item.partId);
         if (partDoc) {
-          await fetch('/api/parts', {
+          await apiFetch('/api/parts', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1494,7 +1499,7 @@ export async function fulfillMonthlyIndent(
   }
 
   try {
-    await fetch('/api/requisitions', {
+    await apiFetch('/api/requisitions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1545,7 +1550,7 @@ export async function fulfillMechanicIndent(
   }
 
   try {
-    await fetch('/api/requisitions', {
+    await apiFetch('/api/requisitions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

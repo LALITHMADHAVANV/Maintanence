@@ -54,7 +54,7 @@ export async function PATCH(req: Request) {
       try {
         const reqDoc = await db.collection('part_requisitions').findOne({ id });
         const targetUnit = (reqDoc as any)?.targetUnit || (reqDoc as any)?.unit || 'UNIT - 1';
-        sendTelegramAlert({
+        const tgRes = await sendTelegramAlert({
           category: 'REJECTED',
           ticketId: id,
           title: 'Store Indent Requisition Declined',
@@ -64,7 +64,8 @@ export async function PATCH(req: Request) {
           actionTaken: updates.reviewNotes || 'Requisition rejected by reviewer',
           assignedTo: (reqDoc as any)?.reviewedBy || 'Stores Reviewer',
           severity: 'WARNING',
-        }).catch((e) => console.warn('Telegram req alert error:', e));
+        });
+        console.log(`[API Requisitions] Rejection alert dispatched for ${id}:`, tgRes);
       } catch (tgErr) {
         console.warn('Requisition telegram error:', tgErr);
       }

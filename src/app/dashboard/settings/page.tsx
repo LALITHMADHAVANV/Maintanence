@@ -238,7 +238,7 @@ function SettingsContent() {
 
   // Auto-fetch server environment credentials so user is NEVER prompted every time
   useEffect(() => {
-    fetch('/api/telegram')
+    fetch('/maintenance/api/telegram')
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.configured) {
@@ -291,7 +291,7 @@ function SettingsContent() {
     }
 
     try {
-      const res = await fetch('/api/telegram', {
+      const res = await fetch('/maintenance/api/telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
