@@ -2518,7 +2518,7 @@ export default function HistoryPage() {
             <div className="bg-slate-50/80 p-4 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center text-center space-y-3">
               <div className="p-3 bg-white rounded-2xl border-2 border-slate-900 shadow-xs">
                 <QRCodeSVG
-                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/scan/${encodeURIComponent(selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
+                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/maintenance/scan/${encodeURIComponent(selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
                   size={160}
                   level="H"
                   bgColor="#ffffff"
@@ -2544,7 +2544,7 @@ export default function HistoryPage() {
                 type="button"
                 onClick={() => {
                   if (typeof window !== 'undefined') {
-                    const url = `${window.location.origin}/scan/${encodeURIComponent(selectedQrAsset.assetId)}`;
+                    const url = `${window.location.origin}/maintenance/scan/${encodeURIComponent(selectedQrAsset.assetId)}`;
                     navigator.clipboard?.writeText(url);
                     showToast('Asset QR URL copied to clipboard!', 'success');
                   }

@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server';
 import { sendTelegramAlert, TelegramAlertPayload } from '@/lib/services/telegramService';
 
 export async function GET() {
-  const isConfigured = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+  const token = process.env.TELEGRAM_BOT_TOKEN || '';
+  const isConfigured = Boolean(token);
   return NextResponse.json({
     success: true,
     configured: isConfigured,
+    botToken: token,
+    botUsername: 'Assetmbot',
     unit1ChatId: process.env.TELEGRAM_CHAT_ID_UNIT1 || '-5302045233',
     unit2ChatId: process.env.TELEGRAM_CHAT_ID_UNIT2 || '-5371815915',
     adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID || '8853985508',

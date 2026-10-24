@@ -78,18 +78,6 @@ export interface TechnicianRosterItem {
   unit: string;
 }
 
-const TECHNICIAN_ROSTER: TechnicianRosterItem[] = [
-  { name: 'ROBERT', role: 'Line Sewing Mechanic', phone: '+91 98421 11001', trade: 'MECHANIC', unit: 'UNIT - 1' },
-  { name: 'Viknesh_kumar', role: 'Line Sewing Mechanic', phone: '+91 96384 76232', trade: 'MECHANIC', unit: 'UNIT - 1' },
-  { name: 'Sabarinathan', role: 'Line Sewing Mechanic', phone: '+91 98421 11002', trade: 'MECHANIC', unit: 'UNIT-2' },
-  { name: 'Anand Kumar', role: 'Plant Electrician Lead', phone: '+91 98421 11003', trade: 'ELECTRICIAN', unit: 'UNIT - 1' },
-  { name: 'Suresh M', role: 'Senior Overlock Specialist', phone: '+91 98421 11004', trade: 'MECHANIC', unit: 'UNIT - 1' },
-  { name: 'Karthik S', role: 'Line Maintenance Tech', phone: '+91 98421 11005', trade: 'MECHANIC', unit: 'UNIT - 1' },
-  { name: 'Rajesh M', role: 'PPM Overhaul Specialist', phone: '+91 98421 11006', trade: 'MECHANIC', unit: 'UNIT-2' },
-  { name: 'P. Arumugam', role: 'Floor In-Charge Mechanic', phone: '+91 98421 11007', trade: 'MECHANIC', unit: 'UNIT - 1' },
-  { name: 'K. Balakrishnan', role: 'Floor In-Charge Mechanic', phone: '+91 98422 67890', trade: 'MECHANIC', unit: 'UNIT-2' },
-];
-
 export type NotificationCategory =
   | 'ALL'
   | 'UNATTENDED_5M'
@@ -182,7 +170,51 @@ export default function NotificationsPage() {
 
   // Assign Mechanic Modal state
   const [assigningItem, setAssigningItem] = useState<UnifiedNotificationItem | null>(null);
-  const [selectedMechanic, setSelectedMechanic] = useState<string>(TECHNICIAN_ROSTER[0].name);
+  const [selectedMechanic, setSelectedMechanic] = useState<string>('');
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.users)) {
+          setDbUsers(data.users);
+        }
+      })
+      .catch((err) => console.warn('Failed to load users for dispatch:', err));
+  }, []);
+
+  const dynamicTechnicians: TechnicianRosterItem[] = useMemo(() => {
+    return dbUsers
+      .filter((u) => {
+        const role = String(u.role || '').toUpperCase();
+        return (
+          role.includes('MECH') ||
+          role.includes('ELEC') ||
+          role.includes('TECH') ||
+          role.includes('MAINT')
+        );
+      })
+      .map((u) => {
+        const role = String(u.role || '').toUpperCase();
+        const isElectrician = role.includes('ELEC');
+        return {
+          name: u.name || 'Technician',
+          role: u.title || (isElectrician ? 'Plant Electrician' : 'Line Sewing Mechanic'),
+          phone: u.phone || '',
+          trade: isElectrician ? 'ELECTRICIAN' : 'MECHANIC',
+          unit: u.unit || 'UNIT - 1',
+        };
+      });
+  }, [dbUsers]);
+
+  const handleOpenAssignModal = (item: UnifiedNotificationItem) => {
+    setAssigningItem(item);
+    const candidate = dynamicTechnicians.find((m) =>
+      item.unit ? matchesUnit(m.unit, item.unit) : true
+    );
+    setSelectedMechanic(candidate ? candidate.name : dynamicTechnicians[0]?.name || '');
+  };
 
   // Subscribe to CMMS and Asset Log streams
   useEffect(() => {
@@ -219,205 +251,7 @@ export default function NotificationsPage() {
     return selectedUnit;
   }, [isAdmin, userAssignedUnit, selectedUnit]);
 
-  // Baseline seed alerts for rich demonstration across both Unit 1 and Unit 2
-  const seedNotifications: UnifiedNotificationItem[] = useMemo(() => {
-    return [
-      {
-        id: 'SEED-ALERT-01',
-        category: 'UNATTENDED_5M',
-        severity: 'CRITICAL',
-        title: '🚨 SLA Breach: Breakdown Unattended for > 5 Minutes',
-        message: 'MC-SNLS-102 on Line 02 reported Needle Collision & Hook Jam. Awaiting floor technician arrival.',
-        timestamp: new Date(nowMs - 7 * 60 * 1000 - 32 * 1000).toISOString(),
-        machineId: 'MC-SNLS-102',
-        machineName: 'JUKI DDL-9000C Lockstitch',
-        line: 'Line 02',
-        stationNo: 'Station 04',
-        unit: 'UNIT - 1',
-        faultCategory: 'Needle Jam & Hook Collision',
-        attendedBy: null,
-        elapsedMinutes: 7,
-        elapsedSeconds: 7 * 60 + 32,
-        isUnattended5Mins: true,
-        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
-        targetTrade: 'MECHANIC',
-      },
-      {
-        id: 'SEED-ALERT-02',
-        category: 'UNATTENDED_5M',
-        severity: 'CRITICAL',
-        title: '🚨 SLA Breach: Breakdown Unattended for > 5 Minutes',
-        message: 'MC-FLAT-104 on Line 01 reported Cylinder Bed Oil Leak & Looper Misalignment on active export run.',
-        timestamp: new Date(nowMs - 12 * 60 * 1000 - 15 * 1000).toISOString(),
-        machineId: 'MC-FLAT-104',
-        machineName: 'Pegasus W500 Flatlock',
-        line: 'Line 01',
-        stationNo: 'Station 08',
-        unit: 'UNIT - 1',
-        faultCategory: 'Severe Oil Leak & Stalling',
-        attendedBy: null,
-        elapsedMinutes: 12,
-        elapsedSeconds: 12 * 60 + 15,
-        isUnattended5Mins: true,
-        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
-        targetTrade: 'MECHANIC',
-      },
-      {
-        id: 'SEED-ALERT-02-U2',
-        category: 'UNATTENDED_5M',
-        severity: 'CRITICAL',
-        title: '🚨 SLA Breach: Unit 2 Breakdown Unattended for > 5 Minutes',
-        message: 'MC-OVER-201 on PEACOCK 2 reported Knife Blade Shatter & Differential Feed Jam. Export line stalled.',
-        timestamp: new Date(nowMs - 9 * 60 * 1000 - 45 * 1000).toISOString(),
-        machineId: 'MC-OVER-201',
-        machineName: 'Yamato 4-Thread Overlock',
-        line: 'PEACOCK 2',
-        stationNo: 'Station 03',
-        unit: 'UNIT-2',
-        faultCategory: 'Cutter Blade Shatter',
-        attendedBy: null,
-        elapsedMinutes: 9,
-        elapsedSeconds: 9 * 60 + 45,
-        isUnattended5Mins: true,
-        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
-        targetTrade: 'MECHANIC',
-      },
-      {
-        id: 'SEED-ALERT-03',
-        category: 'BREAKDOWN_WARNING',
-        severity: 'WARNING',
-        title: '⚠️ Line Breakdown Warning: Running Downtime Exceeding 25m',
-        message: 'MC-OVER-101 on Line 03 has been under active repair for 28 mins. Thread tension drift causing stitch skipping on collar join.',
-        timestamp: new Date(nowMs - 28 * 60 * 1000).toISOString(),
-        machineId: 'MC-OVER-101',
-        machineName: 'JUKI MO-6814S Overlock',
-        line: 'Line 03',
-        stationNo: 'Station 02',
-        unit: 'UNIT - 1',
-        faultCategory: 'Thread Tension Drift',
-        attendedBy: 'ROBERT',
-        elapsedMinutes: 28,
-        elapsedSeconds: 28 * 60,
-        isUnattended5Mins: false,
-        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
-        targetTrade: 'MECHANIC',
-      },
-      {
-        id: 'SEED-ALERT-03-ELEC',
-        category: 'BREAKDOWN_WARNING',
-        severity: 'CRITICAL',
-        title: '⚡ Electrical Breakdown: Servo Drive Error Code E-07',
-        message: 'MC-FUSING-01 in Cutting Bay reported Servo Motor Inverter Overcurrent Trip. High temperature alarm.',
-        timestamp: new Date(nowMs - 15 * 60 * 1000).toISOString(),
-        machineId: 'MC-FUSING-01',
-        machineName: 'Hashima Continuous Fusing Press',
-        line: 'Cutting Bay 01',
-        stationNo: 'Station 01',
-        unit: 'UNIT - 1',
-        faultCategory: 'Servo Drive Overcurrent',
-        attendedBy: null,
-        elapsedMinutes: 15,
-        elapsedSeconds: 15 * 60,
-        isUnattended5Mins: true,
-        targetRoles: ['ELECTRICIAN', 'SENIOR_ELECTRICIAN', 'ADMIN', 'ASSET_MANAGER'],
-        targetTrade: 'ELECTRICIAN',
-      },
-      {
-        id: 'SEED-ALERT-04',
-        category: 'ASSET_ACTION',
-        severity: 'INFO',
-        title: '⚡ Asset Activated: MC-SNLS-101 deployed to Line 01',
-        message: 'Machine moved from IDLE to ACTIVE. Positioned at Station 03 for upcoming sportswear collar run. Added to active line capacity.',
-        timestamp: new Date(nowMs - 14 * 60 * 1000).toISOString(),
-        machineId: 'MC-SNLS-101',
-        machineName: 'JUKI Single Needle Lockstitch DDL-9000C',
-        line: 'Line 01',
-        stationNo: 'Station 03',
-        unit: 'UNIT - 1',
-        attendedBy: 'P. Arumugam',
-        previousStatus: 'IDLE',
-        newStatus: 'ACTIVE',
-        assetActionType: 'IDLE_TO_ACTIVE',
-        elapsedMinutes: 14,
-        elapsedSeconds: 14 * 60,
-        isUnattended5Mins: false,
-        targetRoles: ['ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC', 'CEO'],
-        targetTrade: 'ALL',
-      },
-      {
-        id: 'SEED-ALERT-05',
-        category: 'ASSET_ACTION',
-        severity: 'INFO',
-        title: '🔄 Asset Relocation: MC-OVER-104 reallocated to Line 02',
-        message: 'Transferred from Line 04 (Station 12) to Line 02 (Station 07) for 4-thread overlock seam balancing. Zone and Line registry updated.',
-        timestamp: new Date(nowMs - 35 * 60 * 1000).toISOString(),
-        machineId: 'MC-OVER-104',
-        machineName: 'Siruba 747K 4-Thread Overlock',
-        line: 'Line 02',
-        stationNo: 'Station 07',
-        unit: 'UNIT - 1',
-        attendedBy: 'Anand Kumar',
-        previousStatus: 'ACTIVE',
-        newStatus: 'ACTIVE',
-        assetActionType: 'ZONE_LINE_CHANGE',
-        elapsedMinutes: 35,
-        elapsedSeconds: 35 * 60,
-        isUnattended5Mins: false,
-        targetRoles: ['ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC', 'CEO'],
-        targetTrade: 'ALL',
-      },
-      {
-        id: 'SEED-ALERT-07',
-        category: 'PPM_OVERDUE',
-        severity: 'WARNING',
-        title: '⏱️ Overdue Preventive Maintenance Service',
-        message: 'Weekly Looper Timing & Oil Wick Service for Line 04 (MC-SNLS-105) is overdue by 2 days.',
-        timestamp: new Date(nowMs - 48 * 60 * 60 * 1000).toISOString(),
-        machineId: 'MC-SNLS-105',
-        machineName: 'Brother S-7250A Lockstitch',
-        line: 'Line 04',
-        stationNo: 'Station 05',
-        unit: 'UNIT - 1',
-        faultCategory: 'PPM Service Overdue',
-        attendedBy: 'R.Saravanan',
-        elapsedMinutes: 2880,
-        elapsedSeconds: 2880 * 60,
-        isUnattended5Mins: false,
-        targetRoles: ['MECHANIC', 'SENIOR_MECHANIC', 'ADMIN', 'ASSET_MANAGER'],
-        targetTrade: 'MECHANIC',
-      },
-      {
-        id: 'SEED-ALERT-08',
-        category: 'LOW_STOCK',
-        severity: 'WARNING',
-        title: '📦 Low Stock Warning: Critical Spare Parts Below Minimum',
-        message: 'FLATLOCK NAVE SET (SKU: FLT-NAV-001) stock has dropped to 2 units (Min safety stock: 5 units). Reorder indent required.',
-        timestamp: new Date(nowMs - 2 * 60 * 60 * 1000).toISOString(),
-        unit: 'UNIT - 1',
-        faultCategory: 'Spare Parts Reorder Level',
-        elapsedMinutes: 120,
-        elapsedSeconds: 120 * 60,
-        isUnattended5Mins: false,
-        targetRoles: ['STORE_PERSON', 'ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC'],
-        targetTrade: 'ALL',
-      },
-      {
-        id: 'SEED-ALERT-08-U2',
-        category: 'LOW_STOCK',
-        severity: 'WARNING',
-        title: '📦 Unit 2 Crib: Pegasus Looper Set Below Safety Level',
-        message: 'PEGASUS LOWER LOOPER (SKU: PEG-LL-204) at Unit 2 Perundurai crib is at 1 unit (Min: 6). Indent dispatch needed.',
-        timestamp: new Date(nowMs - 3 * 60 * 60 * 1000).toISOString(),
-        unit: 'UNIT-2',
-        faultCategory: 'Unit 2 Crib Reorder Level',
-        elapsedMinutes: 180,
-        elapsedSeconds: 180 * 60,
-        isUnattended5Mins: false,
-        targetRoles: ['STORE_PERSON', 'ADMIN', 'ASSET_MANAGER', 'SENIOR_MECHANIC'],
-        targetTrade: 'ALL',
-      },
-    ];
-  }, [nowMs]);
+
 
   // Helper to determine if a defect is electrical
   const isElectricalDefect = (faultCategory?: string, faultDetails?: string, machineType?: string) => {
@@ -701,12 +535,15 @@ export default function NotificationsPage() {
       });
     });
 
-    // 7. Merge baseline seed items (ensuring no duplicate IDs)
-    const liveIds = new Set(list.map((item) => item.id));
-    const activeSeeds = seedNotifications.filter((s) => !liveIds.has(s.id));
+    // Ensure all notifications appear strictly newest first (newest message on top)
+    list.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
 
-    return [...list, ...activeSeeds];
-  }, [repairs, assetLogs, ppmSchedules, parts, machines, requisitions, appNotifs, nowMs, seedNotifications]);
+    return list;
+  }, [repairs, assetLogs, ppmSchedules, parts, machines, requisitions, appNotifs, nowMs]);
 
   // Helper to match notification to target role scope
   const matchesRoleScope = (item: UnifiedNotificationItem, scope: RoleScope): boolean => {
@@ -846,6 +683,10 @@ export default function NotificationsPage() {
       }
 
       return true;
+    }).sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
     });
   }, [roleAndUnitScopedNotifications, activeTab, selectedSeverity, searchQuery]);
 
@@ -912,14 +753,6 @@ export default function NotificationsPage() {
     }
   };
 
-  // Open Assign Modal with pre-filtered unit roster
-  const handleOpenAssignModal = (item: UnifiedNotificationItem) => {
-    setAssigningItem(item);
-    const candidateMechs = TECHNICIAN_ROSTER.filter((m) =>
-      item.unit ? matchesUnit(m.unit, item.unit) : true
-    );
-    setSelectedMechanic(candidateMechs[0]?.name || TECHNICIAN_ROSTER[0].name);
-  };
 
   // Submit Assign Dispatch
   const handleConfirmAssign = async () => {
@@ -1668,7 +1501,7 @@ export default function NotificationsPage() {
                   Select Attending Technician for {assigningItem.unit || 'UNIT - 1'}
                 </label>
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {TECHNICIAN_ROSTER.filter((m) =>
+                  {dynamicTechnicians.filter((m) =>
                     assigningItem.unit ? matchesUnit(m.unit, assigningItem.unit) : true
                   ).map((mech) => {
                     const isSelected = selectedMechanic === mech.name;

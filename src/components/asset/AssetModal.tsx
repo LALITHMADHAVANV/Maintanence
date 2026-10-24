@@ -36,6 +36,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getCategoryForType, SUBTYPE_LOOKUP } from '@/lib/machineCatalog';
 import { PrintableAssetDocumentModal } from '@/components/print/PrintableAssetDocumentModal';
 import { formatAssetLocation } from '@/lib/formatters';
+import { matchesUnit } from '@/lib/constants/units';
 
 interface AssetModalProps {
   isOpen: boolean;
@@ -590,7 +591,24 @@ export function AssetModal({
   const [faultType, setFaultType] = useState<string>('Mechanical Malfunction / Operational Fault');
   const [urgency, setUrgency] = useState<RepairUrgency>('CRITICAL');
   const [faultNotes, setFaultNotes] = useState<string>('');
+  const [selectedMechanic, setSelectedMechanic] = useState<string>('');
+  const [registeredTechs, setRegisteredTechs] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Fetch registered mechanics
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const techs = data.users.filter((u: any) =>
+            ['MECHANIC', 'ELECTRICIAN', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN'].includes((u.role || '').toUpperCase())
+          );
+          setRegisteredTechs(techs);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Relocate Form
   const [targetLine, setTargetLine] = useState<FloorLine>('Line 01');
@@ -692,6 +710,30 @@ export function AssetModal({
     );
   }, [allAssets, selectedAssetId, categoryAssets, asset]);
 
+  // Show all registered technicians across all units (prioritizing asset's unit first)
+  const availableMechanics = useMemo(() => {
+    const machineUnit = currentAsset?.unit || '';
+    return [...registeredTechs].sort((a, b) => {
+      const aMatches = machineUnit && matchesUnit(a.unit, machineUnit) ? 1 : 0;
+      const bMatches = machineUnit && matchesUnit(b.unit, machineUnit) ? 1 : 0;
+      if (aMatches !== bMatches) return bMatches - aMatches;
+      const uComp = (a.unit || '').localeCompare(b.unit || '');
+      if (uComp !== 0) return uComp;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [registeredTechs, currentAsset?.unit]);
+
+  // Group technicians by unit for organized dropdown display
+  const groupedMechanics = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    availableMechanics.forEach((m: any) => {
+      const u = m.unit || 'All Units';
+      if (!groups[u]) groups[u] = [];
+      groups[u].push(m);
+    });
+    return groups;
+  }, [availableMechanics]);
+
   if (!isOpen || !currentAsset) return null;
 
   const currentCat = currentAsset.category || activeCategory || 'MACHINE';
@@ -747,13 +789,18 @@ export function AssetModal({
         faultCategory: faultType,
         faultDetails: faultNotes.trim() || `Reported from Asset Inspection Popup.`,
         urgency,
+        attendedBy: selectedMechanic.trim() || null,
+        assignedBy: user?.name || 'Floor Dispatch',
       });
 
       showToast(
-        `Critical breakdown #${ticketId} dispatched for ${currentAsset.id} on ${currentAsset.currentLine}!`,
-        'error'
+        selectedMechanic
+          ? `Breakdown #${ticketId} dispatched and assigned to ${selectedMechanic} (${currentAsset.unit || 'Floor'})!`
+          : `Critical breakdown #${ticketId} dispatched for ${currentAsset.id} on ${currentAsset.currentLine}!`,
+        'success'
       );
       setFaultNotes('');
+      setSelectedMechanic('');
       setActiveTab('DETAILS');
     } catch (err) {
       showToast('Failed to dispatch ticket', 'error');
@@ -1498,6 +1545,36 @@ export function AssetModal({
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
                   required
                 />
+              </div>
+
+              {/* Assign to Mechanic Dropdown across All Units */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Assign To Technician (All Units) *</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                    {availableMechanics.length} available
+                  </span>
+                </div>
+                <select
+                  value={selectedMechanic}
+                  onChange={(e) => setSelectedMechanic(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 outline-none font-semibold focus:bg-white transition cursor-pointer"
+                >
+                  <option value="">-- Select Technician (All Units) --</option>
+                  {Object.entries(groupedMechanics).map(([unitGroup, techs]) => (
+                    <optgroup key={unitGroup} label={`📍 ${unitGroup}`}>
+                      {techs.map((m: any) => (
+                        <option key={m.uid || m.id || m.name} value={m.name}>
+                          {m.name} ({m.role || 'Mechanic'}) • {m.unit || unitGroup}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
 
               <div>

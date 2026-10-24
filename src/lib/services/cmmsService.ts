@@ -517,14 +517,15 @@ export async function createBreakdownTicket(
   ticketData: Omit<
     RepairTicket,
     'id' | 'status' | 'resolvedAt' | 'downtimeMinutes' | 'actionTaken' | 'partsUsed' | 'attendedBy'
-  > & { attendedBy?: string | null }
+  > & { attendedBy?: string | null; assignedBy?: string }
 ): Promise<string> {
   const ticketId = `WO-${Math.floor(1000 + Math.random() * 9000)}`;
   const newTicket: RepairTicket = {
     ...ticketData,
     id: ticketId,
-    status: 'PENDING',
+    status: ticketData.attendedBy ? 'ASSIGNED' : 'PENDING',
     attendedBy: ticketData.attendedBy ?? null,
+    assignedBy: ticketData.assignedBy || (ticketData.attendedBy ? 'Floor Dispatch' : undefined),
     resolvedAt: null,
     downtimeMinutes: 0,
     actionTaken: '',

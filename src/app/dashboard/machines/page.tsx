@@ -530,7 +530,7 @@ export default function MachinesPage() {
 
   // Encoded QR payload feeding all asset specifications into the QR code
   const qrData = useMemo(() => {
-    const base = `${origin}/scan/${encodeURIComponent(mId || 'PENDING')}`;
+    const base = `${origin}/maintenance/scan/${encodeURIComponent(mId || 'PENDING')}`;
     const activeBrand =
       isCustomBrand && customBrandInput.trim() ? customBrandInput.trim() : mBrand;
     const activeTypeName =

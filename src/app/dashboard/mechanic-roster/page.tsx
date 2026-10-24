@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   Calendar,
+  CalendarCheck,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -74,127 +75,10 @@ export interface InChargeActionItem {
   hint: string;
   buyer: string;
   type: string;
+  createdAt?: string;
   rawTicket?: RepairTicket;
   rawPpm?: PPMSchedule;
 }
-
-// Seeded operational stages handled by plant process in-charges
-const SEED_INCHARGE_ACTIONS: InChargeActionItem[] = [
-  {
-    id: 'INCH-001',
-    sourceType: 'STAGE',
-    tag: 'Overdue Stage',
-    ref: '123 GREEN · IO 20 · BHPC',
-    inCharge: 'Shaju',
-    targetDate: 'Ex-factory 27 Nov',
-    urgency: 'High',
-    stageName: 'TRIMS-PO',
-    statusBadge: 'In progress',
-    stageSubtitle: 'Trims-po',
-    dueDate: '16 Oct',
-    plannedDate: '16 Oct',
-    overdueDays: 6,
-    details: 'Merchandiser: None · Qty: 320 pcs',
-    hint: 'Stage is overdue by 6 days · Complete or request date change to clear',
-    buyer: 'BHPC',
-    type: 'Trims',
-  },
-  {
-    id: 'INCH-002',
-    sourceType: 'STAGE',
-    tag: 'Overdue Stage',
-    ref: '123 GREEN · IO 20 · BHPC',
-    inCharge: 'R.Saravanan',
-    targetDate: 'Ex-factory 27 Nov',
-    urgency: 'High',
-    stageName: 'DYED YARN-INHOUSE',
-    statusBadge: 'In progress',
-    stageSubtitle: 'Dyed Yarn-Inhouse',
-    dueDate: '17 Oct',
-    plannedDate: '17 Oct',
-    overdueDays: 5,
-    details: 'Merchandiser: None · Qty: 320 pcs',
-    hint: 'Stage is overdue by 5 days · Complete or request date change to clear',
-    buyer: 'BHPC',
-    type: 'Yarn',
-  },
-  {
-    id: 'INCH-003',
-    sourceType: 'STAGE',
-    tag: 'Overdue Stage',
-    ref: 'SNLS-04 · Line 02 · JUKI DDL-9000',
-    inCharge: 'P. Arumugam',
-    targetDate: 'Target 28 Nov',
-    urgency: 'High',
-    stageName: 'SEWING-PPM',
-    statusBadge: 'In progress',
-    stageSubtitle: 'Sewing-ppm',
-    dueDate: '18 Oct',
-    plannedDate: '18 Oct',
-    overdueDays: 4,
-    details: 'Department: Sewing Floor · Needle Calibrated',
-    hint: 'Stage is overdue by 4 days · Complete or request date change to clear',
-    buyer: 'ZARA',
-    type: 'PPM',
-  },
-  {
-    id: 'INCH-004',
-    sourceType: 'STAGE',
-    tag: 'Overdue Stage',
-    ref: '104 BLUE · IO 24 · H&M',
-    inCharge: 'S. Kumar',
-    targetDate: 'Ex-factory 02 Dec',
-    urgency: 'High',
-    stageName: 'KNITTING-INHOUSE',
-    statusBadge: 'In progress',
-    stageSubtitle: 'Knitting-inhouse',
-    dueDate: '19 Oct',
-    plannedDate: '19 Oct',
-    overdueDays: 3,
-    details: 'Merchandiser: Priya · Qty: 450 pcs',
-    hint: 'Stage is overdue by 3 days · Complete or request date change to clear',
-    buyer: 'H&M',
-    type: 'Fabric',
-  },
-  {
-    id: 'INCH-005',
-    sourceType: 'STAGE',
-    tag: 'Overdue Stage',
-    ref: 'OL-01 · Line 01 · PEGASUS M900',
-    inCharge: 'M. Ganesan',
-    targetDate: 'Target 29 Nov',
-    urgency: 'Critical',
-    stageName: 'LOOPER-TIMING',
-    statusBadge: 'In progress',
-    stageSubtitle: 'Looper-timing',
-    dueDate: '20 Oct',
-    plannedDate: '20 Oct',
-    overdueDays: 2,
-    details: 'Technician: M. Ganesan · Blade & Looper sync',
-    hint: 'Stage is overdue by 2 days · Complete or request date change to clear',
-    buyer: 'TOMMY HILFIGER',
-    type: 'Breakdown',
-  },
-  {
-    id: 'INCH-006',
-    sourceType: 'STAGE',
-    tag: 'Overdue Stage',
-    ref: '108 WHITE · IO 29 · BHPC',
-    inCharge: 'K. Rajesh',
-    targetDate: 'Ex-factory 05 Dec',
-    urgency: 'High',
-    stageName: 'ACCESSORY-INHOUSE',
-    statusBadge: 'In progress',
-    stageSubtitle: 'Accessory-inhouse',
-    dueDate: '21 Oct',
-    plannedDate: '21 Oct',
-    overdueDays: 1,
-    details: 'Merchandiser: Rajesh · Qty: 800 pcs',
-    hint: 'Stage is overdue by 1 day · Complete or request date change to clear',
-    buyer: 'BHPC',
-    type: 'Trims',
-  },
-];
 
 export default function MechanicRosterPage() {
   const { showToast } = useToast();
@@ -218,7 +102,7 @@ export default function MechanicRosterPage() {
   const [selectedType, setSelectedType] = useState<string>('ALL');
   const [selectedBuyer, setSelectedBuyer] = useState<string>('ALL');
   const [selectedInCharge, setSelectedInCharge] = useState<string>('ALL');
-  const [sortBy, setSortBy] = useState<'URGENT' | 'DUE' | 'NAME'>('URGENT');
+  const [sortBy, setSortBy] = useState<'NEWEST' | 'URGENT' | 'DUE' | 'NAME'>('NEWEST');
 
   // Reschedule modal
   const [rescheduleModalItem, setRescheduleModalItem] = useState<InChargeActionItem | null>(null);
@@ -307,9 +191,9 @@ export default function MechanicRosterPage() {
     return technicalStaff.map(userToMechanicDuty);
   }, [techUsers, isAdmin, selectedUnit, effectiveUnit]);
 
-  // Merge live tasks and seeded in-charge actions
+  // Merge live tasks and active in-charge actions
   const allInChargeActions = useMemo(() => {
-    const list: InChargeActionItem[] = [...SEED_INCHARGE_ACTIONS];
+    const list: InChargeActionItem[] = [];
 
     // Add active repairs
     scopedRepairs
@@ -325,12 +209,15 @@ export default function MechanicRosterPage() {
           Math.floor((Date.now() - repDate.getTime()) / (1000 * 60 * 60 * 24))
         );
 
+        const techName = r.attendedBy || (r as any).assignedTo || 'Unassigned';
+        const machineBuyer = (machine as any)?.buyer || (r as any).buyer || 'General Factory';
+
         list.push({
           id: r.id,
           sourceType: 'REPAIR',
           tag: 'Overdue Stage',
           ref: refText,
-          inCharge: r.attendedBy || (r as any).assignedTo || 'Shaju',
+          inCharge: techName,
           targetDate: `Target ${repDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}`,
           urgency: r.urgency === 'CRITICAL' ? 'Critical' : 'High',
           stageName: (r.faultCategory || 'BREAKDOWN-REPAIR').toUpperCase().replace(/\s+/g, '-'),
@@ -339,10 +226,11 @@ export default function MechanicRosterPage() {
           dueDate: repDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
           plannedDate: repDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
           overdueDays: diffDays,
-          details: `In-charge: ${r.attendedBy || 'Technician'} · Issue: ${r.faultDetails || 'Operational fault'}`,
+          details: `Technician: ${techName} · Issue: ${r.faultDetails || 'Operational breakdown'}`,
           hint: `Stage is overdue by ${diffDays} days · Complete or request date change to clear`,
-          buyer: (machine as any)?.buyer || (r as any).buyer || 'BHPC',
+          buyer: machineBuyer,
           type: 'Breakdown',
+          createdAt: r.reportedAt || (r as any).createdAt || new Date().toISOString(),
           rawTicket: r,
         });
       });
@@ -361,12 +249,15 @@ export default function MechanicRosterPage() {
           Math.floor((Date.now() - dueObj.getTime()) / (1000 * 60 * 60 * 24))
         );
 
+        const assignedName = p.assignedTo || 'Unassigned';
+        const machineBuyer = (machine as any)?.buyer || 'General Factory';
+
         list.push({
           id: p.id,
           sourceType: 'PPM',
           tag: 'Overdue Stage',
           ref: refText,
-          inCharge: p.assignedTo || 'R.Saravanan',
+          inCharge: assignedName,
           targetDate: `Target ${dueObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}`,
           urgency: 'High',
           stageName: (p.task || 'PREVENTIVE-MAINTENANCE').toUpperCase().replace(/\s+/g, '-'),
@@ -375,10 +266,11 @@ export default function MechanicRosterPage() {
           dueDate: dueObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
           plannedDate: dueObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
           overdueDays: diffDays,
-          details: `In-charge: ${p.assignedTo || 'Technician'} · Frequency: ${p.frequency || 'Weekly'}`,
+          details: `Assigned: ${assignedName} · Frequency: ${p.frequency || 'Weekly'}`,
           hint: `Stage is overdue by ${diffDays} days · Complete or request date change to clear`,
-          buyer: (machine as any)?.buyer || 'BHPC',
+          buyer: machineBuyer,
           type: 'PPM',
+          createdAt: (p as any).createdAt || (p as any).reportedAt || p.nextDue || new Date().toISOString(),
           rawPpm: p,
         });
       });
@@ -389,12 +281,18 @@ export default function MechanicRosterPage() {
         map.set(item.id, item);
       }
     });
-    return Array.from(map.values());
+    const result = Array.from(map.values());
+    result.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
+    return result;
   }, [scopedRepairs, scopedPpm, scopedMachines, completedItemIds]);
 
   const totalToGoCount = useMemo(() => {
-    return Math.max(135 - clearedTodayCount, allInChargeActions.length);
-  }, [allInChargeActions.length, clearedTodayCount]);
+    return allInChargeActions.length;
+  }, [allInChargeActions.length]);
 
   const progressPercent = useMemo(() => {
     const total = totalToGoCount + clearedTodayCount;
@@ -402,11 +300,32 @@ export default function MechanicRosterPage() {
     return Math.min(100, Math.round((clearedTodayCount / total) * 100));
   }, [totalToGoCount, clearedTodayCount]);
 
-  // List of unique in-charges
+  // List of unique in-charges from registered technical staff & active assignments
   const uniqueInCharges = useMemo(() => {
-    const set = new Set<string>(['Shaju', 'R.Saravanan', 'P. Arumugam', 'S. Kumar', 'M. Ganesan', 'K. Rajesh']);
+    const set = new Set<string>();
+    registeredRoster.forEach((m) => {
+      if (m.name) set.add(m.name);
+    });
     allInChargeActions.forEach((a) => {
-      if (a.inCharge) set.add(a.inCharge);
+      if (a.inCharge && a.inCharge !== 'Unassigned') set.add(a.inCharge);
+    });
+    return Array.from(set);
+  }, [registeredRoster, allInChargeActions]);
+
+  // Unique types from real tasks
+  const availableTypes = useMemo(() => {
+    const set = new Set<string>();
+    allInChargeActions.forEach((a) => {
+      if (a.type) set.add(a.type);
+    });
+    return Array.from(set);
+  }, [allInChargeActions]);
+
+  // Unique buyers from real machine assignments
+  const availableBuyers = useMemo(() => {
+    const set = new Set<string>();
+    allInChargeActions.forEach((a) => {
+      if (a.buyer && a.buyer !== 'General Factory') set.add(a.buyer);
     });
     return Array.from(set);
   }, [allInChargeActions]);
@@ -445,8 +364,23 @@ export default function MechanicRosterPage() {
 
       return true;
     }).sort((a, b) => {
-      if (sortBy === 'URGENT') return b.overdueDays - a.overdueDays;
-      if (sortBy === 'DUE') return a.overdueDays - b.overdueDays;
+      if (sortBy === 'NEWEST') {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }
+      if (sortBy === 'URGENT') {
+        if (b.overdueDays !== a.overdueDays) return b.overdueDays - a.overdueDays;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }
+      if (sortBy === 'DUE') {
+        if (a.overdueDays !== b.overdueDays) return a.overdueDays - b.overdueDays;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }
       return a.stageName.localeCompare(b.stageName);
     });
   }, [allInChargeActions, activeTab, selectedType, selectedBuyer, selectedInCharge, searchQuery, sortBy]);
@@ -598,7 +532,9 @@ export default function MechanicRosterPage() {
                 }`}
               >
                 Overdue Stages{' '}
-                <span className="text-rose-600 font-bold ml-1">{totalToGoCount}</span>
+                <span className="text-rose-600 font-bold ml-1">
+                  {allInChargeActions.filter((a) => a.overdueDays > 0).length}
+                </span>
               </button>
             </div>
 
@@ -621,6 +557,15 @@ export default function MechanicRosterPage() {
                 </button>
               </div>
 
+              <Link
+                href="/dashboard/ppm-scheduler"
+                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+                title="Open PPM Scheduler & Bulk Preventive Overhaul"
+              >
+                <CalendarCheck className="w-3.5 h-3.5 text-amber-600" />
+                <span>PPM Scheduler</span>
+              </Link>
+
               <button
                 type="button"
                 onClick={() => showToast(`Synced: ${totalToGoCount} in-charge actions active`, 'info')}
@@ -641,7 +586,7 @@ export default function MechanicRosterPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search style, colour, IO, stage or user"
+                placeholder="Search machine, line, issue, or staff"
                 className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition shadow-2xs"
               />
             </div>
@@ -654,11 +599,15 @@ export default function MechanicRosterPage() {
                 className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
               >
                 <option value="ALL">All types</option>
-                <option value="Trims">Trims</option>
-                <option value="Yarn">Yarn</option>
-                <option value="Fabric">Fabric</option>
-                <option value="PPM">PPM Schedule</option>
                 <option value="Breakdown">Breakdown</option>
+                <option value="PPM">PPM Schedule</option>
+                {availableTypes
+                  .filter((t) => t !== 'Breakdown' && t !== 'PPM')
+                  .map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
               </select>
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -671,22 +620,23 @@ export default function MechanicRosterPage() {
                 className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
               >
                 <option value="ALL">All buyers</option>
-                <option value="BHPC">BHPC</option>
-                <option value="H&M">H&M</option>
-                <option value="ZARA">ZARA</option>
-                <option value="TOMMY HILFIGER">TOMMY HILFIGER</option>
+                {availableBuyers.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
 
-            {/* Dropdown: All merchandisers / In-charges */}
+            {/* Dropdown: All in-charges / staff */}
             <div className="col-span-6 md:col-span-2 relative">
               <select
                 value={selectedInCharge}
                 onChange={(e) => setSelectedInCharge(e.target.value)}
                 className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
               >
-                <option value="ALL">All merchandisers</option>
+                <option value="ALL">All in-charges</option>
                 {uniqueInCharges.map((ic) => (
                   <option key={ic} value={ic}>
                     {ic}
@@ -696,13 +646,14 @@ export default function MechanicRosterPage() {
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
 
-            {/* Dropdown: Most urgent */}
+            {/* Dropdown: Sort by */}
             <div className="col-span-6 md:col-span-1 relative">
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
                 className="w-full appearance-none pl-2 pr-6 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs truncate"
               >
+                <option value="NEWEST">Newest first</option>
                 <option value="URGENT">Most urgent</option>
                 <option value="DUE">Due soonest</option>
                 <option value="NAME">Stage A-Z</option>
@@ -882,52 +833,62 @@ export default function MechanicRosterPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {mechanicWorkData.map(({ mechanic, tickets, ppms, totalJobs, completedCount }) => (
-              <div
-                key={mechanic.id}
-                className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs hover:shadow-xs transition"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm">
-                      {mechanic.name.charAt(0)}
+            {mechanicWorkData.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-2xs col-span-full">
+                <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-base font-bold text-slate-800">No Technical Staff Registered</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Add mechanics or electricians in User Management to see their live duty roster.
+                </p>
+              </div>
+            ) : (
+              mechanicWorkData.map(({ mechanic, tickets, ppms, totalJobs, completedCount }) => (
+                <div
+                  key={mechanic.id}
+                  className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs hover:shadow-xs transition"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm">
+                        {mechanic.name.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">{mechanic.name}</h4>
+                        <p className="text-xs text-slate-500">{mechanic.role}</p>
+                      </div>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        mechanic.status === 'ON_DUTY'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}
+                    >
+                      {mechanic.status === 'ON_DUTY' ? 'Present' : 'Leave / Off'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400">Trade:</span>{' '}
+                      <strong className="text-slate-700">{mechanic.trade}</strong>
                     </div>
                     <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{mechanic.name}</h4>
-                      <p className="text-xs text-slate-500">{mechanic.role}</p>
+                      <span className="text-slate-400">Shift:</span>{' '}
+                      <strong className="text-slate-700">{mechanic.shift}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Active Tasks:</span>{' '}
+                      <strong className="text-emerald-600">{totalJobs}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Phone:</span>{' '}
+                      <strong className="text-slate-700">{mechanic.phone}</strong>
                     </div>
                   </div>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      mechanic.status === 'ON_DUTY'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
-                    }`}
-                  >
-                    {mechanic.status === 'ON_DUTY' ? 'Present' : 'Leave / Off'}
-                  </span>
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-slate-400">Trade:</span>{' '}
-                    <strong className="text-slate-700">{mechanic.trade}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Shift:</span>{' '}
-                    <strong className="text-slate-700">{mechanic.shift}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Active Tasks:</span>{' '}
-                    <strong className="text-emerald-600">{totalJobs}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Phone:</span>{' '}
-                    <strong className="text-slate-700">{mechanic.phone}</strong>
-                  </div>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}

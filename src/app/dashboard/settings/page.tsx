@@ -190,6 +190,15 @@ function SettingsContent() {
   });
 
   // ─── Telegram Bot Alerts State ───
+  const [serverTelegramConfig, setServerTelegramConfig] = useState<{
+    configured: boolean;
+    botToken: string;
+    botUsername: string;
+    unit1ChatId: string;
+    unit2ChatId: string;
+    adminChatId: string;
+  } | null>(null);
+
   const [telegramBotToken, setTelegramBotToken] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('cmms_telegram_bot_token') || '';
@@ -216,11 +225,71 @@ function SettingsContent() {
   });
   const [isTestingTelegram, setIsTestingTelegram] = useState(false);
   const [isTokenVisible, setIsTokenVisible] = useState(false);
-  const [telegramStatusMessage, setTelegramStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showTelegramCredentials, setShowTelegramCredentials] = useState(false);
+  const [testTargetChannel, setTestTargetChannel] = useState<'UNIT1' | 'UNIT2' | 'ADMIN'>('UNIT1');
+  const [testCustomMessage, setTestCustomMessage] = useState<string>('Test alert: verifying Telegram message delivery from TexTech CMMS.');
+  const [telegramStatusMessage, setTelegramStatusMessage] = useState<{
+    status: 'SENT' | 'FAILED';
+    message: string;
+    targetName: string;
+    timestamp: string;
+    messageId?: number | string;
+  } | null>(null);
 
-  const handleTestTelegram = async (targetChat?: string) => {
+  // Auto-fetch server environment credentials so user is NEVER prompted every time
+  useEffect(() => {
+    fetch('/api/telegram')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.configured) {
+          setServerTelegramConfig(data);
+          // If token not set or matches server, keep synced
+          setTelegramBotToken((prev) => {
+            if (!prev || prev.trim() === '') return data.botToken || '';
+            return prev;
+          });
+          if (data.unit1ChatId) {
+            setTelegramUnit1ChatId((prev) => (!prev ? data.unit1ChatId : prev));
+          }
+          if (data.unit2ChatId) {
+            setTelegramUnit2ChatId((prev) => (!prev ? data.unit2ChatId : prev));
+          }
+          if (data.adminChatId) {
+            setTelegramAdminChatId((prev) => (!prev ? data.adminChatId : prev));
+          }
+        }
+      })
+      .catch((err) => console.warn('Could not auto-fetch telegram config:', err));
+  }, []);
+
+  const handleTestTelegram = async (overrideTarget?: string) => {
     setIsTestingTelegram(true);
     setTelegramStatusMessage(null);
+
+    let targetChat = overrideTarget;
+    let targetName = 'Unit 1 Group';
+
+    if (!targetChat) {
+      if (testTargetChannel === 'UNIT2') {
+        targetChat = telegramUnit2ChatId.trim() || '-5371815915';
+        targetName = 'Unit 2 Maintenance Group';
+      } else if (testTargetChannel === 'ADMIN') {
+        targetChat = telegramAdminChatId.trim() || '8853985508';
+        targetName = 'Admin Personal Direct';
+      } else {
+        targetChat = telegramUnit1ChatId.trim() || '-5302045233';
+        targetName = 'Unit 1 Maintenance Group';
+      }
+    } else {
+      if (targetChat === telegramUnit2ChatId.trim() || targetChat === '-5371815915') {
+        targetName = 'Unit 2 Maintenance Group';
+      } else if (targetChat === telegramAdminChatId.trim() || targetChat === '8853985508') {
+        targetName = 'Admin Personal Direct';
+      } else {
+        targetName = 'Unit 1 Maintenance Group';
+      }
+    }
+
     try {
       const res = await fetch('/api/telegram', {
         method: 'POST',
@@ -229,29 +298,50 @@ function SettingsContent() {
           action: 'TEST',
           botToken: telegramBotToken.trim() || undefined,
           payload: {
-            unit: 'UNIT - 1',
-            targetChatId: targetChat || telegramUnit1ChatId.trim() || '-5302045233',
+            unit: testTargetChannel === 'UNIT2' ? 'UNIT - 2' : 'UNIT - 1',
+            targetChatId: targetChat,
+            issue: testCustomMessage.trim() || 'Bot message delivery test verified.',
           },
         }),
       });
       const data = await res.json();
+      const nowStr = new Date().toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+
       if (data.success) {
         setTelegramStatusMessage({
-          type: 'success',
-          text: `Test alert successfully sent to Telegram (Chat ID: ${targetChat || telegramUnit1ChatId})! Check your group.`,
+          status: 'SENT',
+          message: 'Message sent successfully to Telegram!',
+          targetName,
+          timestamp: nowStr,
+          messageId: data.messageId,
         });
-        showToast('Telegram test message delivered!', 'success');
+        showToast('Telegram message sent successfully!', 'success');
       } else {
         setTelegramStatusMessage({
-          type: 'error',
-          text: data.error || 'Failed to send message to Telegram. Check Bot Token & Group ID.',
+          status: 'FAILED',
+          message: data.error || 'Failed to send message to Telegram. Check Bot Token or Chat permissions.',
+          targetName,
+          timestamp: nowStr,
         });
-        showToast(data.error || 'Failed to send Telegram message', 'error');
+        showToast(data.error || 'Telegram message not sent', 'error');
       }
     } catch (err: any) {
+      const nowStr = new Date().toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
       setTelegramStatusMessage({
-        type: 'error',
-        text: err.message || 'Network error reaching Telegram API',
+        status: 'FAILED',
+        message: err.message || 'Network error reaching Telegram API',
+        targetName,
+        timestamp: nowStr,
       });
       showToast('Network error contacting Telegram', 'error');
     } finally {
@@ -267,6 +357,22 @@ function SettingsContent() {
       localStorage.setItem('cmms_telegram_unit2_chat', telegramUnit2ChatId.trim());
     }
     showToast('Telegram configuration saved!', 'success');
+  };
+
+  const handleResetTelegramDefaults = () => {
+    if (serverTelegramConfig?.botToken) {
+      setTelegramBotToken(serverTelegramConfig.botToken);
+      setTelegramUnit1ChatId(serverTelegramConfig.unit1ChatId || '-5302045233');
+      setTelegramUnit2ChatId(serverTelegramConfig.unit2ChatId || '-5371815915');
+      setTelegramAdminChatId(serverTelegramConfig.adminChatId || '8853985508');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('cmms_telegram_bot_token');
+        localStorage.removeItem('cmms_telegram_unit1_chat');
+        localStorage.removeItem('cmms_telegram_unit2_chat');
+        localStorage.removeItem('cmms_telegram_admin_chat');
+      }
+      showToast('Reset to server default configuration (@Assetmbot)', 'info');
+    }
   };
 
   // Departments State (All preset/dummy items cleared)
@@ -2339,266 +2445,273 @@ function SettingsContent() {
                 <Send className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2.5">
-                  <h3 className="font-bold text-lg text-slate-900">Telegram Bot Notifications & Unit Broadcast</h3>
-                  <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-sky-100 text-sky-800 border border-sky-200">
-                    Unit 1 & Unit 2 Connected
-                  </span>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h3 className="font-bold text-lg text-slate-900">Telegram Bot Notifications</h3>
+                  {serverTelegramConfig?.configured ? (
+                    <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Bot Connected (@{serverTelegramConfig.botUsername || 'Assetmbot'})
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                      Unit 1 & Unit 2 Connected
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
-                  Deliver instant factory machine breakdown alarms, 5-minute SLA breaches, and spare part stock alerts directly to factory technicians on Telegram.
+                  Test Telegram notification delivery to verify whether alerts are sending properly.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 self-stretch sm:self-auto">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleSaveTelegramConfig}
-                className="flex-1 sm:flex-none px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                onClick={() => setShowTelegramCredentials((prev) => !prev)}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-1.5"
               >
-                <Check className="w-4 h-4" />
-                <span>Save Config</span>
-              </button>
-              <button
-                type="button"
-                disabled={isTestingTelegram}
-                onClick={() => handleTestTelegram()}
-                className="flex-1 sm:flex-none px-4 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
-              >
-                {isTestingTelegram ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-                <span>{isTestingTelegram ? 'Sending Test...' : 'Send Test Alert (Unit 1)'}</span>
+                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+                <span>{showTelegramCredentials ? 'Hide Bot Settings' : 'Edit Bot Settings'}</span>
               </button>
             </div>
           </div>
 
-          {/* Status Message Banner if any */}
-          {telegramStatusMessage && (
-            <div
-              className={`p-4 rounded-2xl border text-sm flex items-start gap-3 shadow-xs ${
-                telegramStatusMessage.type === 'success'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-rose-50 border-rose-200 text-rose-800'
-              }`}
-            >
-              {telegramStatusMessage.type === 'success' ? (
-                <BadgeCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-              ) : (
-                <X className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1">
-                <span className="font-bold text-sm block">
-                  {telegramStatusMessage.type === 'success' ? 'Connection Successful' : 'Delivery Failed'}
-                </span>
-                <span className="mt-0.5 block text-xs">{telegramStatusMessage.text}</span>
+          {/* MAIN CARD: Dedicated Telegram Message Test */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
+              <div>
+                <h4 className="font-bold text-base text-slate-900">Message Delivery Test</h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Send a live test to verify if the Telegram bot delivers messages or encounters an error.
+                </p>
               </div>
             </div>
-          )}
 
-          {/* Grid Layout: Config Form + Setup Instructions */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left 2 Cols: Credentials & Channels Form */}
-            <div className="lg:col-span-2 space-y-5">
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-5">
-                <div className="flex items-center gap-2 pb-3.5 border-b border-slate-100">
-                  <Bot className="w-5 h-5 text-sky-600" />
-                  <h4 className="font-bold text-base text-slate-800">Bot Credentials & Target Channels</h4>
+            {/* Target Channel Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Select Recipient Group / Chat
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTestTargetChannel('UNIT1')}
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                    testTargetChannel === 'UNIT1'
+                      ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-500/20 shadow-2xs'
+                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-sm text-slate-800">Unit 1 Group</span>
+                    {testTargetChannel === 'UNIT1' && <BadgeCheck className="w-4 h-4 text-sky-600" />}
+                  </div>
+                  <span className="text-xs text-slate-500 block">Unit 1 Maintenance Chat</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTestTargetChannel('UNIT2')}
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                    testTargetChannel === 'UNIT2'
+                      ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-500/20 shadow-2xs'
+                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-sm text-slate-800">Unit 2 Group</span>
+                    {testTargetChannel === 'UNIT2' && <BadgeCheck className="w-4 h-4 text-sky-600" />}
+                  </div>
+                  <span className="text-xs text-slate-500 block">Unit 2 Maintenance Chat</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTestTargetChannel('ADMIN')}
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                    testTargetChannel === 'ADMIN'
+                      ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-500/20 shadow-2xs'
+                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-sm text-slate-800">Admin Direct</span>
+                    {testTargetChannel === 'ADMIN' && <BadgeCheck className="w-4 h-4 text-sky-600" />}
+                  </div>
+                  <span className="text-xs text-slate-500 block">Admin Personal Direct Chat</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Test Message Input */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Test Message
+              </label>
+              <input
+                type="text"
+                value={testCustomMessage}
+                onChange={(e) => setTestCustomMessage(e.target.value)}
+                placeholder="Enter test message to send..."
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition"
+              />
+            </div>
+
+            {/* Send Button */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={isTestingTelegram}
+                onClick={() => handleTestTelegram()}
+                className="px-6 py-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isTestingTelegram ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Sending Test Message...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Send Test Message</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Live Message Delivery Status: Shows whether message is send or not */}
+            <div className="pt-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                Delivery Status
+              </label>
+              {telegramStatusMessage ? (
+                telegramStatusMessage.status === 'SENT' ? (
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 flex items-start gap-3.5 shadow-2xs">
+                    <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-sm text-emerald-900 uppercase tracking-wide">
+                          Message Sent
+                        </span>
+                        <span className="text-xs bg-emerald-200 text-emerald-900 font-extrabold px-2 py-0.5 rounded-full">
+                          Success
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-700 mt-1 font-medium">
+                        Successfully delivered to <b>{telegramStatusMessage.targetName}</b> at {telegramStatusMessage.timestamp}.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-rose-50 border border-rose-300 flex items-start gap-3.5 shadow-2xs">
+                    <div className="w-9 h-9 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                      <X className="w-5 h-5 text-rose-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-sm text-rose-900 uppercase tracking-wide">
+                          Message Not Sent
+                        </span>
+                        <span className="text-xs bg-rose-200 text-rose-900 font-extrabold px-2 py-0.5 rounded-full">
+                          Failed
+                        </span>
+                      </div>
+                      <p className="text-xs text-rose-700 mt-1 font-medium">
+                        {telegramStatusMessage.message} (Target: {telegramStatusMessage.targetName})
+                      </p>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-xs flex items-center gap-2.5">
+                  <div className="w-2 h-2 rounded-full bg-slate-400" />
+                  <span>Ready to test. Select a destination channel and click <b>Send Test Message</b> to verify whether the message is sent or not.</span>
                 </div>
+              )}
+            </div>
+          </div>
 
-                {/* Bot Token Field */}
+          {/* Collapsible Bot Settings (Toggled via "Edit Bot Settings") */}
+          {showTelegramCredentials && (
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Bot className="w-5 h-5 text-sky-600" />
+                  <h4 className="font-bold text-sm text-slate-800">Bot Credentials & Target Channels</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetTelegramDefaults}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition cursor-pointer"
+                  >
+                    Reset Defaults
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTelegramConfig}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition cursor-pointer"
+                  >
+                    Save Config
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1.5">
-                    Telegram Bot Token (from @BotFather) *
-                  </label>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Telegram Bot Token</label>
                   <div className="relative">
                     <input
                       type={isTokenVisible ? 'text' : 'password'}
                       value={telegramBotToken}
                       onChange={(e) => setTelegramBotToken(e.target.value)}
-                      placeholder="e.g. 7123456789:AAFlm3w7Z9k..."
-                      className="w-full pl-3.5 pr-10 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl font-mono focus:ring-2 focus:ring-sky-500 focus:bg-white outline-none"
+                      placeholder="e.g. 8815692743:AAFlm3w7Z9k..."
+                      className="w-full pl-3 pr-10 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 outline-none"
                     />
                     <button
                       type="button"
                       onClick={() => setIsTokenVisible(!isTokenVisible)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
                       {isTokenVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1.5">
-                    Paste the HTTP API token provided by <b>@BotFather</b> when creating your bot. Can also be set in <code>.env.local</code> as <code>TELEGRAM_BOT_TOKEN</code>.
-                  </p>
                 </div>
 
-                {/* Unit 1 Group ID */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                      <span>Unit 1 Group Chat ID</span>
-                      <span className="text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md font-bold">Configured</span>
-                    </label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Unit 1 Chat ID</label>
                     <input
                       type="text"
                       value={telegramUnit1ChatId}
                       onChange={(e) => setTelegramUnit1ChatId(e.target.value)}
-                      placeholder="-5302045233"
-                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 outline-none"
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 outline-none"
                     />
-                    <p className="text-xs text-slate-500 mt-1.5">
-                      Unit 1 Maintenance Group ID (provided: <code>-5302045233</code>).
-                    </p>
                   </div>
-
-                  {/* Admin User ID */}
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                      <span>Admin Personal Chat ID</span>
-                      <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold">Admin Direct</span>
-                    </label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Unit 2 Chat ID</label>
+                    <input
+                      type="text"
+                      value={telegramUnit2ChatId}
+                      onChange={(e) => setTelegramUnit2ChatId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Admin Chat ID</label>
                     <input
                       type="text"
                       value={telegramAdminChatId}
                       onChange={(e) => setTelegramAdminChatId(e.target.value)}
-                      placeholder="8853985508"
-                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 outline-none"
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 outline-none"
                     />
-                    <p className="text-xs text-slate-500 mt-1.5">
-                      Admin direct Telegram chat (provided: <code>8853985508</code>).
-                    </p>
                   </div>
-                </div>
-
-                {/* Unit 2 Group ID */}
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                    <span>Unit 2 Group Chat ID</span>
-                    <span className="text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md font-bold">Configured</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={telegramUnit2ChatId}
-                    onChange={(e) => setTelegramUnit2ChatId(e.target.value)}
-                    placeholder="-5371815915"
-                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 outline-none"
-                  />
-                  <p className="text-xs text-slate-500 mt-1.5">
-                    Unit 2 Maintenance Group ID (provided: <code>-5371815915</code>). Alerts from Unit 2 machines route here automatically.
-                  </p>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="pt-3.5 border-t border-slate-100 flex flex-wrap items-center gap-2.5">
-                  <button
-                    type="button"
-                    disabled={isTestingTelegram}
-                    onClick={() => handleTestTelegram(telegramUnit1ChatId)}
-                    className="px-4 py-2.5 text-xs sm:text-sm font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl transition cursor-pointer flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>Test Unit 1 Group (-5302045233)</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isTestingTelegram}
-                    onClick={() => handleTestTelegram(telegramUnit2ChatId)}
-                    className="px-4 py-2.5 text-xs sm:text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition cursor-pointer flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>Test Unit 2 Group (-5371815915)</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isTestingTelegram}
-                    onClick={() => handleTestTelegram(telegramAdminChatId)}
-                    className="px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition cursor-pointer flex items-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>Test Admin Direct (8853985508)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Sample Notification Preview */}
-              <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 shadow-xs space-y-3 font-mono text-sm">
-                <div className="flex items-center justify-between text-slate-400 text-xs pb-2.5 border-b border-slate-800 font-sans">
-                  <span className="flex items-center gap-2">
-                    <Send className="w-4 h-4 text-sky-400" />
-                    <span className="font-semibold">Telegram Alert Preview</span>
-                  </span>
-                  <span className="text-xs bg-sky-900/60 text-sky-300 px-2.5 py-0.5 rounded font-mono">Real-time Markdown</span>
-                </div>
-                <div className="text-emerald-400 font-bold text-sm sm:text-base">
-                  🚨 MACHINE DEFECT / BREAKDOWN [UNIT - 1]
-                </div>
-                <div className="text-slate-500 text-xs">━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
-                <div>🏷️ Asset ID: <span className="text-amber-300 font-bold">SN-014</span></div>
-                <div>⚙️ Model: <span className="text-slate-200">JUKI DDL-9000C</span></div>
-                <div>📍 Location: <span className="text-slate-200">NETHAJI • Line 04</span></div>
-                <div>⚠️ Problem: <span className="text-rose-300 font-bold">Needle breakage & thread tension lock</span></div>
-                <div>⚡ Urgency: <span className="text-rose-400 font-bold">HIGH</span></div>
-                <div>👨‍🔧 Assigned Tech: <span className="text-sky-300 font-bold">P. Ramesh (Unit 1)</span></div>
-                <div className="text-slate-500 text-xs">━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
-                <div className="text-slate-400 italic text-xs">Access CMMS Dashboard for live ticket tracking.</div>
-              </div>
-            </div>
-
-            {/* Right 1 Col: Quick Step-by-Step Guide */}
-            <div className="space-y-4">
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
-                <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
-                  <BellRing className="w-4 h-4 text-emerald-600" />
-                  <h4 className="font-bold text-sm text-slate-800 uppercase tracking-wider">How to Connect in 2 Mins</h4>
-                </div>
-
-                <div className="space-y-4 text-sm text-slate-600">
-                  <div className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
-                      1
-                    </span>
-                    <div>
-                      <span className="font-bold text-slate-800 block text-sm">Get Bot Token</span>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Open Telegram and message <b>@BotFather</b>. Send <code>/newbot</code>, give it a name, and copy the Bot Token.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
-                      2
-                    </span>
-                    <div>
-                      <span className="font-bold text-slate-800 block text-sm">Add Bot to Unit 1 Group</span>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Add your bot into group <code>-5302045233</code> and promote it to Administrator (or allow Send Messages).
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
-                      3
-                    </span>
-                    <div>
-                      <span className="font-bold text-slate-800 block text-sm">Paste Token & Test</span>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Paste the Bot Token into the input on the left and click <b>Send Test Alert</b> to verify delivery!
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-amber-50 border border-amber-200/80 rounded-xl text-amber-900 text-xs leading-relaxed">
-                  <b>💡 Automated Alerts:</b> Once your Bot Token is saved, any new breakdown ticket submitted in Unit 1 will automatically ping this Telegram group with machine ID, floor line, and assigned mechanic!
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 

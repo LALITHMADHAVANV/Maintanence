@@ -87,7 +87,7 @@ export function PrintableAssetDocumentModal({
   if (!isOpen || !asset) return null;
 
   // Encoded QR payload feeding all machine specifications into the QR code
-  const qrData = `${origin}/scan/${encodeURIComponent(asset.id)}?${new URLSearchParams({
+  const qrData = `${origin}/maintenance/scan/${encodeURIComponent(asset.id)}?${new URLSearchParams({
     id: asset.id || '',
     brand: asset.brand || '',
     model: asset.model || '',
@@ -299,7 +299,7 @@ export function PrintableAssetDocumentModal({
                       fgColor="#000000"
                     />
                   </div>
-                  <span className="text-[9px] font-mono font-bold text-slate-600 mt-1">/scan/{asset.id}</span>
+                  <span className="text-[9px] font-mono font-bold text-slate-600 mt-1">/maintenance/scan/{asset.id}</span>
                 </div>
 
                 <div className="sm:col-span-9 space-y-2 text-xs">
@@ -507,7 +507,7 @@ export function PrintableAssetDocumentModal({
                     cost: m.cost ? String(m.cost) : '',
                     date: m.purchaseDate || '',
                   });
-                  const mQr = `${origin}/scan/${encodeURIComponent(m.id)}?${mParams.toString()}`;
+                  const mQr = `${origin}/maintenance/scan/${encodeURIComponent(m.id)}?${mParams.toString()}`;
                   const mDisplayClass = m.typeName || TYPE_NAME_MAP[m.type] || m.type;
 
                   return (

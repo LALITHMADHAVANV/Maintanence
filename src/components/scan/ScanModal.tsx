@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { QrCode, X, AlertTriangle, ArrowRightLeft, Radio, Camera } from 'lucide-react';
+import { QrCode, X, AlertTriangle, ArrowRightLeft, Radio, Camera, UserCheck } from 'lucide-react';
 import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
 import { subscribeMachines, createBreakdownTicket, relocateMachine } from '@/lib/services/cmmsService';
 import { formatAssetLocation } from '@/lib/formatters';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { matchesUnit } from '@/lib/constants/units';
 
 interface ScanModalProps {
   isOpen: boolean;
@@ -31,6 +32,8 @@ export function ScanModal({
   );
   const [urgency, setUrgency] = useState<RepairUrgency>('CRITICAL');
   const [faultNotes, setFaultNotes] = useState<string>('');
+  const [selectedMechanic, setSelectedMechanic] = useState<string>('');
+  const [registeredTechs, setRegisteredTechs] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Relocate fields
@@ -40,6 +43,21 @@ export function ScanModal({
 
   const { showToast } = useToast();
   const { user, role } = useAuth();
+
+  // Fetch registered mechanics / technicians
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const techs = data.users.filter((u: any) =>
+            ['MECHANIC', 'ELECTRICIAN', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN'].includes((u.role || '').toUpperCase())
+          );
+          setRegisteredTechs(techs);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const isMechanicRole = role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN';
 
@@ -70,9 +88,33 @@ export function ScanModal({
     }
   }, [preselectedMachineId]);
 
-  if (!isOpen) return null;
-
   const currentMachine = visibleMachines.find((m) => m.id === selectedMachineId) || visibleMachines[0];
+
+  // Show all registered technicians across all units (prioritizing machine's unit first)
+  const availableMechanics = useMemo(() => {
+    const machineUnit = currentMachine?.unit || '';
+    return [...registeredTechs].sort((a, b) => {
+      const aMatches = machineUnit && matchesUnit(a.unit, machineUnit) ? 1 : 0;
+      const bMatches = machineUnit && matchesUnit(b.unit, machineUnit) ? 1 : 0;
+      if (aMatches !== bMatches) return bMatches - aMatches;
+      const uComp = (a.unit || '').localeCompare(b.unit || '');
+      if (uComp !== 0) return uComp;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [registeredTechs, currentMachine?.unit]);
+
+  // Group technicians by unit for organized display
+  const groupedMechanics = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    availableMechanics.forEach((m: any) => {
+      const u = m.unit || 'All Units';
+      if (!groups[u]) groups[u] = [];
+      groups[u].push(m);
+    });
+    return groups;
+  }, [availableMechanics]);
+
+  if (!isOpen) return null;
 
   const handleBreakdownSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,13 +131,18 @@ export function ScanModal({
         faultCategory: faultType,
         faultDetails: faultNotes.trim() || 'Reported from floor terminal via QR tag scan.',
         urgency,
+        attendedBy: selectedMechanic.trim() || null,
+        assignedBy: user?.name || 'Floor Dispatch',
       });
 
       showToast(
-        `Critical breakdown #${ticketId} dispatched for ${currentMachine.id} on ${currentMachine.area || currentMachine.currentLine}!`,
-        'error'
+        selectedMechanic
+          ? `Breakdown #${ticketId} dispatched and assigned to ${selectedMechanic} (${currentMachine.unit || 'Floor'})!`
+          : `Breakdown #${ticketId} dispatched for ${currentMachine.id} on ${currentMachine.area || currentMachine.currentLine}!`,
+        'success'
       );
       setFaultNotes('');
+      setSelectedMechanic('');
       onClose();
     } catch (err) {
       showToast('Failed to dispatch breakdown ticket', 'error');
@@ -354,6 +401,36 @@ export function ScanModal({
                       </option>
                     </>
                   )}
+                </select>
+              </div>
+
+              {/* Assign to Mechanic Dropdown across All Units */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Assign To Technician (All Units) *</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                    {availableMechanics.length} available
+                  </span>
+                </div>
+                <select
+                  value={selectedMechanic}
+                  onChange={(e) => setSelectedMechanic(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 outline-none font-semibold focus:bg-white transition cursor-pointer"
+                >
+                  <option value="">-- Select Technician (All Units) --</option>
+                  {Object.entries(groupedMechanics).map(([unitGroup, techs]) => (
+                    <optgroup key={unitGroup} label={`📍 ${unitGroup}`}>
+                      {techs.map((m: any) => (
+                        <option key={m.uid || m.id || m.name} value={m.name}>
+                          {m.name} ({m.role || 'Mechanic'}) • {m.unit || unitGroup}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
 

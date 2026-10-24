@@ -62,254 +62,11 @@ export interface ActionItem {
   details: string; // e.g. "Line: Line 01 (St-04) · Unit: UNIT - 1 · Shift: General"
   hint: string; // e.g. "Task is overdue by 4 days · Complete work order or reschedule to clear"
   type: 'PPM' | 'Breakdown' | 'Requisition' | 'Electrical';
+  createdAt?: string;
   isCompleted?: boolean;
   rawTicket?: RepairTicket;
   rawPpm?: PPMSchedule;
 }
-
-// Maintenance baseline dataset: 12 real plant machinery pending actions
-const SEED_MAINTENANCE_ACTIONS: ActionItem[] = [
-  {
-    id: 'ACT-001',
-    sourceType: 'REPAIR',
-    tag: 'Critical Line Halt',
-    tagColor: 'bg-rose-100 text-rose-800 border-rose-300',
-    machineId: '101',
-    machineName: 'Single Needle Lockstitch (SNLS)',
-    line: 'PEACOCK-1',
-    stationNo: 'Station 03',
-    unit: 'UNIT - 1',
-    ref: '101 · PEACOCK-1 (St-03) · SNLS Lockstitch',
-    inCharge: 'ROBERT',
-    inChargeRole: 'Line Mechanic',
-    targetDate: 'Immediate Halt',
-    urgency: 'Critical',
-    taskTitle: 'BREAKDOWN: FREQUENT NEEDLE BREAKAGE & HOOK COLLISION',
-    statusBadge: 'In progress',
-    dueDate: '22 Oct',
-    plannedDate: '22 Oct',
-    overdueDays: 1,
-    details: 'Line: PEACOCK-1 · Unit: UNIT - 1 · Attending: ROBERT · Defect: Needle striking throat plate',
-    hint: 'Critical line halt · Complete repair or reassign mechanic to clear stoppage',
-    type: 'Breakdown',
-  },
-  {
-    id: 'ACT-002',
-    sourceType: 'PPM',
-    tag: 'Overdue PPM',
-    tagColor: 'bg-rose-100 text-rose-800 border-rose-300',
-    machineId: '4DORD15615',
-    machineName: 'JUKI SNLS DDL-9000C',
-    line: 'Line 01',
-    stationNo: 'Station 04',
-    unit: 'UNIT - 1',
-    ref: '4DORD15615 · Line 01 (St-04) · JUKI DDL-9000C',
-    inCharge: 'Ramesh Kumar',
-    inChargeRole: 'Senior Master Mechanic',
-    targetDate: 'Target 18 Oct',
-    urgency: 'High',
-    taskTitle: 'PPM: ROTARY HOOK TIMING & 5-STEP LUBRICATION',
-    statusBadge: 'In progress',
-    dueDate: '18 Oct',
-    plannedDate: '18 Oct',
-    overdueDays: 4,
-    details: 'Line: Line 01 · Unit: UNIT - 1 · In-charge: Ramesh Kumar · Interval: Monthly Overhaul',
-    hint: 'PPM is overdue by 4 days · Execute lubrication protocol & looper sync to clear',
-    type: 'PPM',
-  },
-  {
-    id: 'ACT-003',
-    sourceType: 'REPAIR',
-    tag: 'Critical Line Halt',
-    tagColor: 'bg-rose-100 text-rose-800 border-rose-300',
-    machineId: '4DORD15616',
-    machineName: 'Brother S-7250A Lockstitch',
-    line: 'Line 02',
-    stationNo: 'Station 02',
-    unit: 'UNIT - 1',
-    ref: '4DORD15616 · Line 02 (St-02) · Brother DigiFlex',
-    inCharge: 'Anand Kumar',
-    inChargeRole: 'Plant Electrician Lead',
-    targetDate: 'Immediate Halt',
-    urgency: 'Critical',
-    taskTitle: 'BREAKDOWN: DIRECT DRIVE MOTOR OVERHEATING (ERROR E-04)',
-    statusBadge: 'In progress',
-    dueDate: '21 Oct',
-    plannedDate: '21 Oct',
-    overdueDays: 2,
-    details: 'Line: Line 02 · Unit: UNIT - 1 · In-charge: Anand Kumar · Defect: Inverter thermal cutoff trip',
-    hint: 'Motor stopped on production line · Clean lint shroud & test inverter board to clear',
-    type: 'Electrical',
-  },
-  {
-    id: 'ACT-004',
-    sourceType: 'PPM',
-    tag: 'Overdue PPM',
-    tagColor: 'bg-amber-100 text-amber-900 border-amber-300',
-    machineId: '4DORD15617',
-    machineName: 'Siruba 5-Thread Overlock 757K',
-    line: 'Line 01',
-    stationNo: 'Station 08',
-    unit: 'UNIT - 1',
-    ref: '4DORD15617 · Line 01 (St-08) · Siruba 757K Overlock',
-    inCharge: 'Rajesh M',
-    inChargeRole: 'Maintenance Electrician',
-    targetDate: 'Target 19 Oct',
-    urgency: 'High',
-    taskTitle: 'PPM: OIL RESERVOIR DRAIN & FILTER WICK OVERHAUL',
-    statusBadge: 'Assigned',
-    dueDate: '19 Oct',
-    plannedDate: '19 Oct',
-    overdueDays: 3,
-    details: 'Line: Line 01 · Unit: UNIT - 1 · In-charge: Rajesh M · Frequency: Bi-Weekly',
-    hint: 'PPM is overdue by 3 days · Drain oil reservoir, replace wick filters to clear',
-    type: 'PPM',
-  },
-  {
-    id: 'ACT-005',
-    sourceType: 'REPAIR',
-    tag: 'Breakdown Fix',
-    tagColor: 'bg-amber-100 text-amber-900 border-amber-300',
-    machineId: '4DORD15618',
-    machineName: 'Pegasus W500 Flatlock',
-    line: 'Line 03',
-    stationNo: 'Station 01',
-    unit: 'UNIT - 1',
-    ref: '4DORD15618 · Line 03 (St-01) · Pegasus Interlock',
-    inCharge: 'Karthik S',
-    inChargeRole: 'Line Mechanic',
-    targetDate: 'Target 22 Oct',
-    urgency: 'Warning',
-    taskTitle: 'BREAKDOWN: OIL SEEPAGE ONTO NEEDLE PLATE & GARMENTS',
-    statusBadge: 'In progress',
-    dueDate: '20 Oct',
-    plannedDate: '20 Oct',
-    overdueDays: 2,
-    details: 'Line: Line 03 · Unit: UNIT - 1 · In-charge: Karthik S · Defect: Needle bar oil seal worn',
-    hint: 'Oil dropping on light fabric · Replace nitrile seal ring to resume production',
-    type: 'Breakdown',
-  },
-  {
-    id: 'ACT-006',
-    sourceType: 'REPAIR',
-    tag: 'Breakdown Fix',
-    tagColor: 'bg-amber-100 text-amber-900 border-amber-300',
-    machineId: '4DORD15619',
-    machineName: 'JUKI Bartack LK-1900BN',
-    line: 'Line 04',
-    stationNo: 'Station 05',
-    unit: 'UNIT - 1',
-    ref: '4DORD15619 · Line 04 (St-05) · JUKI LK-1900BN Bartack',
-    inCharge: 'Ramesh Kumar',
-    inChargeRole: 'Senior Master Mechanic',
-    targetDate: 'Target 21 Oct',
-    urgency: 'Warning',
-    taskTitle: 'BREAKDOWN: AUTO THREAD TRIMMER KNIFE JAMMED',
-    statusBadge: 'In progress',
-    dueDate: '21 Oct',
-    plannedDate: '21 Oct',
-    overdueDays: 1,
-    details: 'Line: Line 04 · Unit: UNIT - 1 · In-charge: Ramesh Kumar · Defect: Moving knife blade blunt',
-    hint: 'Thread not cutting cleanly · Replace moving knife & calibrate solenoid stroke',
-    type: 'Breakdown',
-  },
-  {
-    id: 'ACT-007',
-    sourceType: 'PPM',
-    tag: 'Overdue PPM',
-    tagColor: 'bg-rose-100 text-rose-800 border-rose-300',
-    machineId: '4DORD15626',
-    machineName: 'Eastman Straight Knife 629X',
-    line: 'Cutting Department',
-    stationNo: 'Table 01',
-    unit: 'UNIT - 1',
-    ref: '4DORD15626 · Cutting Dept (Table 01) · Eastman 629X',
-    inCharge: 'Karthik S',
-    inChargeRole: 'Line Mechanic',
-    targetDate: 'Target 17 Oct',
-    urgency: 'High',
-    taskTitle: 'PPM: CUTTING BLADE GUIDE & SHARPENER BAND ALIGNMENT',
-    statusBadge: 'Pending',
-    dueDate: '17 Oct',
-    plannedDate: '17 Oct',
-    overdueDays: 5,
-    details: 'Line: Cutting Department · Unit: UNIT - 1 · In-charge: Karthik S · Interval: Weekly Service',
-    hint: 'PPM is overdue by 5 days · Inspect sharpener belts & lubricate slide rails',
-    type: 'PPM',
-  },
-  {
-    id: 'ACT-008',
-    sourceType: 'REQUISITION',
-    tag: 'Store Indent',
-    tagColor: 'bg-blue-100 text-blue-800 border-blue-300',
-    machineId: '4DORD15620',
-    machineName: 'Jack JK-A4E Smart SNLS',
-    line: 'Line 02',
-    stationNo: 'Station 12',
-    unit: 'UNIT - 1',
-    ref: '4DORD15620 · Line 02 (St-12) · Jack JK-A4E',
-    inCharge: 'Anand Kumar',
-    inChargeRole: 'Plant Electrician Lead',
-    targetDate: 'Target 22 Oct',
-    urgency: 'Warning',
-    taskTitle: 'REQUISITION: SERVO MOTOR POSITION SENSOR & FOOT SWITCH',
-    statusBadge: 'Pending',
-    dueDate: '22 Oct',
-    plannedDate: '22 Oct',
-    overdueDays: 1,
-    details: 'Store Crib Indent · Qty: 1 Sensor, 1 Cable · Awaiting Store Keeper Issue',
-    hint: 'Indent submitted to Tool Crib · Approve or dispatch parts to clear hold',
-    type: 'Requisition',
-  },
-  {
-    id: 'ACT-009',
-    sourceType: 'REPAIR',
-    tag: 'Breakdown Fix',
-    tagColor: 'bg-amber-100 text-amber-900 border-amber-300',
-    machineId: '4DORD15628',
-    machineName: 'Silver Star Industrial Steam Press ES-300L',
-    line: 'Finishing Department',
-    stationNo: 'Press 03',
-    unit: 'UNIT - 1',
-    ref: '4DORD15628 · Finishing (Press 03) · Steam Press',
-    inCharge: 'Anand Kumar',
-    inChargeRole: 'Plant Electrician Lead',
-    targetDate: 'Target 20 Oct',
-    urgency: 'Warning',
-    taskTitle: 'BREAKDOWN: STEAM SOLENOID CALCIFICATION & TEMPERATURE DROP',
-    statusBadge: 'In progress',
-    dueDate: '20 Oct',
-    plannedDate: '20 Oct',
-    overdueDays: 2,
-    details: 'Line: Finishing · Unit: UNIT - 1 · In-charge: Anand Kumar · Defect: Water spitting from plate',
-    hint: 'Steam quality degraded · Descale solenoid valve & replace sealing gasket',
-    type: 'Breakdown',
-  },
-  {
-    id: 'ACT-010',
-    sourceType: 'PPM',
-    tag: 'Scheduled PPM',
-    tagColor: 'bg-blue-100 text-blue-800 border-blue-300',
-    machineId: '4DORD15623',
-    machineName: 'Pegasus M900 Overlock',
-    line: 'Line 04',
-    stationNo: 'Station 02',
-    unit: 'UNIT - 1',
-    ref: '4DORD15623 · Line 04 (St-02) · Pegasus Overlock',
-    inCharge: 'Ramesh Kumar',
-    inChargeRole: 'Senior Master Mechanic',
-    targetDate: 'Due Today',
-    urgency: 'Normal',
-    taskTitle: 'PPM: BI-WEEKLY LOOPER & NEEDLE TIMING CLEARANCE AUDIT',
-    statusBadge: 'Assigned',
-    dueDate: '22 Oct',
-    plannedDate: '22 Oct',
-    overdueDays: 0,
-    details: 'Line: Line 04 · Unit: UNIT - 1 · In-charge: Ramesh Kumar · Interval: Bi-Weekly',
-    hint: 'Scheduled for today · Verify looper clearance with feeler gauge to prevent burrs',
-    type: 'PPM',
-  },
-];
 
 export default function PendingActionsPage() {
   const { showToast } = useToast();
@@ -331,7 +88,7 @@ export default function PendingActionsPage() {
   const [selectedInCharge, setSelectedInCharge] = useState<string>('ALL');
   const [selectedUrgency, setSelectedUrgency] = useState<string>('ALL');
   const [selectedUnit, setSelectedUnit] = useState<string>('ALL');
-  const [sortBy, setSortBy] = useState<'URGENT' | 'DUE' | 'NAME'>('URGENT');
+  const [sortBy, setSortBy] = useState<'NEWEST' | 'URGENT' | 'DUE' | 'NAME'>('NEWEST');
   const [viewLayout, setViewLayout] = useState<'CARDS' | 'TABLE'>('CARDS');
 
   // Pagination state
@@ -399,6 +156,7 @@ export default function PendingActionsPage() {
           details: `Line: ${r.line || 'Line 01'} · Unit: ${machine?.unit || 'UNIT - 1'} · Attending: ${r.attendedBy || 'Technician'}`,
           hint: `Breakdown is open for ${diffDays}d · Complete repair or reassign to clear`,
           type: 'Breakdown',
+          createdAt: r.reportedAt || (r as any).createdAt || new Date().toISOString(),
           rawTicket: r,
         });
       });
@@ -440,24 +198,24 @@ export default function PendingActionsPage() {
           details: `Line: ${machine?.currentLine || 'Line 02'} · Interval: ${p.frequency || 'Weekly'} · Unit: ${machine?.unit || 'UNIT - 1'}`,
           hint: diffDays > 0 ? `PPM is overdue by ${diffDays}d · Complete overhaul checklist to clear` : 'Scheduled preventive maintenance task',
           type: 'PPM',
+          createdAt: (p as any).createdAt || (p as any).reportedAt || p.nextDue || new Date().toISOString(),
           rawPpm: p,
         });
       });
 
-    // 3. Merge baseline maintenance actions (excluding any completed items)
-    const existingTicketIds = new Set(list.map((item) => item.id));
-    const activeSeeds = SEED_MAINTENANCE_ACTIONS.filter(
-      (s) => !completedItemIds.has(s.id) && !existingTicketIds.has(s.id)
-    );
-
-    const combined = [...list, ...activeSeeds];
+    // Ensure newest actions/messages appear at the top
+    list.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
 
     // Unit filter for non-admins
     if (!isAdmin) {
-      return combined.filter((item) => matchesUnit(item.unit, effectiveUnit));
+      return list.filter((item) => matchesUnit(item.unit, effectiveUnit));
     }
 
-    return combined;
+    return list;
   }, [repairs, ppmSchedules, machines, completedItemIds, isAdmin, effectiveUnit]);
 
   // Unique lists for filters
@@ -519,8 +277,23 @@ export default function PendingActionsPage() {
 
       return true;
     }).sort((a, b) => {
-      if (sortBy === 'URGENT') return b.overdueDays - a.overdueDays;
-      if (sortBy === 'DUE') return a.overdueDays - b.overdueDays;
+      if (sortBy === 'NEWEST') {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }
+      if (sortBy === 'URGENT') {
+        if (b.overdueDays !== a.overdueDays) return b.overdueDays - a.overdueDays;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }
+      if (sortBy === 'DUE') {
+        if (a.overdueDays !== b.overdueDays) return a.overdueDays - b.overdueDays;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }
       return a.taskTitle.localeCompare(b.taskTitle);
     });
   }, [allActions, activeTab, selectedType, selectedInCharge, selectedLine, selectedUrgency, selectedUnit, searchQuery, sortBy]);
@@ -815,6 +588,7 @@ export default function PendingActionsPage() {
             onChange={(e) => setSortBy(e.target.value as any)}
             className="w-full appearance-none pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
           >
+            <option value="NEWEST">Newest First</option>
             <option value="URGENT">Most Urgent First</option>
             <option value="DUE">Due Date Soonest</option>
             <option value="NAME">Task Name A-Z</option>

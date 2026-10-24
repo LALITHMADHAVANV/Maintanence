@@ -63,10 +63,10 @@ export function Navbar() {
   const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
   const [pendingPpmCount, setPendingPpmCount] = useState<number>(0);
-  const [activeInChargesCount, setActiveInChargesCount] = useState<number>(1);
+  const [activeInChargesCount, setActiveInChargesCount] = useState<number>(0);
   const [pendingCeoCount, setPendingCeoCount] = useState<number>(0);
   const [pendingStoreCount, setPendingStoreCount] = useState<number>(0);
-  const [unattendedBreachCount, setUnattendedBreachCount] = useState<number>(2);
+  const [unattendedBreachCount, setUnattendedBreachCount] = useState<number>(0);
 
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState<boolean>(false);
@@ -77,7 +77,7 @@ export function Navbar() {
 
   const handleSignOut = async () => {
     await logout();
-    window.location.href = '/';
+    window.location.href = '/maintenance';
   };
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export function Navbar() {
         const elapsedMin = r.reportedAt ? (now - new Date(r.reportedAt).getTime()) / 60000 : 0;
         return !hasAttendant && elapsedMin >= 5;
       }).length;
-      setUnattendedBreachCount(Math.max(2, unattended));
+      setUnattendedBreachCount(unattended);
 
       // Active process in-charges
       const activeInCharges = new Set(
@@ -109,7 +109,7 @@ export function Navbar() {
           .map((r) => r.attendedBy || (r as any).assignedTo)
           .filter((n) => Boolean(n && n.trim()))
       );
-      setActiveInChargesCount(Math.max(1, activeInCharges.size));
+      setActiveInChargesCount(activeInCharges.size);
     });
 
     const unsubPpm = subscribePPMSchedules((ppms) => {
@@ -153,7 +153,7 @@ export function Navbar() {
           label: 'Executive Approvals',
           href: '/dashboard/messages',
           icon: Crown,
-          badge: pendingCeoCount > 0 ? pendingCeoCount : 4,
+          badge: pendingCeoCount > 0 ? pendingCeoCount : null,
           badgeColor: 'bg-rose-500 text-white animate-pulse',
           highlight: true,
         },
@@ -171,7 +171,7 @@ export function Navbar() {
           label: 'Notifications',
           href: '/dashboard/messages',
           icon: Bell,
-          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
           badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
         },
       ];
@@ -214,7 +214,7 @@ export function Navbar() {
           label: 'Notifications',
           href: '/dashboard/messages',
           icon: Bell,
-          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
           badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
         },
       ];
@@ -232,7 +232,7 @@ export function Navbar() {
           label: 'Pending Tasks',
           href: '/dashboard/calendar',
           icon: Clock,
-          badge: pendingTicketsCount > 0 ? pendingTicketsCount : 3,
+          badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
           badgeColor: 'bg-slate-100 text-slate-700',
         },
         {
@@ -249,7 +249,7 @@ export function Navbar() {
           label: 'Notifications',
           href: '/dashboard/messages',
           icon: Bell,
-          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
           badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
         },
       ];
@@ -272,15 +272,22 @@ export function Navbar() {
           label: 'Pending Actions',
           href: '/dashboard/pending-actions',
           icon: Clock,
-          badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : 135,
+          badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
           badgeColor: 'bg-emerald-500 text-white',
         },
         {
           label: 'Process In-Charges',
           href: '/dashboard/mechanic-roster',
           icon: Activity,
-          badge: activeInChargesCount > 0 ? activeInChargesCount : 1,
+          badge: activeInChargesCount > 0 ? activeInChargesCount : null,
           badgeColor: 'bg-slate-100 text-slate-700',
+        },
+        {
+          label: 'PPM Scheduler',
+          href: '/dashboard/ppm-scheduler',
+          icon: CalendarCheck,
+          badge: pendingPpmCount > 0 ? pendingPpmCount : null,
+          badgeColor: 'bg-amber-100 text-amber-800',
         },
         {
           label: 'Equipment Fleet',
@@ -308,7 +315,7 @@ export function Navbar() {
           label: 'Notifications',
           href: '/dashboard/messages',
           icon: Bell,
-          badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+          badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
           badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
         },
       ];
@@ -330,15 +337,22 @@ export function Navbar() {
         label: 'Pending Actions',
         href: '/dashboard/pending-actions',
         icon: Clock,
-        badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : 135,
+        badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
         badgeColor: 'bg-emerald-500 text-white',
       },
       {
         label: 'Process In-Charges',
         href: '/dashboard/mechanic-roster',
         icon: Activity,
-        badge: activeInChargesCount > 0 ? activeInChargesCount : 1,
+        badge: activeInChargesCount > 0 ? activeInChargesCount : null,
         badgeColor: 'bg-slate-100 text-slate-700',
+      },
+      {
+        label: 'PPM Scheduler',
+        href: '/dashboard/ppm-scheduler',
+        icon: CalendarCheck,
+        badge: pendingPpmCount > 0 ? pendingPpmCount : null,
+        badgeColor: 'bg-amber-100 text-amber-800',
       },
       {
         label: 'Active TNAs',
@@ -388,7 +402,7 @@ export function Navbar() {
         label: 'Notifications',
         href: '/dashboard/messages',
         icon: Bell,
-        badge: unattendedBreachCount > 0 ? unattendedBreachCount : 5,
+        badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
         badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
       },
     ];

@@ -6,7 +6,11 @@ import { sendTelegramAlert } from '@/lib/services/telegramService';
 export async function GET() {
   try {
     const db = await getDatabase();
-    const repairs = await db.collection<RepairTicket>('repair_tickets').find({}).toArray();
+    const repairs = await db
+      .collection<RepairTicket>('repair_tickets')
+      .find({})
+      .sort({ reportedAt: -1, _id: -1 })
+      .toArray();
     const cleanRepairs = repairs.map(({ _id, ...r }: any) => r);
     return NextResponse.json({ success: true, data: cleanRepairs });
   } catch (err: unknown) {
@@ -37,21 +41,25 @@ export async function POST(req: Request) {
       );
     }
 
-    // Trigger Telegram notification for new breakdown tickets
-    if (ticket.status === 'PENDING') {
+    // Trigger Telegram notification for new breakdown tickets (routed by Unit with Attender)
+    if (ticket.status === 'PENDING' || !ticket.resolvedAt) {
       try {
         const machine = await db.collection('machines').findOne({ id: ticket.machineId });
+        const targetUnit = ticket.unit || (machine as any)?.unit || 'UNIT - 1';
+        const attender = ticket.attendedBy || (ticket as any).assignedTo || undefined;
+
         sendTelegramAlert({
           category: 'BREAKDOWN',
+          ticketId: ticket.id,
           title: ticket.faultCategory || 'Machine Breakdown',
-          unit: ticket.unit || (machine as any)?.unit || 'UNIT - 1',
+          unit: targetUnit,
           machineId: ticket.machineId,
           machineName: (machine as any)?.model || (machine as any)?.name || ticket.machineType || 'Sewing Machine',
-          line: ticket.line || (machine as any)?.currentLine || 'Line',
+          line: ticket.line || (machine as any)?.currentLine || 'Line 01',
           zone: (machine as any)?.zone || (machine as any)?.location || 'Sewing Floor',
           issue: ticket.faultDetails || ticket.faultCategory || 'Breakdown reported',
           severity: ticket.urgency === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
-          assignedTo: ticket.attendedBy || undefined,
+          assignedTo: attender,
         }).catch((e) => console.warn('Telegram alert error:', e));
       } catch (tgErr) {
         console.warn('Telegram dispatch error:', tgErr);
@@ -78,6 +86,89 @@ export async function PATCH(req: Request) {
       { $set: updates },
       { upsert: true }
     );
+
+    // 1. If technician starts work (status = IN_PROGRESS or startedAt is set), dispatch STARTED notification
+    if (updates.status === 'IN_PROGRESS' || (updates.startedAt && updates.status !== 'COMPLETED')) {
+      try {
+        const ticket = await db.collection('repair_tickets').findOne({ id });
+        const machineId = ticket?.machineId || updates.machineId;
+        const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
+        const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
+        const attender = updates.attendedBy || ticket?.attendedBy || 'Technician';
+
+        sendTelegramAlert({
+          category: 'STARTED',
+          ticketId: id,
+          title: 'Technician Started Work',
+          unit: targetUnit,
+          machineId: machineId || 'N/A',
+          machineName: (machine as any)?.model || (machine as any)?.name || ticket?.machineType || 'Machine',
+          line: ticket?.line || (machine as any)?.currentLine || 'Line 01',
+          zone: (machine as any)?.zone || (machine as any)?.location || 'Sewing Floor',
+          issue: ticket?.faultDetails || ticket?.faultCategory || 'Breakdown repair commenced',
+          severity: 'HIGH',
+          assignedTo: attender,
+        }).catch((e) => console.warn('Telegram started alert error:', e));
+      } catch (err) {
+        console.warn('Error sending Telegram started alert:', err);
+      }
+    }
+
+    // 2. If ticket is marked COMPLETED, dispatch resolved notification to the same unit Telegram group
+    if (updates.status === 'COMPLETED') {
+      try {
+        const ticket = await db.collection('repair_tickets').findOne({ id });
+        const machineId = ticket?.machineId || updates.machineId;
+        const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
+        const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
+        const completedBy = updates.attendedBy || ticket?.attendedBy || 'Technician';
+
+        // Calculate time spent between startedAt and completedAt/now
+        const completedDate = updates.completedAt || updates.resolvedAt
+          ? new Date(updates.completedAt || updates.resolvedAt)
+          : new Date();
+
+        let timeSpentMins: number | undefined;
+        let startedTimeStr: string | undefined;
+
+        if (ticket?.startedAt) {
+          const startDate = new Date(ticket.startedAt);
+          if (!isNaN(startDate.getTime())) {
+            const diffMs = completedDate.getTime() - startDate.getTime();
+            timeSpentMins = Math.max(1, Math.round(diffMs / 60000));
+            startedTimeStr = startDate.toLocaleTimeString('en-IN', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            });
+          }
+        }
+
+        // Fallback to downtimeMinutes if startedAt was not recorded
+        if (timeSpentMins === undefined && updates.downtimeMinutes) {
+          timeSpentMins = updates.downtimeMinutes;
+        }
+
+        sendTelegramAlert({
+          category: 'RESOLVED',
+          ticketId: id,
+          title: 'Breakdown Resolved & Restored',
+          unit: targetUnit,
+          machineId: machineId || 'N/A',
+          machineName: (machine as any)?.model || (machine as any)?.name || ticket?.machineType || 'Machine',
+          line: ticket?.line || (machine as any)?.currentLine || 'Line 01',
+          zone: (machine as any)?.zone || (machine as any)?.location || 'Sewing Floor',
+          actionTaken: updates.actionTaken || 'Repair verified and completed',
+          downtimeMinutes: updates.downtimeMinutes || ticket?.downtimeMinutes || timeSpentMins || 0,
+          timeSpentMinutes: timeSpentMins,
+          startedAtTime: startedTimeStr,
+          severity: 'LOW',
+          assignedTo: completedBy,
+        }).catch((e) => console.warn('Telegram resolved alert error:', e));
+      } catch (err) {
+        console.warn('Error sending Telegram resolution alert:', err);
+      }
+    }
 
     return NextResponse.json({ success: true, message: `Repair ticket ${id} updated` });
   } catch (err: unknown) {

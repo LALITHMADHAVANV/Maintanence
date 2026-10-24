@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,6 +18,7 @@ import {
   Loader2,
   History,
   Pencil,
+  UserCheck,
 } from 'lucide-react';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
@@ -31,6 +32,7 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
 import { formatAssetLocation } from '@/lib/formatters';
+import { matchesUnit } from '@/lib/constants/units';
 
 function MobileScanContent() {
   const params = useParams();
@@ -52,12 +54,53 @@ function MobileScanContent() {
   const [faultType, setFaultType] = useState('Skipping Stitches / Looper Timing Misalignment');
   const [urgency, setUrgency] = useState<RepairUrgency>('CRITICAL');
   const [faultNotes, setFaultNotes] = useState('');
+  const [selectedMechanic, setSelectedMechanic] = useState('');
+  const [registeredTechs, setRegisteredTechs] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Relocate Form
   const [targetLine, setTargetLine] = useState<FloorLine>('Line 01');
   const [targetStation, setTargetStation] = useState('');
   const [relocateReason, setRelocateReason] = useState('');
+
+  // Fetch registered mechanics / technicians
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const techs = data.users.filter((u: any) =>
+            ['MECHANIC', 'ELECTRICIAN', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN'].includes((u.role || '').toUpperCase())
+          );
+          setRegisteredTechs(techs);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Show all registered technicians across all units (prioritizing machine's unit first)
+  const availableMechanics = useMemo(() => {
+    const machineUnit = machine?.unit || '';
+    return [...registeredTechs].sort((a, b) => {
+      const aMatches = machineUnit && matchesUnit(a.unit, machineUnit) ? 1 : 0;
+      const bMatches = machineUnit && matchesUnit(b.unit, machineUnit) ? 1 : 0;
+      if (aMatches !== bMatches) return bMatches - aMatches;
+      const uComp = (a.unit || '').localeCompare(b.unit || '');
+      if (uComp !== 0) return uComp;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [registeredTechs, machine?.unit]);
+
+  // Group technicians by unit for organized dropdown display
+  const groupedMechanics = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    availableMechanics.forEach((m: any) => {
+      const u = m.unit || 'All Units';
+      if (!groups[u]) groups[u] = [];
+      groups[u].push(m);
+    });
+    return groups;
+  }, [availableMechanics]);
 
   useEffect(() => {
     const unsub = subscribeMachines((machines) => {
@@ -124,13 +167,18 @@ function MobileScanContent() {
         faultCategory: faultType,
         faultDetails: faultNotes.trim() || 'Logged via QR sticker scan on production floor.',
         urgency,
+        attendedBy: selectedMechanic.trim() || null,
+        assignedBy: user?.name || 'Floor Dispatch',
       });
 
       showToast(
-        `Critical breakdown #${ticketId} broadcasted to Mechanic Queue for ${machine.id}!`,
-        'error'
+        selectedMechanic
+          ? `Breakdown #${ticketId} dispatched and assigned to ${selectedMechanic} (${machine.unit || 'Floor'})!`
+          : `Breakdown #${ticketId} broadcasted to Mechanic Queue for ${machine.id}!`,
+        selectedMechanic ? 'success' : 'error'
       );
       setFaultNotes('');
+      setSelectedMechanic('');
       if (role === 'CEO') {
         router.push('/dashboard/messages');
       } else if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
@@ -467,6 +515,41 @@ function MobileScanContent() {
                     </>
                   )}
                 </select>
+              </div>
+
+              {/* Mechanic Selection Dropdown across All Units */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Assign To Technician (All Units) *</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                    {availableMechanics.length} available
+                  </span>
+                </div>
+                <div className="relative">
+                  <select
+                    value={selectedMechanic}
+                    onChange={(e) => setSelectedMechanic(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 outline-none font-semibold focus:bg-white transition cursor-pointer"
+                  >
+                    <option value="">-- Select Technician (All Units) --</option>
+                    {Object.entries(groupedMechanics).map(([unitGroup, techs]) => (
+                      <optgroup key={unitGroup} label={`📍 ${unitGroup}`}>
+                        {techs.map((m: any) => (
+                          <option key={m.uid || m.id || m.name} value={m.name}>
+                            {m.name} ({m.role || 'Mechanic'}) • {m.unit || unitGroup}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Issue will automatically appear on this technician&apos;s workbench and login dashboard.
+                </p>
               </div>
 
               <div>

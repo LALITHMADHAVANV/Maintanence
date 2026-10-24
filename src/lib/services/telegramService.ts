@@ -5,17 +5,31 @@
 
 export interface TelegramAlertPayload {
   unit?: string;
-  category?: 'BREAKDOWN' | 'SLA_BREACH' | 'LOW_STOCK' | 'PPM_OVERDUE' | 'DISPATCH' | 'TEST';
+  category?: 'BREAKDOWN' | 'SLA_BREACH' | 'LOW_STOCK' | 'PPM_OVERDUE' | 'DISPATCH' | 'TEST' | 'RESOLVED' | 'PPM' | 'STARTED';
   title: string;
+  ticketId?: string;
   machineId?: string;
   machineName?: string;
   line?: string;
   zone?: string;
   issue?: string;
+  actionTaken?: string;
+  downtimeMinutes?: number;
+  timeSpentMinutes?: number;
+  startedAtTime?: string;
   severity?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'WARNING';
   assignedTo?: string;
   details?: string;
   targetChatId?: string | number;
+}
+
+function formatDuration(minutes?: number): string {
+  if (!minutes || minutes <= 0) return 'Few minutes';
+  if (minutes < 60) return `${minutes} min${minutes > 1 ? 's' : ''}`;
+  const hrs = Math.floor(minutes / 60);
+  const remainingMins = minutes % 60;
+  if (remainingMins === 0) return `${hrs} hr${hrs > 1 ? 's' : ''}`;
+  return `${hrs} hr${hrs > 1 ? 's' : ''} ${remainingMins} min${remainingMins > 1 ? 's' : ''}`;
 }
 
 /**
@@ -65,6 +79,7 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
       `🚨 <b>CRITICAL: 5-MIN SLA BREACH${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `⚠️ <b>Alert:</b> Machine Breakdown Unattended > 5 Mins\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
       `🏷️ <b>Machine:</b> <code>${payload.machineId || 'N/A'}</code> ${payload.machineName ? `(${payload.machineName})` : ''}\n` +
       `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
       `🛠️ <b>Reported Fault:</b> ${payload.issue || 'Defect reported'}\n` +
@@ -74,20 +89,77 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     );
   }
 
-  // Default: BREAKDOWN or DISPATCH alert
+  if (payload.category === 'STARTED') {
+    return (
+      `🛠️ <b>TECHNICIAN STARTED WORK${unitTag}</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
+      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
+      (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
+      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
+      `👨‍🔧 <b>Attender / Technician:</b> <b>${payload.assignedTo || 'Technician'}</b>\n` +
+      `⏱️ <b>Started At:</b> ${time} (${date})\n` +
+      (payload.issue ? `⚠️ <b>Defect:</b> ${payload.issue}\n` : '') +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `<i>Technician has commenced active maintenance on this machine.</i>`
+    );
+  }
+
+  if (payload.category === 'RESOLVED') {
+    const timeSpentMins = payload.timeSpentMinutes !== undefined ? payload.timeSpentMinutes : payload.downtimeMinutes;
+    const timeSpentFormatted = formatDuration(timeSpentMins);
+    const totalDowntimeFormatted = payload.downtimeMinutes ? formatDuration(payload.downtimeMinutes) : null;
+
+    return (
+      `✅ <b>ISSUE COMPLETED • RESTORED TO SERVICE${unitTag}</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
+      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
+      (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
+      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
+      `👨‍🔧 <b>Completed By:</b> <b>${payload.assignedTo || 'Technician'}</b>\n` +
+      `🔧 <b>Action Taken:</b> ${payload.actionTaken || payload.issue || 'Repair completed successfully'}\n` +
+      `⏳ <b>Time Spent (Work Duration):</b> <b>${timeSpentFormatted}</b>\n` +
+      (totalDowntimeFormatted && totalDowntimeFormatted !== timeSpentFormatted ? `⏱️ <b>Total Machine Downtime:</b> ${totalDowntimeFormatted}\n` : '') +
+      (payload.startedAtTime ? `🕒 <b>Started:</b> ${payload.startedAtTime} ➔ <b>Completed:</b> ${time}\n` : `🏁 <b>Completed At:</b> ${time} (${date})\n`) +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `<i>Machine is verified active and returned to production floor.</i>`
+    );
+  }
+
+  if (payload.category === 'PPM') {
+    return (
+      `🛠️ <b>PREVENTIVE MAINTENANCE (PPM) ALERT${unitTag}</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
+      `⚙️ <b>Task:</b> ${payload.title || 'Scheduled Service'}\n` +
+      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
+      (payload.assignedTo ? `👨‍🔧 <b>Assigned Staff:</b> ${payload.assignedTo}\n` : '') +
+      `⏱️ <b>Scheduled Time:</b> ${time} (${date})\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `<i>PPM checklist available on technician workstation.</i>`
+    );
+  }
+
+  // Default: BREAKDOWN or DISPATCH alert (Issue created)
   const headerIcon = payload.severity === 'CRITICAL' ? '🚨' : '⚠️';
+  const attenderDisplay = payload.assignedTo
+    ? `<b>${payload.assignedTo}</b>`
+    : `<i>Awaiting Attender Assignment</i>`;
+
   return (
-    `${headerIcon} <b>MACHINE DEFECT / BREAKDOWN${unitTag}</b>\n` +
+    `${headerIcon} <b>NEW ISSUE REPORTED${unitTag}</b>\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
     `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
     (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
     `📍 <b>Floor Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
     `⚠️ <b>Problem:</b> ${payload.issue || payload.title}\n` +
     `⚡ <b>Urgency:</b> ${payload.severity || 'HIGH'}\n` +
-    (payload.assignedTo ? `👨‍🔧 <b>Assigned Tech:</b> ${payload.assignedTo}\n` : `👨‍🔧 <b>Status:</b> Awaiting Technician Response\n`) +
+    `👨‍🔧 <b>Attender:</b> ${attenderDisplay}\n` +
     `⏱️ <b>Reported At:</b> ${time} (${date})\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `<i>Access CMMS Dashboard for live ticket tracking.</i>`
+    `<i>Broadcast to ${payload.unit || 'Unit'} maintenance team.</i>`
   );
 }
 

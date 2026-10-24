@@ -26,6 +26,8 @@ import {
   Upload,
   Image as ImageIcon,
   IndianRupee,
+  ArrowRightLeft,
+  UserCheck,
 } from 'lucide-react';
 import {
   Machine,
@@ -42,10 +44,12 @@ import {
   startPPMTask,
   stopPPMTask,
   completePPMTask,
+  assignRepairTicket,
 } from '@/lib/services/cmmsService';
 import { filterSparesForMachine, detectMachineCategory } from '@/lib/utils/spareMapping';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { matchesUnit } from '@/lib/constants/units';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 import { MaintenanceMilestonesAndTasks } from './MaintenanceMilestonesAndTasks';
 
@@ -385,6 +389,79 @@ export function MechanicDeskDashboard({
     setIsPpmInspectModalOpen(true);
   };
 
+  // ─── Registered Technicians & Reassignment State ──────────────────
+  const [registeredTechs, setRegisteredTechs] = useState<any[]>([]);
+  const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
+  const [selectedTicketToReassign, setSelectedTicketToReassign] = useState<RepairTicket | null>(null);
+  const [targetColleagueName, setTargetColleagueName] = useState('');
+  const [reassignReason, setReassignReason] = useState('');
+  const [isSubmittingReassign, setIsSubmittingReassign] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users && Array.isArray(data.users)) {
+          const techs = data.users.filter((u: any) =>
+            ['MECHANIC', 'ELECTRICIAN', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN'].includes(u.role)
+          );
+          setRegisteredTechs(techs);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const reassignTicketMachine = useMemo(() => {
+    if (!selectedTicketToReassign) return null;
+    return machines.find((m) => m.id === selectedTicketToReassign.machineId);
+  }, [selectedTicketToReassign, machines]);
+
+  const targetUnit = useMemo(() => {
+    return reassignTicketMachine?.unit || (user as any)?.unit || 'UNIT - 1';
+  }, [reassignTicketMachine, user]);
+
+  // Colleagues in the SAME UNIT excluding self
+  const sameUnitColleagues = useMemo(() => {
+    const myName = (userName || '').trim().toLowerCase();
+    return registeredTechs.filter((t) => {
+      const isSelf = t.name?.trim().toLowerCase() === myName;
+      const inSameUnit = matchesUnit(t.unit, targetUnit);
+      return !isSelf && inSameUnit;
+    });
+  }, [registeredTechs, targetUnit, userName]);
+
+  const handleOpenReassign = (ticket: RepairTicket) => {
+    setSelectedTicketToReassign(ticket);
+    setTargetColleagueName('');
+    setReassignReason('Assisting urgent line task / shift handover');
+    setIsReassignModalOpen(true);
+  };
+
+  const handleSubmitReassign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTicketToReassign) return;
+    if (!targetColleagueName.trim()) {
+      showToast('Please select a colleague to reassign this ticket to.', 'warning');
+      return;
+    }
+
+    setIsSubmittingReassign(true);
+    try {
+      await assignRepairTicket(selectedTicketToReassign.id, targetColleagueName.trim(), userName);
+      showToast(`Ticket #${selectedTicketToReassign.id} transferred to ${targetColleagueName.trim()} (${targetUnit})!`, 'success');
+      setIsReassignModalOpen(false);
+      setSelectedTicketToReassign(null);
+      setTimeout(() => {
+        onRefresh();
+      }, 500);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to reassign ticket', 'error');
+    } finally {
+      setIsSubmittingReassign(false);
+    }
+  };
+
   const handleProofImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -639,6 +716,16 @@ export function MechanicDeskDashboard({
                 Asset Details
               </button>
 
+              <button
+                type="button"
+                onClick={() => handleOpenReassign(activeJob)}
+                className="px-4 py-2.5 bg-white text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 hover:bg-indigo-50 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Assign / Hand over this ticket to another colleague in the same unit"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Assign to Colleague</span>
+              </button>
+
               {!activeJob.startedAt || activeJob.status !== 'IN_PROGRESS' ? (
                 <div className="flex items-center gap-2">
                   <button
@@ -850,6 +937,7 @@ export function MechanicDeskDashboard({
         onOpenResolve={handleOpenResolve}
         onStartRepair={handleStartRepair}
         onStopRepair={handleStopRepair}
+        onReassignRepair={(ticket) => handleOpenReassign(ticket)}
         onCompletePPM={(ppmId, machineId) => handleCompletePPM(ppmId, machineId)}
         onStartPPM={(ppm) => handleStartPPM(ppm)}
         onStopPPM={(ppm) => handleStopPPM(ppm)}
@@ -1330,6 +1418,122 @@ export function MechanicDeskDashboard({
                       <span>Inspect &amp; Complete (Calculate MTTR)</span>
                     </>
                   )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: REASSIGN TICKET TO COLLEAGUE IN SAME UNIT ────────── */}
+      {isReassignModalOpen && selectedTicketToReassign && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
+                  <ArrowRightLeft className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Assign Ticket to Colleague</h3>
+                  <p className="text-[11px] text-indigo-200">
+                    Hand off job to a technician in <b className="text-white">{targetUnit}</b>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReassignModalOpen(false)}
+                className="p-1.5 text-indigo-200 hover:text-white rounded-xl hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmitReassign} className="p-5 space-y-4">
+              {/* Ticket Details Summary */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800">
+                    Machine {selectedTicketToReassign.machineId}
+                  </span>
+                  <span className="font-mono text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">
+                    {selectedTicketToReassign.id}
+                  </span>
+                </div>
+                <div className="text-slate-500 text-[11px]">
+                  {selectedTicketToReassign.faultCategory} • Line: {selectedTicketToReassign.line || 'Line 01'}
+                </div>
+                <div className="text-[11px] text-indigo-700 font-semibold pt-1 border-t border-slate-200/60 flex items-center justify-between">
+                  <span>Currently assigned to you ({userName})</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Unit: {targetUnit}</span>
+                </div>
+              </div>
+
+              {/* Colleague in Same Unit Select */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Select Colleague ({targetUnit}) *</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                    {sameUnitColleagues.length} available
+                  </span>
+                </div>
+
+                <select
+                  value={targetColleagueName}
+                  onChange={(e) => setTargetColleagueName(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 outline-none font-semibold focus:bg-white transition cursor-pointer"
+                >
+                  <option value="">-- Choose Colleague in {targetUnit} --</option>
+                  {sameUnitColleagues.map((t) => (
+                    <option key={t.uid || t.id || t.name} value={t.name}>
+                      {t.name} ({t.role || 'Mechanic'}) {t.unit ? `• ${t.unit}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {sameUnitColleagues.length === 0 && (
+                  <p className="text-[11px] text-amber-600 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                    No other registered technicians found in {targetUnit}. Ask Admin to add floor colleagues in Settings &gt; Users.
+                  </p>
+                )}
+              </div>
+
+              {/* Handover Note */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Handover Reason / Instructions
+                </label>
+                <textarea
+                  rows={2}
+                  value={reassignReason}
+                  onChange={(e) => setReassignReason(e.target.value)}
+                  placeholder="e.g. Taking urgent breakdown on Line 03, handoff to colleague..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsReassignModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReassign || !targetColleagueName}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-lg shadow-indigo-600/25 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  <span>{isSubmittingReassign ? 'Reassigning...' : 'Confirm Handover'}</span>
                 </button>
               </div>
             </form>
