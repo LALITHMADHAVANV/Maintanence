@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { sendTelegramAlert, TelegramAlertPayload } from '@/lib/services/telegramService';
 
 export async function GET() {
-  const token = process.env.TELEGRAM_BOT_TOKEN || '';
+  const token =
+    process.env.TELEGRAM_BOT_TOKEN || '8815692743:AAFS9kLVloX6lSGNupM80pUmeLtdoMzuhDQ';
   const isConfigured = Boolean(token);
   return NextResponse.json({
     success: true,

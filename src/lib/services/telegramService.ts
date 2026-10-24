@@ -194,7 +194,10 @@ export async function sendTelegramAlert(
   payload: TelegramAlertPayload,
   customBotToken?: string
 ): Promise<{ success: boolean; error?: string; messageId?: number }> {
-  const botToken = customBotToken || process.env.TELEGRAM_BOT_TOKEN;
+  const botToken =
+    customBotToken ||
+    process.env.TELEGRAM_BOT_TOKEN ||
+    '8815692743:AAFS9kLVloX6lSGNupM80pUmeLtdoMzuhDQ';
 
   if (!botToken) {
     return {
