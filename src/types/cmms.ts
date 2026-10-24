@@ -203,7 +203,7 @@ export interface SparePart {
 }
 
 export type RepairUrgency = 'CRITICAL' | 'WARNING';
-export type RepairStatus = 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED';
+export type RepairStatus = 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'REJECTED';
 
 export interface RepairPartUsage {
   partId: string;

@@ -15,12 +15,14 @@ import {
   ExternalLink,
   CheckCircle2,
   Check,
+  XCircle,
 } from 'lucide-react';
 import { Machine, RepairTicket, RepairUrgency, PPMSchedule } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 import {
   createBreakdownTicket,
   assignRepairTicket,
+  rejectRepairTicket,
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -63,6 +65,10 @@ export function SupervisorFloorWorkspace({
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedTicketForAssign, setSelectedTicketForAssign] = useState<RepairTicket | null>(null);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [selectedTicketForReject, setSelectedTicketForReject] = useState<RepairTicket | null>(null);
+  const [rejectReason, setRejectReason] = useState('False alarm / No defect found on inspection');
+  const [isSubmittingReject, setIsSubmittingReject] = useState(false);
 
   // Sync external modal trigger if provided
   useEffect(() => {
@@ -285,6 +291,40 @@ export function SupervisorFloorWorkspace({
     }
   };
 
+  // Handle Reject / Decline Issue
+  const handleOpenReject = (ticket: RepairTicket) => {
+    setSelectedTicketForReject(ticket);
+    setRejectReason('False alarm / No defect found on floor inspection');
+    setIsRejectModalOpen(true);
+  };
+
+  const handleConfirmReject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTicketForReject) return;
+
+    setIsSubmittingReject(true);
+    try {
+      const reviewer = userName || user?.name || 'Floor Supervisor';
+      await rejectRepairTicket(selectedTicketForReject.id, reviewer, rejectReason);
+      showToast(
+        `Work order ${selectedTicketForReject.id} on ${selectedTicketForReject.machineId} rejected! Machine restored to ACTIVE service.`,
+        'info'
+      );
+      setIsRejectModalOpen(false);
+      setSelectedTicketForReject(null);
+      if (isAssignModalOpen) {
+        setIsAssignModalOpen(false);
+        setSelectedTicketForAssign(null);
+      }
+      onRefresh();
+    } catch (err) {
+      console.error('Error rejecting ticket:', err);
+      showToast('Failed to reject ticket', 'error');
+    } finally {
+      setIsSubmittingReject(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* ─── MAIN WORKSPACE GRID: TICKETS & ROSTER (65% / 35%) ──────── */}
@@ -463,7 +503,9 @@ export function SupervisorFloorWorkspace({
                           <td className="py-2 px-3 text-center border-r border-b border-slate-200">
                             <span
                               className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                isCompleted
+                                t.status === 'REJECTED'
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  : isCompleted
                                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                   : t.status === 'IN_PROGRESS'
                                   ? 'bg-blue-100 text-blue-800 border border-blue-200'
@@ -479,7 +521,7 @@ export function SupervisorFloorWorkspace({
                           {/* Actions */}
                           <td className="py-2 px-3 text-right border-b border-slate-200">
                             <div className="flex items-center justify-end gap-1.5">
-                              {!isCompleted && (
+                              {!isCompleted && t.status !== 'REJECTED' && (
                                 <>
                                   <button
                                     onClick={() => {
@@ -502,6 +544,14 @@ export function SupervisorFloorWorkspace({
                                     className="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer"
                                   >
                                     {t.attendedBy ? 'Reassign' : 'Assign'}
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenReject(t)}
+                                    title="Reject or decline this false alarm / invalid breakdown report"
+                                    className="px-2 py-1 rounded text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    <XCircle className="w-3 h-3 text-rose-600" />
+                                    <span>Reject</span>
                                   </button>
                                 </>
                               )}
@@ -956,12 +1006,132 @@ export function SupervisorFloorWorkspace({
                 </select>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2.5">
+              <div className="pt-3 flex items-center justify-between gap-2.5">
                 <button
                   type="button"
                   onClick={() => {
                     setIsAssignModalOpen(false);
-                    setSelectedTicketForAssign(null);
+                    if (selectedTicketForAssign) {
+                      handleOpenReject(selectedTicketForAssign);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Reject Issue</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAssignModalOpen(false);
+                      setSelectedTicketForAssign(null);
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingAssign}
+                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-lg shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingAssign ? 'Assigning...' : 'Confirm Assignment'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL 3: REJECT / DECLINE ISSUE TICKET ─────────────────────── */}
+      {isRejectModalOpen && selectedTicketForReject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-rose-100 text-rose-700">
+                  <XCircle className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Reject / Cancel Issue</h3>
+                  <p className="text-xs text-slate-500 font-mono">Ticket {selectedTicketForReject.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsRejectModalOpen(false);
+                  setSelectedTicketForReject(null);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-rose-50/60 p-3.5 rounded-2xl border border-rose-200 text-xs space-y-1.5">
+              <div>
+                <span className="font-bold text-slate-700">Machine: </span>
+                <span className="font-mono text-slate-900 font-semibold">{selectedTicketForReject.machineId}</span>
+                <span className="text-slate-500"> ({selectedTicketForReject.line})</span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-700">Reported Problem: </span>
+                <span className="text-slate-800">{selectedTicketForReject.faultCategory}</span>
+              </div>
+              <p className="text-[11px] text-rose-700 font-medium pt-1">
+                ⚠️ Rejecting will close this ticket, restore machine to <b>ACTIVE</b>, and broadcast an alert to the Telegram group.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmReject} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Select Reason for Rejection
+                </label>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {[
+                    'False alarm / No defect found on floor inspection',
+                    'Operator error / Cleared by sewing line operator',
+                    'Duplicate breakdown ticket already being attended',
+                    'Reported for incorrect asset ID',
+                  ].map((preset) => (
+                    <button
+                      type="button"
+                      key={preset}
+                      onClick={() => setRejectReason(preset)}
+                      className={`text-left px-3 py-2 rounded-xl text-xs font-medium border transition cursor-pointer ${
+                        rejectReason === preset
+                          ? 'bg-rose-50 border-rose-400 text-rose-900 font-bold'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Additional Notes / Explanation
+                </label>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  required
+                />
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRejectModalOpen(false);
+                    setSelectedTicketForReject(null);
                   }}
                   className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
                 >
@@ -969,10 +1139,10 @@ export function SupervisorFloorWorkspace({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingAssign}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-lg shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+                  disabled={isSubmittingReject}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition shadow-lg shadow-rose-600/30 cursor-pointer disabled:opacity-50"
                 >
-                  {isSubmittingAssign ? 'Assigning...' : 'Confirm Assignment'}
+                  {isSubmittingReject ? 'Rejecting & Alerting...' : 'Confirm Rejection'}
                 </button>
               </div>
             </form>

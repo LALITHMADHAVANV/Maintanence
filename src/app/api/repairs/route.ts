@@ -119,6 +119,12 @@ export async function PATCH(req: Request) {
       try {
         const ticket = await db.collection('repair_tickets').findOne({ id });
         const machineId = ticket?.machineId || updates.machineId;
+        if (machineId) {
+          await db.collection('machines').updateOne(
+            { id: machineId },
+            { $set: { status: 'ACTIVE' } }
+          );
+        }
         const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
         const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
         const completedBy = updates.attendedBy || ticket?.attendedBy || 'Technician';
@@ -128,14 +134,17 @@ export async function PATCH(req: Request) {
           ? new Date(updates.completedAt || updates.resolvedAt)
           : new Date();
 
-        let timeSpentMins: number | undefined;
+        let timeSpentMins: number | undefined = updates.timeSpentMinutes;
         let startedTimeStr: string | undefined;
 
-        if (ticket?.startedAt) {
-          const startDate = new Date(ticket.startedAt);
+        const startIso = ticket?.startedAt || updates.startedAt;
+        if (startIso) {
+          const startDate = new Date(startIso);
           if (!isNaN(startDate.getTime())) {
             const diffMs = completedDate.getTime() - startDate.getTime();
-            timeSpentMins = Math.max(1, Math.round(diffMs / 60000));
+            if (timeSpentMins === undefined) {
+              timeSpentMins = Math.max(1, Math.round(diffMs / 60000));
+            }
             startedTimeStr = startDate.toLocaleTimeString('en-IN', {
               hour: '2-digit',
               minute: '2-digit',
@@ -167,6 +176,40 @@ export async function PATCH(req: Request) {
         }).catch((e) => console.warn('Telegram resolved alert error:', e));
       } catch (err) {
         console.warn('Error sending Telegram resolution alert:', err);
+      }
+    }
+
+    // 3. If ticket is marked REJECTED, restore machine to ACTIVE and dispatch rejection alert
+    if (updates.status === 'REJECTED') {
+      try {
+        const ticket = await db.collection('repair_tickets').findOne({ id });
+        const machineId = ticket?.machineId || updates.machineId;
+        if (machineId) {
+          await db.collection('machines').updateOne(
+            { id: machineId },
+            { $set: { status: 'ACTIVE' } }
+          );
+        }
+        const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
+        const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
+        const rejectedBy = updates.attendedBy || updates.rejectedBy || ticket?.attendedBy || 'Supervisor';
+        const reason = updates.actionTaken || updates.rejectionReason || ticket?.actionTaken || 'False alarm / operator cleared';
+
+        sendTelegramAlert({
+          category: 'REJECTED',
+          ticketId: id,
+          title: 'Issue Rejected / Cancelled',
+          unit: targetUnit,
+          machineId: machineId || 'N/A',
+          machineName: (machine as any)?.model || (machine as any)?.name || ticket?.machineType || 'Machine',
+          line: ticket?.line || (machine as any)?.currentLine || 'Line 01',
+          zone: (machine as any)?.zone || (machine as any)?.location || 'Sewing Floor',
+          actionTaken: reason,
+          severity: 'WARNING',
+          assignedTo: rejectedBy,
+        }).catch((e) => console.warn('Telegram rejected alert error:', e));
+      } catch (err) {
+        console.warn('Error sending Telegram rejection alert:', err);
       }
     }
 

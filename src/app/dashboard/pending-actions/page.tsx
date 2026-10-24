@@ -33,6 +33,7 @@ import {
   subscribePPMSchedules,
   subscribeMachines,
   resolveRepairTicket,
+  rejectRepairTicket,
   completePPMTask,
 } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
@@ -352,6 +353,25 @@ export default function PendingActionsPage() {
     } catch (err) {
       console.error('Failed to complete action:', err);
       showToast('Error completing action. Please try again.', 'error');
+    }
+  };
+
+  // Reject action handler (for breakdown issues)
+  const handleRejectAction = async (action: ActionItem) => {
+    if (action.sourceType === 'REPAIR' && action.rawTicket) {
+      try {
+        await rejectRepairTicket(
+          action.rawTicket.id,
+          user?.name || 'Administrator',
+          'False alarm / cleared via pending actions queue'
+        );
+        setCompletedItemIds((prev) => new Set([...prev, action.id]));
+        setClearedTodayCount((prev) => prev + 1);
+        showToast(`Work order ${action.rawTicket.id} rejected. Machine restored to ACTIVE service.`, 'info');
+      } catch (err) {
+        console.error('Failed to reject action:', err);
+        showToast('Error rejecting action. Please try again.', 'error');
+      }
     }
   };
 
@@ -818,6 +838,16 @@ export default function PendingActionsPage() {
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap align-top border-b border-slate-200 no-print space-x-1.5">
+                          {item.sourceType === 'REPAIR' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRejectAction(item)}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 transition cursor-pointer shadow-2xs"
+                              title="Reject false breakdown alarm"
+                            >
+                              Reject
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleOpenReschedule(item)}

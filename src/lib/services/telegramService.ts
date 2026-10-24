@@ -5,7 +5,7 @@
 
 export interface TelegramAlertPayload {
   unit?: string;
-  category?: 'BREAKDOWN' | 'SLA_BREACH' | 'LOW_STOCK' | 'PPM_OVERDUE' | 'DISPATCH' | 'TEST' | 'RESOLVED' | 'PPM' | 'STARTED';
+  category?: 'BREAKDOWN' | 'SLA_BREACH' | 'LOW_STOCK' | 'PPM_OVERDUE' | 'DISPATCH' | 'TEST' | 'RESOLVED' | 'PPM' | 'STARTED' | 'REJECTED';
   title: string;
   ticketId?: string;
   machineId?: string;
@@ -58,6 +58,22 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
       `⏱️ <b>Timestamp:</b> ${date} at ${time}\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `<i>Real-time machine breakdown & maintenance alerts will be delivered here automatically.</i>`
+    );
+  }
+
+  if (payload.category === 'REJECTED') {
+    return (
+      `❌ <b>ISSUE REJECTED / DECLINED${unitTag}</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${payload.ticketId}</code>\n` : '') +
+      `🏷️ <b>Asset ID:</b> <code>${payload.machineId || 'N/A'}</code>\n` +
+      (payload.machineName ? `⚙️ <b>Model:</b> ${payload.machineName}\n` : '') +
+      `📍 <b>Location:</b> ${payload.zone || 'Floor'} • ${payload.line || 'Line'}\n` +
+      `👨‍💼 <b>Rejected By:</b> <b>${payload.assignedTo || 'Supervisor'}</b>\n` +
+      `📝 <b>Reason:</b> ${payload.actionTaken || payload.issue || 'False alarm / cancelled'}\n` +
+      `⏱️ <b>Time:</b> ${time} (${date})\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `<i>Issue rejected & closed. Machine restored to ACTIVE service.</i>`
     );
   }
 

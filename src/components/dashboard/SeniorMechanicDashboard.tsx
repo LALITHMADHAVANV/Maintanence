@@ -36,6 +36,7 @@ import {
   Radio,
   SlidersHorizontal,
   ClipboardList,
+  XCircle,
 } from 'lucide-react';
 import {
   Machine,
@@ -51,6 +52,7 @@ import {
   assignRepairTicket,
   resolveRepairTicket,
   completePPMTask,
+  rejectRepairTicket,
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -670,15 +672,38 @@ export function SeniorMechanicDashboard({
                     </div>
 
                     {activeTicket ? (
-                      <button
-                        onClick={() => {
-                          setSelectedTicketForAssign(activeTicket);
-                          setIsAssignModalOpen(true);
-                        }}
-                        className="px-2.5 py-1 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition cursor-pointer"
-                      >
-                        {activeTicket.attendedBy ? 'Reassign' : 'Dispatch Now'}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await rejectRepairTicket(
+                                activeTicket.id,
+                                user?.name || 'Senior Mechanic',
+                                'False alarm / operator cleared on floor'
+                              );
+                              showToast(`Breakdown #${activeTicket.id} rejected and machine restored to ACTIVE`, 'info');
+                              onRefresh();
+                            } catch {
+                              showToast('Failed to reject breakdown ticket', 'error');
+                            }
+                          }}
+                          className="px-2 py-1 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition cursor-pointer flex items-center gap-1"
+                          title="Reject false breakdown alarm"
+                        >
+                          <XCircle className="w-3 h-3 text-rose-600" />
+                          <span>Reject</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedTicketForAssign(activeTicket);
+                            setIsAssignModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition cursor-pointer"
+                        >
+                          {activeTicket.attendedBy ? 'Reassign' : 'Dispatch Now'}
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => {

@@ -650,6 +650,77 @@ export async function stopRepairTicket(ticketId: string, notes?: string): Promis
   }
 }
 
+export async function rejectRepairTicket(
+  ticketId: string,
+  rejectedBy: string = 'Supervisor',
+  reason: string = 'False report / operator error'
+): Promise<void> {
+  const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
+  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+
+  const ticket = currentRepairs.find((t) => t.id === ticketId);
+  if (!ticket) return;
+
+  const nowIso = new Date().toISOString();
+  const rejectionNote = reason.trim()
+    ? `Rejected by ${rejectedBy}: ${reason.trim()}`
+    : `Rejected by ${rejectedBy}`;
+
+  // 1. Update ticket status to REJECTED and record who declined it
+  const updatedRepairs = currentRepairs.map((t) =>
+    t.id === ticketId
+      ? {
+          ...t,
+          status: 'REJECTED' as const,
+          resolvedAt: nowIso,
+          completedAt: nowIso,
+          actionTaken: rejectionNote,
+          attendedBy: rejectedBy,
+        }
+      : t
+  );
+
+  // 2. Restore machine status to ACTIVE immediately
+  const updatedMachines = currentMachines.map((m) =>
+    m.id === ticket.machineId ? { ...m, status: 'ACTIVE' as const } : m
+  );
+
+  setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
+  setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
+  notifyLocal('repairs', updatedRepairs);
+  notifyLocal('machines', updatedMachines);
+
+  try {
+    await fetch('/api/repairs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ticketId,
+        updates: {
+          status: 'REJECTED',
+          resolvedAt: nowIso,
+          completedAt: nowIso,
+          actionTaken: rejectionNote,
+          attendedBy: rejectedBy,
+          rejectedBy,
+          rejectionReason: reason,
+        },
+      }),
+    });
+
+    await fetch('/api/machines', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ticket.machineId,
+        updates: { status: 'ACTIVE' },
+      }),
+    });
+  } catch (e) {
+    console.error('MongoDB rejectRepairTicket error:', e);
+  }
+}
+
 export async function resolveRepairTicket(
   ticketId: string,
   downtimeMinutes: number,
@@ -695,6 +766,14 @@ export async function resolveRepairTicket(
     : calculatedPartsCost + calculatedLaborCost;
 
   const nowIso = details?.completedAt || new Date().toISOString();
+
+  let calculatedTimeSpent = downtimeMinutes;
+  if (ticket.startedAt) {
+    const startMs = new Date(ticket.startedAt).getTime();
+    if (!isNaN(startMs)) {
+      calculatedTimeSpent = Math.max(1, Math.round((Date.now() - startMs) / 60000));
+    }
+  }
 
   // 1. Update repairs document
   const updatedRepairs = currentRepairs.map((t) =>
@@ -755,7 +834,9 @@ export async function resolveRepairTicket(
           status: 'COMPLETED',
           resolvedAt: nowIso,
           completedAt: nowIso,
+          startedAt: ticket.startedAt,
           downtimeMinutes,
+          timeSpentMinutes: calculatedTimeSpent,
           actionTaken,
           attendedBy,
           partsUsed: resolvedPartsUsed,

@@ -35,6 +35,8 @@ export async function POST(req: Request) {
   }
 }
 
+import { sendTelegramAlert } from '@/lib/services/telegramService';
+
 export async function PATCH(req: Request) {
   try {
     const { id, updates } = await req.json();
@@ -47,6 +49,26 @@ export async function PATCH(req: Request) {
       { id },
       { $set: updates }
     );
+
+    if (updates.status === 'REJECTED') {
+      try {
+        const reqDoc = await db.collection('part_requisitions').findOne({ id });
+        const targetUnit = (reqDoc as any)?.targetUnit || (reqDoc as any)?.unit || 'UNIT - 1';
+        sendTelegramAlert({
+          category: 'REJECTED',
+          ticketId: id,
+          title: 'Store Indent Requisition Declined',
+          unit: targetUnit,
+          machineName: (reqDoc as any)?.partName || (reqDoc as any)?.items?.[0]?.name || 'Spare Part Indent',
+          issue: updates.reviewNotes || (reqDoc as any)?.reviewNotes || 'Declined by stores/management',
+          actionTaken: updates.reviewNotes || 'Requisition rejected by reviewer',
+          assignedTo: (reqDoc as any)?.reviewedBy || 'Stores Reviewer',
+          severity: 'WARNING',
+        }).catch((e) => console.warn('Telegram req alert error:', e));
+      } catch (tgErr) {
+        console.warn('Requisition telegram error:', tgErr);
+      }
+    }
 
     return NextResponse.json({ success: true, message: `Requisition ${id} updated` });
   } catch (err: unknown) {

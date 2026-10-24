@@ -61,6 +61,7 @@ import {
   subscribeNotifications,
   assignRepairTicket,
   startRepairTicket,
+  rejectRepairTicket,
   acknowledgeAppNotification,
   approveRequisition,
   rejectRequisition,
@@ -753,6 +754,20 @@ export default function NotificationsPage() {
     }
   };
 
+  // Reject / Cancel Breakdown Issue (Supervisors / Admins)
+  const handleRejectIssue = async (item: UnifiedNotificationItem) => {
+    if (!item.rawRepair) return;
+    try {
+      const reviewerName = user?.name || (currentRole === 'ADMIN' ? 'Plant Administrator' : 'Shift Supervisor');
+      await rejectRepairTicket(item.rawRepair.id, reviewerName, 'False alarm / operator cleared on floor inspection');
+      setDismissedIds((prev) => new Set([...prev, item.id]));
+      showToast(`Work order ${item.rawRepair.id} rejected. Machine restored to ACTIVE service.`, 'info');
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to reject repair issue', 'error');
+    }
+  };
+
 
   // Submit Assign Dispatch
   const handleConfirmAssign = async () => {
@@ -1427,6 +1442,19 @@ export default function NotificationsPage() {
                       >
                         <Wrench className="w-3.5 h-3.5" />
                         <span>Dispatch Mechanic</span>
+                      </button>
+                    )}
+
+                    {/* Quick Reject Button: Shown to Admins & Supervisors for active breakdown tickets */}
+                    {isSupervisorOrAdmin && item.rawRepair && item.rawRepair.status !== 'COMPLETED' && item.rawRepair.status !== 'REJECTED' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRejectIssue(item)}
+                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                        title="Reject false alarm & restore machine"
+                      >
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Reject</span>
                       </button>
                     )}
 
