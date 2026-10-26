@@ -73,8 +73,8 @@ npm install
 ### 2. Configure Environment
 Your local MongoDB URI is already pre-configured in `.env.local`:
 ```env
-MONGODB_URI=mongodb://127.0.0.1:27017/textech_cmms
-MONGODB_DB_NAME=textech_cmms
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0
+MONGODB_DB_NAME=maintanence
 ```
 
 Ensure your local MongoDB server is running:

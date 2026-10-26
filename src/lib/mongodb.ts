@@ -1,7 +1,7 @@
 import { MongoClient, Db } from 'mongodb';
 
 const defaultCloudUri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0';
-const localUri = 'mongodb://127.0.0.1:27017/textech_cmms';
+const localUri = 'mongodb://127.0.0.1:27017/maintanence';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -45,28 +45,44 @@ if (process.env.NODE_ENV === 'development') {
 export default clientPromise;
 
 function cleanDbName(raw?: string | null): string {
-  if (!raw) return '';
+  if (!raw) return 'maintanence';
   let cleaned = raw.trim();
   // Strip any accidental prefix like 'DB_NAME\t', 'DB_NAME:', 'DB_NAME='
-  cleaned = cleaned.replace(/^DB_NAME[\s\t:=]+/i, '').trim();
+  cleaned = cleaned.replace(/^DB_NAME[\s\t:=]*/i, '').trim();
   cleaned = cleaned.replace(/[\r\n\t]/g, '').trim();
+
+  const lower = cleaned.toLowerCase();
+  // Prevent rogue DB creation from legacy defaults or malformed env vars
+  if (!cleaned || lower === 'textech_cmms' || lower === 'test' || lower === 'admin' || lower === 'local' || lower === 'db_name') {
+    return 'maintanence';
+  }
   return cleaned;
 }
 
 function resolveDb(client: MongoClient, explicitDbName?: string): Db {
-  const cleanedArg = cleanDbName(explicitDbName);
-  if (cleanedArg) return client.db(cleanedArg);
+  if (explicitDbName) {
+    const cleaned = cleanDbName(explicitDbName);
+    return client.db(cleaned);
+  }
 
-  const cleanedEnv = cleanDbName(process.env.MONGODB_DB_NAME);
-  if (cleanedEnv) return client.db(cleanedEnv);
-
+  // 1. Prefer database defined in URI (e.g. /maintanence)
   try {
     const fromUri = client.db().databaseName;
-    if (fromUri && fromUri !== 'test') {
-      return client.db(fromUri);
+    if (fromUri) {
+      const cleanedUriDb = cleanDbName(fromUri);
+      if (cleanedUriDb) {
+        return client.db(cleanedUriDb);
+      }
     }
   } catch (e) {}
 
+  // 2. Sanitize and use MONGODB_DB_NAME env var
+  const cleanedEnv = cleanDbName(process.env.MONGODB_DB_NAME);
+  if (cleanedEnv) {
+    return client.db(cleanedEnv);
+  }
+
+  // 3. Fallback to maintanence
   return client.db('maintanence');
 }
 
