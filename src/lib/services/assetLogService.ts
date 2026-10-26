@@ -1,5 +1,5 @@
 import { Machine, MachineStatus, AssetLogEntry, FloorLine } from '@/types/cmms';
-import { updateMachineStatus } from './cmmsService';
+import { updateMachineStatus, apiFetch } from './cmmsService';
 
 export const CLIENT_ZONES = [
   'Zone 1',
@@ -187,7 +187,7 @@ export function subscribeAssetLogs(callback: (logs: AssetLogEntry[]) => void): (
 
   const fetchFromApi = async () => {
     try {
-      const res = await fetch('/api/asset-logs');
+      const res = await apiFetch('/api/asset-logs');
       const json = await res.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
         setLocal(STORAGE_KEYS.ASSET_LOGS, json.data);
@@ -215,7 +215,7 @@ export async function createAssetLog(entry: AssetLogEntry): Promise<void> {
   notifyLogListeners(updatedLogs);
 
   try {
-    await fetch('/api/asset-logs', {
+    await apiFetch('/api/asset-logs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(entry),
@@ -426,7 +426,7 @@ export async function addExtraMachineToZone(params: {
   setLocal(STORAGE_KEYS.MACHINES, updated);
 
   try {
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newMachine),
@@ -498,7 +498,7 @@ export async function assignMachineZoneLine(
 
   // Send update to MongoDB API
   try {
-    await fetch('/api/machines', {
+    await apiFetch('/api/machines', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

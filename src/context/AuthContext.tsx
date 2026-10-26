@@ -145,6 +145,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(data.user);
       if (typeof window !== 'undefined') {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
+        const tenant = (data.user.email || '').toLowerCase().includes('texplus') ||
+          (data.user.company || '').toLowerCase().includes('texplus')
+            ? 'texplus'
+            : 'maintanence';
+        localStorage.setItem('cmms_active_tenant', tenant);
+        document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
       }
     } catch (err: unknown) {
       setIsLoading(false);
@@ -158,6 +164,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(profile);
     if (typeof window !== 'undefined') {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(profile));
+      const tenant = (profile.email || '').toLowerCase().includes('texplus') ||
+        (profile.company || '').toLowerCase().includes('texplus')
+          ? 'texplus'
+          : 'maintanence';
+      localStorage.setItem('cmms_active_tenant', tenant);
+      document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
     }
     setIsLoading(false);
   };
@@ -223,6 +235,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem('textech_current_user');
+      localStorage.removeItem('cmms_active_tenant');
+      document.cookie = 'cmms_tenant=; path=/; max-age=0; SameSite=Lax';
     }
   };
 

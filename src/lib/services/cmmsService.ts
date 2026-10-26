@@ -66,7 +66,30 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
 
 export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const target = url.startsWith('/api') ? `/maintenance${url}` : url;
-  return fetch(target, init);
+  const headers = new Headers(init?.headers);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const activeTenant = localStorage.getItem('cmms_active_tenant');
+      if (activeTenant) {
+        headers.set('x-tenant-id', activeTenant);
+      } else {
+        const stored = localStorage.getItem('cmms_current_user') || localStorage.getItem('sahana_current_user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          const email = (u?.email || '').toLowerCase();
+          const company = (u?.company || '').toLowerCase();
+          if (email.includes('texplus') || company.includes('texplus')) {
+            headers.set('x-tenant-id', 'texplus');
+          } else {
+            headers.set('x-tenant-id', 'maintanence');
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return fetch(target, { ...init, headers });
 }
 
 /**

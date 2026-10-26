@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const collection = db.collection('users');
 
     const existingUser = await collection.findOne({

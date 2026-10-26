@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 import { PPMSchedule } from '@/types/cmms';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const ppm = await db.collection<PPMSchedule>('ppm_schedules').find({}).toArray();
     const cleanPpm = ppm.map(({ _id, ...p }: any) => p);
     return NextResponse.json({ success: true, data: cleanPpm });
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'PPM Schedule ID is required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('ppm_schedules').updateOne(
       { id: item.id },
       { $set: item },
@@ -42,7 +42,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'PPM Schedule ID and updates are required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('ppm_schedules').updateOne(
       { id },
       { $set: updates },

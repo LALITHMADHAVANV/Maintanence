@@ -3,9 +3,9 @@ import { getDatabase } from '@/lib/mongodb';
 import { RepairTicket } from '@/types/cmms';
 import { sendTelegramAlert } from '@/lib/services/telegramService';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const repairs = await db
       .collection<RepairTicket>('repair_tickets')
       .find({})
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Repair Ticket ID is required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('repair_tickets').updateOne(
       { id: ticket.id },
       { $set: ticket },
@@ -82,7 +82,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Repair Ticket ID and updates are required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('repair_tickets').updateOne(
       { $or: [{ id }, { ticketId: id }] },
       { $set: updates },
@@ -235,7 +235,7 @@ export async function DELETE(req: Request) {
     const id = searchParams.get('id');
     const all = searchParams.get('all') === 'true';
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
 
     if (all) {
       const result = await db.collection('repair_tickets').deleteMany({});

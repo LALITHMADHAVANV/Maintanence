@@ -42,9 +42,9 @@ const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
 ];
 
 // GET /api/users - Fetch all factory users from MongoDB
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const collection = db.collection('users');
     let users = await collection.find({}).toArray();
 
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
       : [];
     const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const collection = db.collection('users');
 
     // Check if email already exists
@@ -250,7 +250,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Cannot delete the primary System Administrator account' }, { status: 403 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const collection = db.collection('users');
 
     const filter: Record<string, any> = {};
@@ -297,7 +297,7 @@ export async function PUT(req: Request) {
       );
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const collection = db.collection('users');
 
     const filter: Record<string, any> = {};

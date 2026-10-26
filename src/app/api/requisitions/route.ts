@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 import { PartRequisition } from '@/types/cmms';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const reqs = await db.collection<PartRequisition>('part_requisitions').find({}).toArray();
     const cleanReqs = reqs.map(({ _id, ...r }: any) => r);
     return NextResponse.json({ success: true, data: cleanReqs });
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Requisition ID is required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('part_requisitions').updateOne(
       { id: requisition.id },
       { $set: requisition },
@@ -44,7 +44,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Requisition ID and updates are required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('part_requisitions').updateOne(
       { id },
       { $set: updates }

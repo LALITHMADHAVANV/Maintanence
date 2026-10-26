@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
 import { AssetLogEntry } from '@/types/cmms';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const logs = await db.collection<AssetLogEntry>('asset_logs').find({}).sort({ changedAt: -1 }).limit(200).toArray();
     const cleanLogs = logs.map(({ _id, ...l }: any) => l);
     return NextResponse.json({ success: true, data: cleanLogs });
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Entry ID and Machine ID are required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('asset_logs').insertOne(entry);
 
     // Also update machine status in MongoDB

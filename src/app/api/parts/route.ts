@@ -9,9 +9,9 @@ import factorySparesSeed from '@/data/factorySparesSeed.json';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const col = db.collection<SparePart>('spare_parts');
     let parts = await col.find({}).toArray();
 
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Part ID is required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('spare_parts').updateOne(
       { $or: [{ id: key }, { partId: key }] },
       { $set: part },
@@ -76,7 +76,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Part ID is required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     const updatePayload = updates || {};
     if (typeof stock === 'number') {
       updatePayload.stock = stock;

@@ -237,12 +237,13 @@ export async function POST(req: Request) {
     const localPart = cleanLower.includes('@') ? cleanLower.split('@')[0] : cleanLower;
     const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+    const targetTenant = identifier.includes('texplus') ? 'texplus' : 'maintanence';
     let dbUser: any = null;
     let collection: any = null;
 
-    // 1. Attempt lookup from MongoDB
+    // 1. Attempt lookup from MongoDB for specific tenant
     try {
-      const db = await getDatabase();
+      const db = await getDatabase(targetTenant);
       collection = db.collection('users');
 
       // First Priority: Exact identifier match
@@ -385,7 +386,13 @@ export async function POST(req: Request) {
         status: dbUser.status || 'ACTIVE',
       };
 
-      return NextResponse.json({ success: true, user: profile });
+      const res = NextResponse.json({ success: true, user: profile });
+      res.cookies.set('cmms_tenant', targetTenant, {
+        path: '/',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+      });
+      return res;
     }
 
     // Role-based fallback: if account isn't yet explicitly created in DB, allow login by role identifier
@@ -434,7 +441,13 @@ export async function POST(req: Request) {
         }
       }
 
-      return NextResponse.json({ success: true, user: profile });
+      const res = NextResponse.json({ success: true, user: profile });
+      res.cookies.set('cmms_tenant', targetTenant, {
+        path: '/',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 30,
+      });
+      return res;
     }
 
     return NextResponse.json(

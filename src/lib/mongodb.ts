@@ -99,10 +99,52 @@ function cleanDbName(raw?: string | null): string {
   return cleaned;
 }
 
-function resolveDb(client: MongoClient, explicitDbName?: string): Db {
-  if (explicitDbName) {
-    const cleaned = cleanDbName(explicitDbName);
-    return client.db(cleaned);
+export function extractTenantDb(target?: string | Request | null): string {
+  if (!target) return 'maintanence';
+
+  // 1. If a Request object was provided, extract tenant from headers, cookies, or query
+  if (typeof target === 'object' && 'headers' in target) {
+    const req = target as Request;
+
+    // Header: x-tenant-id or x-company or x-user-email
+    const headerTenant = req.headers.get('x-tenant-id') || req.headers.get('x-company') || req.headers.get('x-user-email');
+    if (headerTenant) {
+      return extractTenantDb(headerTenant);
+    }
+
+    // Cookie: cmms_tenant=...
+    const cookieHeader = req.headers.get('cookie') || '';
+    const cookieMatch = cookieHeader.match(/cmms_tenant=([^;]+)/i);
+    if (cookieMatch && cookieMatch[1]) {
+      return extractTenantDb(decodeURIComponent(cookieMatch[1].trim()));
+    }
+
+    // URL Query: ?tenant=... or ?company=...
+    try {
+      const url = new URL(req.url);
+      const q = url.searchParams.get('tenant') || url.searchParams.get('company') || url.searchParams.get('email');
+      if (q) return extractTenantDb(q);
+    } catch {}
+
+    return 'maintanence';
+  }
+
+  // 2. If a string was provided (e.g. an email address or company/db name)
+  const str = String(target).toLowerCase().trim();
+  if (str.includes('texplus')) {
+    return 'texplus';
+  }
+  if (str.includes('sahana')) {
+    return 'maintanence';
+  }
+
+  return cleanDbName(str);
+}
+
+function resolveDb(client: MongoClient, explicitTarget?: string | Request): Db {
+  const targetDb = extractTenantDb(explicitTarget);
+  if (targetDb && targetDb !== 'maintanence') {
+    return client.db(targetDb);
   }
 
   // 1. Prefer database defined in URI (e.g. /maintanence)
@@ -126,15 +168,15 @@ function resolveDb(client: MongoClient, explicitDbName?: string): Db {
   return client.db('maintanence');
 }
 
-export async function getDatabase(dbName?: string): Promise<Db> {
+export async function getDatabase(target?: string | Request): Promise<Db> {
   try {
     const client = await clientPromise;
-    return resolveDb(client, dbName);
+    return resolveDb(client, target);
   } catch (err) {
     console.warn('Cached clientPromise failed, connecting directly...');
     const fresh = await connectClient();
     global._mongoClientPromise = Promise.resolve(fresh);
     clientPromise = global._mongoClientPromise;
-    return resolveDb(fresh, dbName);
+    return resolveDb(fresh, target);
   }
 }

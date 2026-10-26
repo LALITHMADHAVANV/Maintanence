@@ -6,9 +6,9 @@ import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     let machines = await db.collection<Machine>('machines').find({}).toArray();
 
     // If database has fewer machines than our comprehensive seed (e.g. if Unit 2 was incomplete),
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Machine ID is required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('machines').updateOne(
       { id: machine.id },
       { $set: machine },
@@ -76,7 +76,7 @@ export async function PATCH(req: Request) {
 
     const { _id, ...safeUpdates } = updates;
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('machines').updateOne(
       { id },
       { $set: safeUpdates }
@@ -96,7 +96,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Machine ID is required' }, { status: 400 });
     }
 
-    const db = await getDatabase();
+    const db = await getDatabase(req);
     await db.collection('machines').deleteOne({ id });
 
     return NextResponse.json({ success: true, message: `Machine ${id} deleted` });
