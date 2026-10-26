@@ -60,6 +60,7 @@ export async function POST(req: Request) {
           issue: ticket.faultDetails || ticket.faultCategory || 'Breakdown reported',
           severity: ticket.urgency === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
           assignedTo: attender,
+          timestamp: ticket.reportedAt || new Date(),
         });
         console.log(`[API Repairs] Breakdown alert dispatched for ${ticket.id}:`, tgRes);
       } catch (tgErr) {
@@ -109,6 +110,7 @@ export async function PATCH(req: Request) {
           issue: ticket?.faultDetails || ticket?.faultCategory || 'Breakdown repair commenced',
           severity: 'HIGH',
           assignedTo: attender,
+          timestamp: updates.startedAt || new Date(),
         });
         console.log(`[API Repairs] Started alert dispatched for ${id}:`, tgRes);
       } catch (err) {
@@ -148,6 +150,7 @@ export async function PATCH(req: Request) {
               timeSpentMins = Math.max(1, Math.round(diffMs / 60000));
             }
             startedTimeStr = startDate.toLocaleTimeString('en-IN', {
+              timeZone: 'Asia/Kolkata',
               hour: '2-digit',
               minute: '2-digit',
               hour12: true,
@@ -173,6 +176,7 @@ export async function PATCH(req: Request) {
           downtimeMinutes: updates.downtimeMinutes || ticket?.downtimeMinutes || timeSpentMins || 0,
           timeSpentMinutes: timeSpentMins,
           startedAtTime: startedTimeStr,
+          timestamp: completedDate,
           severity: 'LOW',
           assignedTo: completedBy,
         });
@@ -210,6 +214,7 @@ export async function PATCH(req: Request) {
           actionTaken: reason,
           severity: 'WARNING',
           assignedTo: rejectedBy,
+          timestamp: new Date(),
         });
         console.log(`[API Repairs] Rejected alert dispatched for ${id}:`, tgRes);
       } catch (err) {

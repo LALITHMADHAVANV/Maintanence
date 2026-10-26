@@ -17,6 +17,7 @@ export interface TelegramAlertPayload {
   downtimeMinutes?: number;
   timeSpentMinutes?: number;
   startedAtTime?: string;
+  timestamp?: string | Date;
   severity?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'WARNING';
   assignedTo?: string;
   details?: string;
@@ -41,19 +42,49 @@ function formatDuration(minutes?: number): string {
 }
 
 /**
- * Format markdown/HTML payload for Telegram sendMessage API
+ * Format time strictly in Indian Standard Time (IST, Asia/Kolkata)
  */
-export function buildTelegramMessage(payload: TelegramAlertPayload): string {
-  const time = new Date().toLocaleTimeString('en-IN', {
+export function formatISTTime(dateInput?: string | Date): string {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const valid = isNaN(d.getTime()) ? new Date() : d;
+  return valid.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
   });
-  const date = new Date().toLocaleDateString('en-IN', {
+}
+
+/**
+ * Format date strictly in Indian Standard Time (IST, Asia/Kolkata)
+ */
+export function formatISTDate(dateInput?: string | Date): string {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const valid = isNaN(d.getTime()) ? new Date() : d;
+  return valid.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   });
+}
+
+/**
+ * Format markdown/HTML payload for Telegram sendMessage API
+ */
+export function buildTelegramMessage(payload: TelegramAlertPayload): string {
+  const time = formatISTTime(payload.timestamp);
+  const date = formatISTDate(payload.timestamp);
+
+  let startedDisplay = payload.startedAtTime;
+  if (startedDisplay) {
+    if (!startedDisplay.toLowerCase().includes('am') && !startedDisplay.toLowerCase().includes('pm')) {
+      const parsedStart = new Date(startedDisplay);
+      if (!isNaN(parsedStart.getTime())) {
+        startedDisplay = formatISTTime(parsedStart);
+      }
+    }
+  }
 
   const unitTag = payload.unit ? ` [${escapeHtml(payload.unit.toUpperCase())}]` : '';
 
@@ -145,7 +176,7 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
       `🔧 <b>Action Taken:</b> ${escapeHtml(payload.actionTaken || payload.issue || 'Repair completed successfully')}\n` +
       `⏳ <b>Time Spent (Work Duration):</b> <b>${timeSpentFormatted}</b>\n` +
       (totalDowntimeFormatted && totalDowntimeFormatted !== timeSpentFormatted ? `⏱️ <b>Total Machine Downtime:</b> ${totalDowntimeFormatted}\n` : '') +
-      (payload.startedAtTime ? `🕒 <b>Started:</b> ${escapeHtml(payload.startedAtTime)} ➔ <b>Completed:</b> ${time}\n` : `🏁 <b>Completed At:</b> ${time} (${date})\n`) +
+      (startedDisplay ? `🕒 <b>Started:</b> ${escapeHtml(startedDisplay)} ➔ <b>Completed:</b> ${time}\n` : `🏁 <b>Completed At:</b> ${time} (${date})\n`) +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `<i>Machine is verified active and returned to production floor.</i>`
     );

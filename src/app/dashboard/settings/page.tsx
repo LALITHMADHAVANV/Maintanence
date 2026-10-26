@@ -306,6 +306,7 @@ function SettingsContent() {
       });
       const data = await res.json();
       const nowStr = new Date().toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
@@ -332,6 +333,7 @@ function SettingsContent() {
       }
     } catch (err: any) {
       const nowStr = new Date().toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
