@@ -84,7 +84,7 @@ export async function PATCH(req: Request) {
 
     const db = await getDatabase();
     await db.collection('repair_tickets').updateOne(
-      { id },
+      { $or: [{ id }, { ticketId: id }] },
       { $set: updates },
       { upsert: true }
     );
@@ -92,7 +92,7 @@ export async function PATCH(req: Request) {
     // 1. If technician starts work (status = IN_PROGRESS or startedAt is set), dispatch STARTED notification
     if (updates.status === 'IN_PROGRESS' || (updates.startedAt && updates.status !== 'COMPLETED')) {
       try {
-        const ticket = await db.collection('repair_tickets').findOne({ id });
+        const ticket = await db.collection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
         const machineId = ticket?.machineId || updates.machineId;
         const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
         const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
@@ -121,7 +121,7 @@ export async function PATCH(req: Request) {
     // 2. If ticket is marked COMPLETED, dispatch resolved notification to the same unit Telegram group
     if (updates.status === 'COMPLETED') {
       try {
-        const ticket = await db.collection('repair_tickets').findOne({ id });
+        const ticket = await db.collection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
         const machineId = ticket?.machineId || updates.machineId;
         if (machineId) {
           await db.collection('machines').updateOne(
@@ -189,7 +189,7 @@ export async function PATCH(req: Request) {
     // 3. If ticket is marked REJECTED, restore machine to ACTIVE and dispatch rejection alert
     if (updates.status === 'REJECTED') {
       try {
-        const ticket = await db.collection('repair_tickets').findOne({ id });
+        const ticket = await db.collection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
         const machineId = ticket?.machineId || updates.machineId;
         if (machineId) {
           await db.collection('machines').updateOne(

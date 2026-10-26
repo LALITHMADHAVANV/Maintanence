@@ -246,20 +246,23 @@ export function MechanicDeskDashboard({
     if (!ticketToStart) return;
     setIsStartingWork(true);
     try {
-      await startRepairTicket(ticketToStart.id, userName);
-      const spareLines = startSpareParts.filter((r) => r.partId);
-      if (spareLines.length > 0) {
-        // Store spare part selections as initial notes on the ticket
-        const spareNote = spareLines
+      const validSpares = startSpareParts
+        .filter((r) => r.partId && r.qty > 0)
+        .map((r) => ({ partId: r.partId, quantity: r.qty }));
+
+      await startRepairTicket(ticketToStart.id, userName, validSpares);
+
+      if (validSpares.length > 0) {
+        const spareNote = validSpares
           .map((r) => {
             const part = parts.find((p) => p.partId === r.partId);
-            return part ? `${part.name} (${part.sku}) × ${r.qty}` : '';
+            return part ? `${part.name} (${part.sku}) × ${r.quantity}` : '';
           })
           .filter(Boolean)
           .join(', ');
         showToast(`⚡ Work Started! Spares reserved: ${spareNote}`, 'success');
       } else {
-        showToast(`⚡ Work Order ${ticketToStart.id} on ${ticketToStart.machineId} STARTED! No spare parts reserved.`, 'success');
+        showToast(`⚡ Work Order ${ticketToStart.id} on ${ticketToStart.machineId} STARTED! No spare parts used.`, 'success');
       }
       setIsSpareModalOpen(false);
       setTicketToStart(null);
@@ -292,8 +295,16 @@ export function MechanicDeskDashboard({
     setRepairProofImage(ticket.completionProofImage || null);
     const initialLabor = Math.round((elapsed / 60) * 350);
     setLaborCost(initialLabor);
-    setPartsCost(0);
-    setRepairCost(initialLabor);
+
+    // Calculate parts cost from spares already chosen in Step 1 (Spare -> Start -> Complete)
+    const existingParts = ticket.partsUsed || [];
+    const initialPartsCost = existingParts.reduce((sum, pu) => {
+      const part = parts.find((p) => p.partId === pu.partId);
+      return sum + (part ? (part.unitCost || 0) * pu.quantity : pu.quantity * 250);
+    }, 0);
+
+    setPartsCost(initialPartsCost);
+    setRepairCost(initialLabor + initialPartsCost);
     setSelectedPartId('');
     setSelectedPartQty(1);
     setIsResolveModalOpen(true);
@@ -356,7 +367,15 @@ export function MechanicDeskDashboard({
 
     setIsSubmittingResolve(true);
     try {
-      const partsInput = selectedPartId ? [{ partId: selectedPartId, quantity: selectedPartQty }] : [];
+      // Use spare parts already recorded when work was started in Step 1
+      const existingSpares = (selectedTicketToResolve.partsUsed || []).map((pu) => ({
+        partId: pu.partId,
+        quantity: pu.quantity,
+      }));
+      const partsInput = existingSpares.length > 0
+        ? existingSpares
+        : (selectedPartId ? [{ partId: selectedPartId, quantity: selectedPartQty }] : []);
+
       await resolveRepairTicket(
         selectedTicketToResolve.id,
         downtimeMinutes,
@@ -377,8 +396,10 @@ export function MechanicDeskDashboard({
       setSelectedTicketToResolve(null);
       setRepairProofImage(null);
       onRefresh();
-    } catch {
-      showToast('Failed to resolve work order', 'error');
+    } catch (err: unknown) {
+      console.error('Failed to resolve work order:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to resolve work order';
+      showToast(msg, 'error');
     } finally {
       setIsSubmittingResolve(false);
     }
@@ -1220,70 +1241,23 @@ export function MechanicDeskDashboard({
                 />
               </div>
 
-              {/* Section 4: Spare Parts Consumed */}
-              <div className="space-y-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between flex-wrap gap-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Spare Parts Consumed</span>
-                    </label>
-                    {detectedMachineCategory && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        🎯 {detectedMachineCategory} Spares
-                      </span>
-                    )}
-                  </div>
+              {/* Section 4: Spare Parts Consumed - Recorded during Step 1 */}
+              {selectedTicketToResolve.partsUsed && selectedTicketToResolve.partsUsed.length > 0 && (
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAllSparesOverride(!showAllSparesOverride)}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold hover:underline cursor-pointer"
-                    >
-                      {showAllSparesOverride ? `Filtered (${compatibleSpares.length})` : `Show all (${parts.length})`}
-                    </button>
-                    {selectedPartId && (
-                      <button
-                        type="button"
-                        onClick={() => handlePartSelect('')}
-                        className="text-[10px] text-rose-600 hover:underline cursor-pointer font-semibold"
-                      >
-                        Clear Part
-                      </button>
-                    )}
+                    <Package className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <div>
+                      <span className="font-bold text-slate-800">Spares Consumed: </span>
+                      <span className="text-slate-600">
+                        {selectedTicketToResolve.partsUsed.map((p) => `${p.name} × ${p.quantity}`).join(', ')}
+                      </span>
+                    </div>
                   </div>
+                  <span className="px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 text-[10px] font-bold shrink-0">
+                    Step 1 Spares
+                  </span>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="sm:col-span-2">
-                    <select
-                      value={selectedPartId}
-                      onChange={(e) => handlePartSelect(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                    >
-                      <option value="">-- No spare parts used (Labor only) --</option>
-                      {compatibleSpares.map((p) => (
-                        <option key={p.partId} value={p.partId}>
-                          [{p.machineType || 'GENERAL'}] {p.name} ({p.sku}) — ₹{p.unitCost} (Stock: {p.stock})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <input
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={selectedPartQty}
-                      onChange={(e) => handlePartQtyChange(parseInt(e.target.value) || 1)}
-                      disabled={!selectedPartId}
-                      placeholder="Qty"
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 disabled:opacity-50"
-                    />
-                  </div>
-                </div>
-              </div>
+              )}
 
               {/* Section 5: Repair & Maintenance Cost Breakdown */}
               <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-2.5">

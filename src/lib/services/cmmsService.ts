@@ -569,21 +569,73 @@ export async function createBreakdownTicket(
   return ticketId;
 }
 
-export async function startRepairTicket(ticketId: string, attendedBy?: string): Promise<void> {
+export async function startRepairTicket(
+  ticketId: string,
+  attendedBy?: string,
+  partsUsedInputs: Array<{ partId: string; quantity: number }> = []
+): Promise<void> {
   const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
+  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
   const startedAt = new Date().toISOString();
-  const updatedRepairs = currentRepairs.map((t) =>
-    t.id === ticketId
-      ? {
-          ...t,
-          status: 'IN_PROGRESS' as const,
-          startedAt: t.startedAt || startedAt,
-          attendedBy: attendedBy || t.attendedBy,
-        }
-      : t
-  );
+
+  const resolvedPartsUsed = partsUsedInputs
+    .filter((pu) => pu.partId && pu.quantity > 0)
+    .map((pu) => {
+      const part = currentParts.find((p) => p.partId === pu.partId);
+      return {
+        partId: pu.partId,
+        sku: part?.sku || pu.partId,
+        name: part?.name || 'Standard Spare Part',
+        quantity: pu.quantity,
+      };
+    });
+
+  let foundTicket = false;
+  const updatedRepairs = currentRepairs.map((t) => {
+    if (t.id === ticketId || (t as any).ticketId === ticketId) {
+      foundTicket = true;
+      return {
+        ...t,
+        status: 'IN_PROGRESS' as const,
+        startedAt: t.startedAt || startedAt,
+        attendedBy: attendedBy || t.attendedBy,
+        partsUsed: resolvedPartsUsed.length > 0 ? resolvedPartsUsed : t.partsUsed,
+      };
+    }
+    return t;
+  });
+
+  if (!foundTicket) {
+    updatedRepairs.unshift({
+      id: ticketId,
+      machineId: '',
+      machineType: '',
+      faultCategory: 'Mechanical Fault',
+      urgency: 'HIGH',
+      status: 'IN_PROGRESS',
+      reportedAt: startedAt,
+      startedAt,
+      attendedBy,
+      partsUsed: resolvedPartsUsed,
+    } as unknown as RepairTicket);
+  }
+
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
+
+  // Decrement parts stock immediately when reserved/used
+  if (resolvedPartsUsed.length > 0) {
+    const updatedParts = currentParts.map((part) => {
+      const used = resolvedPartsUsed.find((u) => u.partId === part.partId);
+      if (!used) return part;
+      return {
+        ...part,
+        stock: Math.max(0, part.stock - used.quantity),
+      };
+    });
+    setLocal(STORAGE_KEYS.PARTS, updatedParts);
+    notifyLocal('parts', updatedParts);
+  }
 
   try {
     await apiFetch('/api/repairs', {
@@ -595,6 +647,7 @@ export async function startRepairTicket(ticketId: string, attendedBy?: string): 
           status: 'IN_PROGRESS',
           startedAt,
           attendedBy: attendedBy || undefined,
+          partsUsed: resolvedPartsUsed.length > 0 ? resolvedPartsUsed : undefined,
         },
       }),
     });
@@ -745,10 +798,28 @@ export async function resolveRepairTicket(
   const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
   const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
 
-  const ticket = currentRepairs.find((t) => t.id === ticketId);
-  if (!ticket) throw new Error(`Ticket ${ticketId} not found`);
+  let ticket = currentRepairs.find((t) => t.id === ticketId || (t as any).ticketId === ticketId);
+  if (!ticket) {
+    // If ticket was not yet stored in localStorage, construct a fallback ticket so resolving never crashes!
+    ticket = {
+      id: ticketId,
+      machineId: '',
+      machineType: '',
+      faultCategory: 'Mechanical Fault',
+      urgency: 'HIGH',
+      status: 'IN_PROGRESS',
+      reportedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      attendedBy,
+    } as unknown as RepairTicket;
+  }
 
-  const resolvedPartsUsed = partsUsedInputs
+  // If partsUsedInputs was provided, use it; otherwise, use parts already reserved on the ticket from the start step!
+  const effectivePartsInputs = (partsUsedInputs && partsUsedInputs.length > 0)
+    ? partsUsedInputs
+    : (ticket.partsUsed || []).map((p) => ({ partId: p.partId, quantity: p.quantity }));
+
+  const resolvedPartsUsed = effectivePartsInputs
     .filter((pu) => pu.partId && pu.quantity > 0)
     .map((pu) => {
       const part = currentParts.find((p) => p.partId === pu.partId);
@@ -781,25 +852,46 @@ export async function resolveRepairTicket(
   }
 
   // 1. Update repairs document
-  const updatedRepairs = currentRepairs.map((t) =>
-    t.id === ticketId
-      ? {
-          ...t,
-          status: 'COMPLETED' as const,
-          resolvedAt: nowIso,
-          completedAt: nowIso,
-          downtimeMinutes,
-          actionTaken,
-          attendedBy,
-          partsUsed: resolvedPartsUsed,
-          repairCost: finalRepairCost,
-          laborCost: details?.laborCost ?? calculatedLaborCost,
-          partsCost: details?.partsCost ?? calculatedPartsCost,
-          issuesIdentified: details?.issuesIdentified || t.faultDetails || '',
-          completionProofImage: details?.proofImage || t.completionProofImage,
-        }
-      : t
-  );
+  let ticketUpdated = false;
+  const updatedRepairs = currentRepairs.map((t) => {
+    if (t.id === ticketId || (t as any).ticketId === ticketId) {
+      ticketUpdated = true;
+      return {
+        ...t,
+        status: 'COMPLETED' as const,
+        resolvedAt: nowIso,
+        completedAt: nowIso,
+        downtimeMinutes,
+        actionTaken,
+        attendedBy,
+        partsUsed: resolvedPartsUsed,
+        repairCost: finalRepairCost,
+        laborCost: details?.laborCost ?? calculatedLaborCost,
+        partsCost: details?.partsCost ?? calculatedPartsCost,
+        issuesIdentified: details?.issuesIdentified || t.faultDetails || '',
+        completionProofImage: details?.proofImage || t.completionProofImage,
+      };
+    }
+    return t;
+  });
+
+  if (!ticketUpdated) {
+    updatedRepairs.unshift({
+      ...ticket,
+      status: 'COMPLETED' as const,
+      resolvedAt: nowIso,
+      completedAt: nowIso,
+      downtimeMinutes,
+      actionTaken,
+      attendedBy,
+      partsUsed: resolvedPartsUsed,
+      repairCost: finalRepairCost,
+      laborCost: details?.laborCost ?? calculatedLaborCost,
+      partsCost: details?.partsCost ?? calculatedPartsCost,
+      issuesIdentified: details?.issuesIdentified || '',
+      completionProofImage: details?.proofImage,
+    });
+  }
 
   // 2. Decrement parts stock
   const updatedParts = currentParts.map((part) => {
@@ -830,7 +922,7 @@ export async function resolveRepairTicket(
   notifyLocal('machines', updatedMachines);
 
   try {
-    await apiFetch('/api/repairs', {
+    const res = await apiFetch('/api/repairs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -852,6 +944,11 @@ export async function resolveRepairTicket(
       }),
     });
 
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      console.warn(`apiFetch PATCH /api/repairs status ${res.status}:`, errJson);
+    }
+
     for (const p of resolvedPartsUsed) {
       const partDoc = currentParts.find((cp) => cp.partId === p.partId);
       if (partDoc) {
@@ -862,12 +959,12 @@ export async function resolveRepairTicket(
             partId: p.partId,
             updates: { stock: Math.max(0, partDoc.stock - p.quantity) },
           }),
-        });
+        }).catch((e) => console.warn('parts stock patch warning:', e));
       }
     }
 
-    const machineDoc = currentMachines.find((m) => m.id === ticket.machineId);
-    if (machineDoc) {
+    if (ticket.machineId) {
+      const machineDoc = currentMachines.find((m) => m.id === ticket.machineId);
       await apiFetch('/api/machines', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -875,13 +972,14 @@ export async function resolveRepairTicket(
           id: ticket.machineId,
           updates: {
             status: 'ACTIVE',
-            totalDowntimeMinutes: (machineDoc.totalDowntimeMinutes || 0) + downtimeMinutes,
+            totalDowntimeMinutes: (machineDoc?.totalDowntimeMinutes || 0) + downtimeMinutes,
           },
         }),
-      });
+      }).catch((e) => console.warn('machines patch warning:', e));
     }
   } catch (err) {
     console.error('MongoDB resolveRepairTicket error:', err);
+    throw err;
   }
 }
 
