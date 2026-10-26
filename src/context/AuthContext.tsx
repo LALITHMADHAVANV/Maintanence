@@ -103,13 +103,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: pass }),
-      });
+      const payload = JSON.stringify({ email, password: pass });
+      const headers = { 'Content-Type': 'application/json' };
 
-      const data = await res.json();
+      // Try basePath endpoint directly first to prevent 307 redirect from stripping POST body
+      let res: Response | null = null;
+      try {
+        res = await fetch('/maintenance/api/auth/login', {
+          method: 'POST',
+          headers,
+          body: payload,
+        });
+      } catch (directErr) {
+        console.warn('Direct /maintenance/api/auth/login failed, attempting /api/auth/login:', directErr);
+      }
+
+      if (!res || !res.ok) {
+        // Fallback to /api/auth/login if direct /maintenance route was unavailable
+        try {
+          const fallbackRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers,
+            body: payload,
+          });
+          if (fallbackRes.ok || !res) {
+            res = fallbackRes;
+          }
+        } catch {}
+      }
+
+      if (!res) {
+        throw new Error('Connection failed. Please check your internet connection.');
+      }
+
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success || !data.user) {
         throw new Error(data.error || 'Invalid credentials. Please try again.');
@@ -160,18 +187,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Password must be at least 6 characters long.');
     }
 
-    const res = await fetch('/api/auth/set-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: user.email,
-        password: newPassword,
-        name: user.name,
-        role: user.role,
-      }),
+    const payload = JSON.stringify({
+      email: user.email,
+      password: newPassword,
+      name: user.name,
+      role: user.role,
     });
+    const headers = { 'Content-Type': 'application/json' };
 
-    const data = await res.json();
+    let res = await fetch('/maintenance/api/auth/set-password', {
+      method: 'POST',
+      headers,
+      body: payload,
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      res = await fetch('/api/auth/set-password', {
+        method: 'POST',
+        headers,
+        body: payload,
+      }).catch(() => null);
+    }
+
+    if (!res) {
+      throw new Error('Failed to update password. Please check your connection.');
+    }
+
+    const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {
       throw new Error(data.error || 'Failed to update password');
     }
