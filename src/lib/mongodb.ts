@@ -8,14 +8,54 @@ declare global {
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
+function isValidMongoUri(uri?: string | null): boolean {
+  if (!uri) return false;
+  const trimmed = uri.trim();
+  if (
+    trimmed.includes('...') ||
+    trimmed.includes('<username>') ||
+    trimmed.includes('<password>') ||
+    trimmed.includes('<') ||
+    trimmed.includes('>') ||
+    trimmed.includes('your_')
+  ) {
+    return false;
+  }
+  if (!trimmed.startsWith('mongodb://') && !trimmed.startsWith('mongodb+srv://')) {
+    return false;
+  }
+  if (trimmed.startsWith('mongodb+srv://') && !trimmed.includes('@')) {
+    return false;
+  }
+  return true;
+}
+
+function getPrimaryUri(): string {
+  const envUri = (process.env.MONGODB_URI || '').trim();
+  if (isValidMongoUri(envUri)) {
+    return envUri;
+  }
+  return defaultCloudUri;
+}
+
 async function connectClient(): Promise<MongoClient> {
-  const primaryUri = (process.env.MONGODB_URI || defaultCloudUri).trim();
-  const options = { serverSelectionTimeoutMS: 4000 };
+  const primaryUri = getPrimaryUri();
+  const options = { serverSelectionTimeoutMS: 9000, connectTimeoutMS: 9000 };
   try {
     const client = new MongoClient(primaryUri, options);
     await client.connect();
     return client;
   } catch (err: unknown) {
+    if (primaryUri !== defaultCloudUri && isValidMongoUri(defaultCloudUri)) {
+      console.warn(`Configured MongoDB URI failed (${(err as any)?.message || err}). Falling back to default cloud cluster...`);
+      try {
+        const cloudClient = new MongoClient(defaultCloudUri, options);
+        await cloudClient.connect();
+        return cloudClient;
+      } catch (cloudErr) {
+        console.warn('Default cloud fallback failed:', (cloudErr as any)?.message || cloudErr);
+      }
+    }
     if (primaryUri !== localUri) {
       console.warn(`Primary MongoDB failed (${(err as any)?.message || err}). Falling back to local MongoDB at ${localUri}...`);
       try {

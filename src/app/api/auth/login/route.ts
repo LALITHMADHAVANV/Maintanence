@@ -65,6 +65,121 @@ function resolveCompanyFromUser(dbUser: any, identifier: string): string {
   return 'Sahana Garments Ltd';
 }
 
+const KNOWN_STAFF: Array<UserProfile & { password?: string; aliasMatch?: string[] }> = [
+  {
+    uid: 'ADM-01',
+    name: 'Plant Administrator',
+    email: 'admin@sahana.com',
+    role: 'ADMIN',
+    title: 'Plant Administrator & Asset Director',
+    phone: '+91 98401 22002',
+    department: 'Factory Operations',
+    employeeId: 'EMP-ADM-01',
+    unit: 'All Units',
+    status: 'ACTIVE',
+    password: 'admin123',
+    aliasMatch: ['admin', 'administrator', 'adm-01', 'emp-adm-01'],
+  },
+  {
+    uid: 'ADM-SU1',
+    name: 'Jaya Prakash',
+    email: 'admin@su1.com',
+    role: 'ADMIN',
+    title: 'Unit 1 Plant Administrator & Asset Director',
+    phone: '+91 98401 22010',
+    department: 'Factory Operations',
+    employeeId: 'EMP-497',
+    unit: 'Unit 1',
+    status: 'ACTIVE',
+    password: 'admin123u1',
+    aliasMatch: ['admin@su1', 'admin@su1.com', 'emp-497', 'jaya prakash'],
+  },
+  {
+    uid: 'ADM-SU2',
+    name: 'Vignesh',
+    email: 'admin@su2.com',
+    role: 'ADMIN',
+    title: 'Unit 2 Plant Administrator & Asset Director',
+    phone: '+91 98401 22020',
+    department: 'Factory Operations',
+    employeeId: 'EMP-238',
+    unit: 'Unit 2',
+    status: 'ACTIVE',
+    password: 'admin123u2',
+    aliasMatch: ['admin@su2', 'admin@su2.com', 'emp-238', 'vignesh'],
+  },
+  {
+    uid: 'MEC-01',
+    name: 'Sabaris',
+    email: 'mechanic@sahana.com',
+    role: 'MECHANIC',
+    title: 'Line Sewing Mechanic',
+    phone: '+91 98401 22002',
+    department: 'Maintenance Workshop',
+    employeeId: 'EMP-MEC-01',
+    unit: 'All Units',
+    status: 'ACTIVE',
+    password: 'mechanic123',
+    aliasMatch: ['mechanic', 'mech', 'sabaris', 'emp-mec-01'],
+  },
+  {
+    uid: 'MEC-U1-01',
+    name: 'Viknesh_kumar',
+    email: 'mech2@sahana.com',
+    role: 'MECHANIC',
+    title: 'Unit 1 Maintenance Mechanic',
+    phone: '+91 98401 22003',
+    department: 'Maintenance Workshop',
+    employeeId: 'EMP-MEC-U1',
+    unit: 'Unit 1',
+    status: 'ACTIVE',
+    password: 'mech@123',
+    aliasMatch: ['mech2', 'mech2@sahana.com', 'viknesh_kumar', 'emp-mec-u1'],
+  },
+  {
+    uid: 'MEC-U2-01',
+    name: 'Sabarinathan',
+    email: 'mechanic1@sahana.com',
+    role: 'MECHANIC',
+    title: 'Unit 2 Maintenance Mechanic',
+    phone: '+91 98401 22004',
+    department: 'Maintenance Workshop',
+    employeeId: 'EMP-MEC-U2',
+    unit: 'Unit 2',
+    status: 'ACTIVE',
+    password: 'mech1@123',
+    aliasMatch: ['mech1', 'mechanic1', 'mechanic1@sahana.com', 'sabarinathan', 'emp-mec-u2'],
+  },
+  {
+    uid: 'STR-01',
+    name: 'Revathi',
+    email: 'store@sahana.com',
+    role: 'STORE_PERSON',
+    title: 'Tool Crib & Store In-Charge',
+    phone: '+91 98401 22005',
+    department: 'Spare Parts Stores',
+    employeeId: '101',
+    unit: 'All Units',
+    status: 'ACTIVE',
+    password: 'store@123',
+    aliasMatch: ['store', 'stores', 'storekeeper', 'revathi', '101'],
+  },
+  {
+    uid: 'CEO-01',
+    name: 'Chief Executive Officer',
+    email: 'ceo@sahana.com',
+    role: 'CEO',
+    title: 'Chief Executive Officer (Managing Director)',
+    phone: '+91 98401 22001',
+    department: 'Executive Management',
+    employeeId: 'EMP-CEO-01',
+    unit: 'All Units',
+    status: 'ACTIVE',
+    password: 'ceo123',
+    aliasMatch: ['ceo', 'md', 'managing director', 'emp-ceo-01'],
+  },
+];
+
 export async function POST(req: Request) {
   try {
     const { email: rawEmail, password: rawPass } = await req.json();
@@ -78,53 +193,83 @@ export async function POST(req: Request) {
       );
     }
 
-    const db = await getDatabase();
-    const collection = db.collection('users');
-
     const cleanInput = identifier.trim();
     const cleanLower = cleanInput.toLowerCase();
     const localPart = cleanLower.includes('@') ? cleanLower.split('@')[0] : cleanLower;
-
     const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // 1. First Priority: Exact identifier match (case-insensitive email, email.com, employeeId, uid, or name)
-    const exactQuery = {
-      $or: [
-        { email: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-        { email: { $regex: new RegExp(`^${escapedInput}\\.com$`, 'i') } },
-        { employeeId: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-        { uid: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-        { name: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-      ],
-    };
+    let dbUser: any = null;
+    let collection: any = null;
 
-    let dbUser = await collection.findOne(exactQuery);
+    // 1. Attempt lookup from MongoDB
+    try {
+      const db = await getDatabase();
+      collection = db.collection('users');
 
-    // 2. Second Priority: Alias / role shortcuts if exact match not found
-    if (!dbUser) {
-      const escapedLocal = localPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // First Priority: Exact identifier match
+      const exactQuery = {
+        $or: [
+          { email: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+          { email: { $regex: new RegExp(`^${escapedInput}\\.com$`, 'i') } },
+          { employeeId: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+          { uid: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+          { name: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+        ],
+      };
 
-      const aliasConditions: any[] = [
-        { email: { $regex: new RegExp(`^${escapedLocal}@sahana(\\.com)?$`, 'i') } },
-        { employeeId: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
-        { uid: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
-      ];
+      dbUser = await collection.findOne(exactQuery);
 
-      if (cleanLower === 'admin' || cleanLower === 'administrator') {
-        aliasConditions.push({ email: 'admin@sahana.com' }, { role: { $regex: /^admin$/i } });
-      } else if (cleanLower === 'ceo' || cleanLower === 'md') {
-        aliasConditions.push({ role: { $regex: /^ceo$/i } }, { email: 'ceo@sahana.com' });
-      } else if (cleanLower === 'store' || cleanLower === 'stores' || cleanLower === 'storekeeper') {
-        aliasConditions.push({ role: { $regex: /^store/i } }, { email: 'store@sahana.com' }, { employeeId: '101' });
-      } else if (cleanLower === 'mechanic' || cleanLower === 'mech') {
-        aliasConditions.push({ role: { $regex: /^mechanic$/i } }, { email: 'mechanic@sahana.com' });
-      } else if (cleanLower.includes('su1')) {
-        aliasConditions.push({ email: 'admin@su1.com' }, { email: 'admin@su1' }, { employeeId: 'EMP-497' });
-      } else if (cleanLower.includes('su2')) {
-        aliasConditions.push({ email: 'admin@su2.com' }, { email: 'admin@su2' }, { employeeId: 'EMP-238' });
+      // Second Priority: Alias / role shortcuts if exact match not found
+      if (!dbUser) {
+        const escapedLocal = localPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const aliasConditions: any[] = [
+          { email: { $regex: new RegExp(`^${escapedLocal}@sahana(\\.com)?$`, 'i') } },
+          { employeeId: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
+          { uid: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
+        ];
+
+        if (cleanLower === 'admin' || cleanLower === 'administrator') {
+          aliasConditions.push({ email: 'admin@sahana.com' }, { role: { $regex: /^admin$/i } });
+        } else if (cleanLower === 'ceo' || cleanLower === 'md') {
+          aliasConditions.push({ role: { $regex: /^ceo$/i } }, { email: 'ceo@sahana.com' });
+        } else if (cleanLower === 'store' || cleanLower === 'stores' || cleanLower === 'storekeeper') {
+          aliasConditions.push({ role: { $regex: /^store/i } }, { email: 'store@sahana.com' }, { employeeId: '101' });
+        } else if (cleanLower === 'mechanic' || cleanLower === 'mech') {
+          aliasConditions.push({ role: { $regex: /^mechanic$/i } }, { email: 'mechanic@sahana.com' });
+        } else if (cleanLower.includes('su1')) {
+          aliasConditions.push({ email: 'admin@su1.com' }, { email: 'admin@su1' }, { employeeId: 'EMP-497' });
+        } else if (cleanLower.includes('su2')) {
+          aliasConditions.push({ email: 'admin@su2.com' }, { email: 'admin@su2' }, { employeeId: 'EMP-238' });
+        }
+
+        dbUser = await collection.findOne({ $or: aliasConditions });
       }
+    } catch (dbErr) {
+      console.warn('MongoDB query unavailable during login, evaluating static staff credentials:', (dbErr as any)?.message || dbErr);
+    }
 
-      dbUser = await collection.findOne({ $or: aliasConditions });
+    // 2. Fallback to KNOWN_STAFF in-memory registry if DB query returned nothing or failed
+    if (!dbUser) {
+      const staffMatch = KNOWN_STAFF.find((s) => {
+        const emailLower = (s.email || '').toLowerCase();
+        const empLower = (s.employeeId || '').toLowerCase();
+        const uidLower = (s.uid || '').toLowerCase();
+        const nameLower = (s.name || '').toLowerCase();
+        if (
+          emailLower === cleanLower ||
+          emailLower === `${cleanLower}@sahana.com` ||
+          emailLower.startsWith(`${cleanLower}@`) ||
+          empLower === cleanLower ||
+          uidLower === cleanLower ||
+          nameLower === cleanLower
+        ) {
+          return true;
+        }
+        return s.aliasMatch?.some((a) => a.toLowerCase() === cleanLower || cleanLower.includes(a.toLowerCase()));
+      });
+      if (staffMatch) {
+        dbUser = { ...staffMatch };
+      }
     }
 
     if (dbUser) {
@@ -177,7 +322,7 @@ export async function POST(req: Request) {
       if (normalizedEmail.endsWith('@sahana')) {
         normalizedEmail = `${normalizedEmail}.com`;
       }
-      if (dbUser.role !== normalizedRole || dbUser.email !== normalizedEmail) {
+      if (collection && dbUser._id && (dbUser.role !== normalizedRole || dbUser.email !== normalizedEmail)) {
         collection.updateOne(
           { _id: dbUser._id },
           { $set: { role: normalizedRole, email: normalizedEmail, updatedAt: new Date().toISOString() } }
@@ -187,7 +332,7 @@ export async function POST(req: Request) {
       const assignedCompany = resolveCompanyFromUser(dbUser, identifier);
 
       const profile: UserProfile = {
-        uid: dbUser.uid || String(dbUser._id),
+        uid: dbUser.uid || String(dbUser._id || 'ADM-01'),
         name: dbUser.name || 'Factory Staff',
         email: normalizedEmail,
         role: normalizedRole,
@@ -231,21 +376,23 @@ export async function POST(req: Request) {
       };
 
       // Auto-upsert into MongoDB for future persistence
-      try {
-        await collection.updateOne(
-          { email: profile.email },
-          {
-            $set: {
-              ...profile,
-              password: pass,
-              defaultPassword: pass,
-              updatedAt: new Date().toISOString(),
+      if (collection) {
+        try {
+          await collection.updateOne(
+            { email: profile.email },
+            {
+              $set: {
+                ...profile,
+                password: pass,
+                defaultPassword: pass,
+                updatedAt: new Date().toISOString(),
+              },
             },
-          },
-          { upsert: true }
-        );
-      } catch (e) {
-        console.warn('Could not auto-persist role profile:', e);
+            { upsert: true }
+          );
+        } catch (e) {
+          console.warn('Could not auto-persist role profile:', e);
+        }
       }
 
       return NextResponse.json({ success: true, user: profile });
