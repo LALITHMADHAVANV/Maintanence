@@ -53,6 +53,7 @@ function resolveCompanyFromUser(dbUser: any, identifier: string): string {
     return dbUser.company.trim();
   }
   const email = (dbUser?.email || identifier || '').toLowerCase();
+  if (email.includes('texplus')) return 'Texplus';
   if (email.includes('sahana')) return 'Sahana Garments Ltd';
   if (email.includes('textech')) return 'Textech Apparel';
   if (email.includes('@')) {
@@ -66,6 +67,21 @@ function resolveCompanyFromUser(dbUser: any, identifier: string): string {
 }
 
 const KNOWN_STAFF: Array<UserProfile & { password?: string; aliasMatch?: string[] }> = [
+  {
+    uid: 'ADM-TEXPLUS',
+    name: 'Texplus Administrator',
+    email: 'admin@texplus.com',
+    role: 'ADMIN',
+    title: 'Plant Administrator & Asset Director',
+    phone: '+91 98401 22002',
+    department: 'Factory Operations',
+    employeeId: 'EMP-ADM-TP',
+    unit: 'All Units',
+    company: 'Texplus',
+    status: 'ACTIVE',
+    password: 'admin123',
+    aliasMatch: ['admin@texplus', 'admin@texplus.com'],
+  },
   {
     uid: 'ADM-01',
     name: 'Plant Administrator',

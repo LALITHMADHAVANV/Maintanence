@@ -17,7 +17,9 @@ const testAccounts = [
   ['store', 'store@123'],
   ['store@sahana.com', 'store@123'],
   ['ceo', 'ceo123'],
-  ['ceo@sahana.com', 'ceo123']
+  ['ceo@sahana.com', 'ceo123'],
+  ['admin@texplus.com', 'admin123'],
+  ['admin@texplus', 'admin123']
 ];
 
 async function main() {
