@@ -1,12 +1,23 @@
+const fs = require('fs');
 const { MongoClient } = require('mongodb');
 
 async function main() {
-  const uri = 'mongodb://127.0.0.1:27017';
+  let uri = 'mongodb://127.0.0.1:27017';
+  let dbName = 'maintanence';
+  if (fs.existsSync('.env.local')) {
+    const env = fs.readFileSync('.env.local', 'utf8');
+    const uMatch = env.match(/MONGODB_URI=(.+)/);
+    if (uMatch) uri = uMatch[1].trim();
+    const dMatch = env.match(/MONGODB_DB_NAME=(.+)/);
+    if (dMatch) dbName = dMatch[1].trim();
+  }
   const client = new MongoClient(uri);
 
   try {
     await client.connect();
-    const db = client.db('textech_cmms');
+    const targetDbName = dbName || (client.db().databaseName !== 'test' ? client.db().databaseName : 'maintanence');
+    const db = client.db(targetDbName);
+    console.log(`Checking auth details in DB: [${targetDbName}]`);
     const usersCol = db.collection('users');
 
     // Ensure admin@sahana.com exists

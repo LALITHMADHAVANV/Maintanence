@@ -75,6 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const stored = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('textech_current_user');
         if (stored) {
           const parsed = JSON.parse(stored);
+          if (parsed && parsed.role) {
+            parsed.role = parsed.role.toString().toUpperCase() as UserRole;
+          }
           setUser(parsed);
         }
       }
@@ -185,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        role: user?.role || null,
+        role: user?.role ? (user.role.toString().toUpperCase() as UserRole) : null,
         isLoading,
         loginAsRole,
         loginAsUser,

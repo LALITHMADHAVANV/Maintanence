@@ -8,7 +8,8 @@ async function main() {
 
   try {
     await client.connect();
-    const db = client.db('textech_cmms');
+    const targetDbName = process.env.MONGODB_DB_NAME || (client.db().databaseName !== 'test' ? client.db().databaseName : 'maintanence');
+    const db = client.db(targetDbName);
     const usersColl = db.collection('users');
 
     // 1. Delete all non-admin users

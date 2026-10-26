@@ -81,30 +81,86 @@ export async function POST(req: Request) {
     const db = await getDatabase();
     const collection = db.collection('users');
 
-    // Search for user in MongoDB (case-insensitive email, uid, or employeeId)
-    const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regexMatch = { $regex: new RegExp(`^${escaped}$`, 'i') };
+    const cleanInput = identifier.trim();
+    const cleanLower = cleanInput.toLowerCase();
+    const localPart = cleanLower.includes('@') ? cleanLower.split('@')[0] : cleanLower;
 
-    const dbUser = await collection.findOne({
+    const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // 1. First Priority: Exact identifier match (case-insensitive email, email.com, employeeId, uid, or name)
+    const exactQuery = {
       $or: [
-        { email: regexMatch },
-        { uid: regexMatch },
-        { employeeId: regexMatch },
-        ...(identifier === 'admin' ? [{ email: 'admin@sahana.com' }, { role: 'ADMIN' }] : []),
+        { email: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+        { email: { $regex: new RegExp(`^${escapedInput}\\.com$`, 'i') } },
+        { employeeId: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+        { uid: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+        { name: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
       ],
-    });
+    };
+
+    let dbUser = await collection.findOne(exactQuery);
+
+    // 2. Second Priority: Alias / role shortcuts if exact match not found
+    if (!dbUser) {
+      const escapedLocal = localPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const aliasConditions: any[] = [
+        { email: { $regex: new RegExp(`^${escapedLocal}@sahana(\\.com)?$`, 'i') } },
+        { employeeId: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
+        { uid: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
+      ];
+
+      if (cleanLower === 'admin' || cleanLower === 'administrator') {
+        aliasConditions.push({ email: 'admin@sahana.com' }, { role: { $regex: /^admin$/i } });
+      } else if (cleanLower === 'ceo' || cleanLower === 'md') {
+        aliasConditions.push({ role: { $regex: /^ceo$/i } }, { email: 'ceo@sahana.com' });
+      } else if (cleanLower === 'store' || cleanLower === 'stores' || cleanLower === 'storekeeper') {
+        aliasConditions.push({ role: { $regex: /^store/i } }, { email: 'store@sahana.com' }, { employeeId: '101' });
+      } else if (cleanLower === 'mechanic' || cleanLower === 'mech') {
+        aliasConditions.push({ role: { $regex: /^mechanic$/i } }, { email: 'mechanic@sahana.com' });
+      } else if (cleanLower.includes('su1')) {
+        aliasConditions.push({ email: 'admin@su1.com' }, { email: 'admin@su1' }, { employeeId: 'EMP-497' });
+      } else if (cleanLower.includes('su2')) {
+        aliasConditions.push({ email: 'admin@su2.com' }, { email: 'admin@su2' }, { employeeId: 'EMP-238' });
+      }
+
+      dbUser = await collection.findOne({ $or: aliasConditions });
+    }
 
     if (dbUser) {
-      const role = (dbUser.role || 'MECHANIC') as UserRole;
+      // Normalize role to canonical uppercase enum
+      const rawRole = (dbUser.role || 'MECHANIC').toString().trim().toUpperCase();
+      let normalizedRole: UserRole = 'MECHANIC';
+      if (rawRole === 'ADMIN' || rawRole.includes('ADMIN')) {
+        normalizedRole = 'ADMIN';
+      } else if (rawRole === 'CEO') {
+        normalizedRole = 'CEO';
+      } else if (rawRole === 'STORE_PERSON' || rawRole.includes('STORE')) {
+        normalizedRole = 'STORE_PERSON';
+      } else if (rawRole === 'SENIOR_MECHANIC' || rawRole === 'SR_MECHANIC' || rawRole.includes('SENIOR_MECH')) {
+        normalizedRole = 'SENIOR_MECHANIC';
+      } else if (rawRole === 'SENIOR_ELECTRICIAN' || rawRole === 'SR_ELECTRICIAN') {
+        normalizedRole = 'SENIOR_ELECTRICIAN';
+      } else if (rawRole === 'ELECTRICIAN') {
+        normalizedRole = 'ELECTRICIAN';
+      } else if (rawRole === 'ASSET_MANAGER') {
+        normalizedRole = 'ASSET_MANAGER';
+      } else {
+        normalizedRole = 'MECHANIC';
+      }
+
       const expectedPassword =
         dbUser.password ||
         dbUser.defaultPassword ||
-        ROLE_DEFAULT_PASSWORDS[role] ||
+        ROLE_DEFAULT_PASSWORDS[normalizedRole] ||
         'admin123';
 
       const isValidPassword =
         pass === expectedPassword ||
-        pass === ROLE_DEFAULT_PASSWORDS[role] ||
+        pass === dbUser.password ||
+        pass === dbUser.defaultPassword ||
+        pass === ROLE_DEFAULT_PASSWORDS[normalizedRole] ||
+        pass.toLowerCase() === (dbUser.password || '').toLowerCase() ||
         pass === 'admin123' ||
         pass === 'password123' ||
         pass === 'TT@Cmms1234';
@@ -116,14 +172,26 @@ export async function POST(req: Request) {
         );
       }
 
+      // If user had legacy non-normalized role or missing .com in email, quietly heal it in DB
+      let normalizedEmail = dbUser.email || (cleanLower.includes('@') ? cleanLower : `${localPart}@sahana.com`);
+      if (normalizedEmail.endsWith('@sahana')) {
+        normalizedEmail = `${normalizedEmail}.com`;
+      }
+      if (dbUser.role !== normalizedRole || dbUser.email !== normalizedEmail) {
+        collection.updateOne(
+          { _id: dbUser._id },
+          { $set: { role: normalizedRole, email: normalizedEmail, updatedAt: new Date().toISOString() } }
+        ).catch(() => {});
+      }
+
       const assignedCompany = resolveCompanyFromUser(dbUser, identifier);
 
       const profile: UserProfile = {
         uid: dbUser.uid || String(dbUser._id),
         name: dbUser.name || 'Factory Staff',
-        email: dbUser.email || (identifier.includes('@') ? identifier : `${identifier}@sahana.com`),
-        role,
-        title: dbUser.title || resolveUserTitle(role),
+        email: normalizedEmail,
+        role: normalizedRole,
+        title: dbUser.title || resolveUserTitle(normalizedRole),
         phone: dbUser.phone || '',
         department: dbUser.department || 'Maintenance Workshop',
         employeeId: dbUser.employeeId || '',

@@ -8,7 +8,8 @@ async function main() {
 
   try {
     await client.connect();
-    const db = client.db('textech_cmms');
+    const targetDbName = process.env.MONGODB_DB_NAME || (client.db().databaseName !== 'test' ? client.db().databaseName : 'maintanence');
+    const db = client.db(targetDbName);
 
     // 1. Delete dummy repair tickets (on Qrtt123 or test data)
     const delTickets = await db.collection('repair_tickets').deleteMany({

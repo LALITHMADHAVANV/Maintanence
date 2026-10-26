@@ -250,7 +250,8 @@ async function main() {
     const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
     try {
       await client.connect();
-      const db = client.db('textech_cmms');
+      const targetDbName = process.env.MONGODB_DB_NAME || (client.db().databaseName !== 'test' ? client.db().databaseName : 'maintanence');
+      const db = client.db(targetDbName);
       const machinesCol = db.collection('machines');
       
       // Upsert each of the 134 new machines

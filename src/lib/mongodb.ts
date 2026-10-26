@@ -44,16 +44,41 @@ if (process.env.NODE_ENV === 'development') {
 
 export default clientPromise;
 
+function cleanDbName(raw?: string | null): string {
+  if (!raw) return '';
+  let cleaned = raw.trim();
+  // Strip any accidental prefix like 'DB_NAME\t', 'DB_NAME:', 'DB_NAME='
+  cleaned = cleaned.replace(/^DB_NAME[\s\t:=]+/i, '').trim();
+  cleaned = cleaned.replace(/[\r\n\t]/g, '').trim();
+  return cleaned;
+}
+
+function resolveDb(client: MongoClient, explicitDbName?: string): Db {
+  const cleanedArg = cleanDbName(explicitDbName);
+  if (cleanedArg) return client.db(cleanedArg);
+
+  const cleanedEnv = cleanDbName(process.env.MONGODB_DB_NAME);
+  if (cleanedEnv) return client.db(cleanedEnv);
+
+  try {
+    const fromUri = client.db().databaseName;
+    if (fromUri && fromUri !== 'test') {
+      return client.db(fromUri);
+    }
+  } catch (e) {}
+
+  return client.db('maintanence');
+}
+
 export async function getDatabase(dbName?: string): Promise<Db> {
-  const targetDb = (dbName || process.env.MONGODB_DB_NAME || 'textech_cmms').trim();
   try {
     const client = await clientPromise;
-    return client.db(targetDb);
+    return resolveDb(client, dbName);
   } catch (err) {
     console.warn('Cached clientPromise failed, connecting directly...');
     const fresh = await connectClient();
     global._mongoClientPromise = Promise.resolve(fresh);
     clientPromise = global._mongoClientPromise;
-    return fresh.db(targetDb);
+    return resolveDb(fresh, dbName);
   }
 }
