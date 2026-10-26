@@ -43,6 +43,29 @@ async function main() {
       { upsert: true }
     );
 
+    // Ensure mechanic@sahana.com exists
+    await usersCol.updateOne(
+      { email: 'mechanic@sahana.com' },
+      {
+        $set: {
+          uid: 'MEC-01',
+          name: 'Line Sewing Mechanic',
+          email: 'mechanic@sahana.com',
+          role: 'MECHANIC',
+          title: 'Line Sewing Mechanic',
+          phone: '+91 98401 22002',
+          department: 'Maintenance Workshop',
+          employeeId: 'EMP-MEC-01',
+          unit: 'All Units',
+          status: 'ACTIVE',
+          password: 'mechanic123',
+          defaultPassword: 'mechanic123',
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      { upsert: true }
+    );
+
     const users = await usersCol.find({}).toArray();
     console.log(`Found ${users.length} registered users:`);
     users.forEach(u => {
