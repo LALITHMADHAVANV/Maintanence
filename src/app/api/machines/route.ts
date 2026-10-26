@@ -35,11 +35,22 @@ export async function GET(req: Request) {
       }
     }
 
+    const isTexplus = db.databaseName === 'texplus';
+    const tenantCompany = isTexplus ? 'Texplus' : 'Sahana Garments Ltd';
+
     if (machines && machines.length > 0) {
-      const cleanMachines = machines.map(({ _id, ...m }: any) => m);
+      const cleanMachines = machines.map(({ _id, ...m }: any) => ({
+        ...m,
+        company: isTexplus ? 'Texplus' : (m.company || tenantCompany),
+      }));
       return NextResponse.json({ success: true, data: cleanMachines });
     }
-    return NextResponse.json({ success: true, data: plantAssetsSeed });
+
+    const fallbackSeed = (plantAssetsSeed as Machine[]).map((m) => ({
+      ...m,
+      company: isTexplus ? 'Texplus' : m.company,
+    }));
+    return NextResponse.json({ success: true, data: fallbackSeed });
   } catch (err: unknown) {
     console.warn('MongoDB machines unavailable, returning seed assets fallback:', (err as any)?.message || err);
     return NextResponse.json({ success: true, data: plantAssetsSeed });
@@ -54,6 +65,9 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
+    if (db.databaseName === 'texplus' && (!machine.company || machine.company === 'Sahana Garments Ltd')) {
+      machine.company = 'Texplus';
+    }
     await db.collection('machines').updateOne(
       { id: machine.id },
       { $set: machine },

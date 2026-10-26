@@ -151,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             : 'maintanence';
         localStorage.setItem('cmms_active_tenant', tenant);
         document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
+        window.dispatchEvent(new Event('cmms_tenant_changed'));
       }
     } catch (err: unknown) {
       setIsLoading(false);
@@ -170,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           : 'maintanence';
       localStorage.setItem('cmms_active_tenant', tenant);
       document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
+      window.dispatchEvent(new Event('cmms_tenant_changed'));
     }
     setIsLoading(false);
   };
@@ -238,6 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('textech_current_user');
       localStorage.removeItem('cmms_active_tenant');
       document.cookie = 'cmms_tenant=; path=/; max-age=0; SameSite=Lax';
+      window.dispatchEvent(new Event('cmms_tenant_changed'));
     }
   };
 

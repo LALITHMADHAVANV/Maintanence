@@ -64,10 +64,13 @@ export default function MachinesPage() {
   const userCompany = useMemo(() => {
     if (user?.company && user.company.trim()) return user.company.trim();
     if (typeof window !== 'undefined') {
+      const activeTenant = localStorage.getItem('cmms_active_tenant');
+      if (activeTenant === 'texplus') return 'Texplus';
       const stored = localStorage.getItem('cmms_company_name');
       if (stored && stored.trim()) return stored.trim();
     }
     const email = (user?.email || '').toLowerCase();
+    if (email.includes('texplus')) return 'Texplus';
     if (email.includes('sahana')) return 'Sahana Garments Ltd';
     if (email.includes('textech')) return 'Textech Apparel';
     if (email.includes('@')) {
@@ -1214,7 +1217,7 @@ export default function MachinesPage() {
                         Company / Unit / ID
                       </div>
                       <div className="text-xs sm:text-sm print:text-[9pt] font-black uppercase tracking-wider text-slate-800 truncate flex items-center gap-1">
-                        <span>{mCompany.trim() || 'Sahana'}</span>
+                        <span>{mCompany.trim() || userCompany || 'Sahana'}</span>
                         <span className="text-slate-400">/</span>
                         <span>{mUnit.trim() || 'Unit'}</span>
                         <span className="text-slate-400">/</span>

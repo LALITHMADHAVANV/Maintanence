@@ -101,8 +101,10 @@ export function PrintableAssetDocumentModal({
   }).toString()}`;
   const displayClass = asset.typeName || TYPE_NAME_MAP[asset.type] || asset.type;
   const valuation = asset.cost ? formatRupee(asset.cost) : '₹75,000';
+  const activeTenant = typeof window !== 'undefined' ? (localStorage.getItem('cmms_active_tenant') || '') : '';
+  const fallbackCompany = activeTenant === 'texplus' ? 'Texplus' : 'Sahana';
+  const companyName = asset.company || (typeof window !== 'undefined' ? localStorage.getItem('cmms_company_name') || '' : '') || fallbackCompany;
   const regDate = asset.purchaseDate || '2023-01-01';
-  const companyName = asset.company || (typeof window !== 'undefined' ? localStorage.getItem('cmms_company_name') || '' : '') || 'Sahana';
 
   // Batch machines for sheet printing
   const batchList = allAssets.length > 0 ? allAssets.slice(0, 8) : [asset];

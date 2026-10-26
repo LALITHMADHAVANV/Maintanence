@@ -35,11 +35,35 @@ const listeners = {
   notifications: new Set<Listener<AppNotification[]>>(),
 };
 
+function getActiveTenant(): string {
+  if (typeof window === 'undefined') return 'maintanence';
+  try {
+    const active = localStorage.getItem('cmms_active_tenant');
+    if (active) return active.toLowerCase();
+    const stored = localStorage.getItem('cmms_current_user') || localStorage.getItem('sahana_current_user');
+    if (stored) {
+      const u = JSON.parse(stored);
+      const email = (u?.email || '').toLowerCase();
+      const company = (u?.company || '').toLowerCase();
+      if (email.includes('texplus') || company.includes('texplus')) return 'texplus';
+    }
+  } catch {}
+  return 'maintanence';
+}
+
 function getLocal<T>(key: string, defaultVal: T): T {
   if (typeof window === 'undefined') return defaultVal;
   try {
-    const raw = localStorage.getItem(key) || localStorage.getItem(key.replace('sahana_', 'textech_'));
-    return raw ? JSON.parse(raw) : defaultVal;
+    const tenant = getActiveTenant();
+    const tenantKey = `${tenant}_${key}`;
+    const scopedRaw = localStorage.getItem(tenantKey);
+    if (scopedRaw) return JSON.parse(scopedRaw);
+
+    if (tenant === 'maintanence' || tenant === 'sahana') {
+      const raw = localStorage.getItem(key) || localStorage.getItem(key.replace('sahana_', 'textech_'));
+      return raw ? JSON.parse(raw) : defaultVal;
+    }
+    return defaultVal;
   } catch {
     return defaultVal;
   }
@@ -48,7 +72,12 @@ function getLocal<T>(key: string, defaultVal: T): T {
 function setLocal<T>(key: string, val: T): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(key, JSON.stringify(val));
+    const tenant = getActiveTenant();
+    const tenantKey = `${tenant}_${key}`;
+    localStorage.setItem(tenantKey, JSON.stringify(val));
+    if (tenant === 'maintanence' || tenant === 'sahana') {
+      localStorage.setItem(key, JSON.stringify(val));
+    }
   } catch (err) {
     console.warn('LocalStorage error:', err);
   }
@@ -70,21 +99,9 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 
   if (typeof window !== 'undefined') {
     try {
-      const activeTenant = localStorage.getItem('cmms_active_tenant');
+      const activeTenant = localStorage.getItem('cmms_active_tenant') || getActiveTenant();
       if (activeTenant) {
         headers.set('x-tenant-id', activeTenant);
-      } else {
-        const stored = localStorage.getItem('cmms_current_user') || localStorage.getItem('sahana_current_user');
-        if (stored) {
-          const u = JSON.parse(stored);
-          const email = (u?.email || '').toLowerCase();
-          const company = (u?.company || '').toLowerCase();
-          if (email.includes('texplus') || company.includes('texplus')) {
-            headers.set('x-tenant-id', 'texplus');
-          } else {
-            headers.set('x-tenant-id', 'maintanence');
-          }
-        }
       }
     } catch {}
   }
@@ -97,15 +114,25 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
  */
 export function initLocalSeedData(): void {
   if (typeof window === 'undefined') return;
-  const cacheVersion = 'cmms_v13_varieties_hemming_rib_fl_ol';
-  if (localStorage.getItem('cmms_cache_ver') !== cacheVersion) {
-    localStorage.removeItem(STORAGE_KEYS.MACHINES);
-    localStorage.removeItem(STORAGE_KEYS.SEEDED);
-    localStorage.setItem('cmms_cache_ver', cacheVersion);
+  const isTexplus = getActiveTenant() === 'texplus';
+  const tenantPrefix = isTexplus ? 'texplus_' : '';
+
+  const cacheVersion = `cmms_v13_varieties_hemming_rib_fl_ol_${isTexplus ? 'texplus' : 'sahana'}`;
+  if (localStorage.getItem(`${tenantPrefix}cmms_cache_ver`) !== cacheVersion) {
+    localStorage.removeItem(`${getActiveTenant()}_${STORAGE_KEYS.MACHINES}`);
+    localStorage.removeItem(`${getActiveTenant()}_${STORAGE_KEYS.SEEDED}`);
+    if (!isTexplus) {
+      localStorage.removeItem(STORAGE_KEYS.MACHINES);
+      localStorage.removeItem(STORAGE_KEYS.SEEDED);
+    }
+    localStorage.setItem(`${tenantPrefix}cmms_cache_ver`, cacheVersion);
   }
   const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   if (!currentMachines || currentMachines.length < (plantAssetsSeed as any).length) {
-    setLocal(STORAGE_KEYS.MACHINES, plantAssetsSeed as unknown as Machine[]);
+    const seeded = isTexplus
+      ? (plantAssetsSeed as unknown as Machine[]).map((m) => ({ ...m, company: 'Texplus' }))
+      : (plantAssetsSeed as unknown as Machine[]);
+    setLocal(STORAGE_KEYS.MACHINES, seeded);
   }
 
   const sparesCacheVer = 'cmms_spares_v260_mapped_full';
@@ -540,6 +567,16 @@ export function subscribeRepairs(callback: (repairs: RepairTicket[]) => void): (
     listeners.repairs.delete(callback);
   };
 }
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('cmms_tenant_changed', () => {
+    initLocalSeedData();
+    fetchMachinesOnce(true);
+    fetchPartsOnce(true);
+    fetchRepairsOnce(true);
+  });
+}
+
 
 export async function createBreakdownTicket(
   ticketData: Omit<
