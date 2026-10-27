@@ -237,7 +237,7 @@ export async function POST(req: Request) {
     const localPart = cleanLower.includes('@') ? cleanLower.split('@')[0] : cleanLower;
     const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    const targetTenant = identifier.includes('texplus') ? 'texplus' : 'maintanence';
+    const targetTenant = identifier.includes('texplus') ? 'texplus' : 'sahana';
     let dbUser: any = null;
     let collection: any = null;
 

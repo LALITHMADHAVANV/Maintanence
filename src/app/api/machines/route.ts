@@ -11,8 +11,8 @@ export async function GET(req: Request) {
     const db = await getDatabase(req);
     let machines = await db.collection<Machine>('machines').find({}).toArray();
 
-    const isTexplus = db.databaseName === 'texplus';
-    const isPrimarySahana = db.databaseName === 'maintanence';
+    const isTexplus = db.tenant === 'texplus';
+    const isPrimarySahana = db.tenant === 'sahana';
     const tenantCompany = isTexplus ? 'Texplus' : 'Sahana Garments Ltd';
 
     // Only auto-sync comprehensive seed assets for the primary Sahana database ('maintanence')
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
-    if (db.databaseName === 'texplus' && (!machine.company || machine.company === 'Sahana Garments Ltd')) {
+    if (db.tenant === 'texplus' && (!machine.company || machine.company === 'Sahana Garments Ltd')) {
       machine.company = 'Texplus';
     }
     await db.collection('machines').updateOne(

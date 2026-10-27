@@ -48,9 +48,26 @@ export async function GET(req: Request) {
     const collection = db.collection('users');
     let users = await collection.find({}).toArray();
 
-    // If users collection is empty, seed only the Administrator
+    // If users collection is empty, seed only the Administrator for this tenant
     if (users.length === 0) {
-      await collection.insertMany(DEFAULT_USERS);
+      const defaultUser = db.tenant === 'texplus' ? {
+        uid: 'ADM-TEXPLUS',
+        name: 'Texplus Administrator',
+        email: 'admin@texplus.com',
+        role: 'ADMIN',
+        title: 'Plant Administrator & Asset Director',
+        phone: '+91 98401 22002',
+        department: 'Factory Operations',
+        employeeId: 'EMP-ADM-TP',
+        unit: 'All Units',
+        company: 'Texplus',
+        status: 'ACTIVE',
+        defaultPassword: 'admin123',
+        password: 'admin123',
+        createdAt: new Date().toISOString(),
+      } : DEFAULT_USERS[0];
+
+      await collection.insertOne(defaultUser as any);
       users = await collection.find({}).toArray();
     }
 

@@ -1,7 +1,17 @@
-import { MongoClient, Db } from 'mongodb';
+import { MongoClient, Db, Collection, Document } from 'mongodb';
 
 const defaultCloudUri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0';
 const localUri = 'mongodb://127.0.0.1:27017/maintanence';
+
+// The ONE database that holds all tenants as prefixed collections
+const PRIMARY_DB = 'maintanence';
+
+// Tenant name mappings
+const TENANT_ALIASES: Record<string, string> = {
+  sahana: 'sahana',
+  maintanence: 'sahana',
+  texplus: 'texplus',
+};
 
 declare global {
   // eslint-disable-next-line no-var
@@ -84,99 +94,101 @@ if (process.env.NODE_ENV === 'development') {
 
 export default clientPromise;
 
-function cleanDbName(raw?: string | null): string {
-  if (!raw) return 'maintanence';
-  let cleaned = raw.trim();
-  // Strip any accidental prefix like 'DB_NAME\t', 'DB_NAME:', 'DB_NAME='
-  cleaned = cleaned.replace(/^DB_NAME[\s\t:=]*/i, '').trim();
-  cleaned = cleaned.replace(/[\r\n\t]/g, '').trim();
-
-  const lower = cleaned.toLowerCase();
-  // Prevent rogue DB creation from legacy defaults or malformed env vars
-  if (!cleaned || lower === 'textech_cmms' || lower === 'test' || lower === 'admin' || lower === 'local' || lower === 'db_name') {
-    return 'maintanence';
-  }
-  return cleaned;
-}
-
-export function extractTenantDb(target?: string | Request | null): string {
-  if (!target) return 'maintanence';
+/**
+ * Extract tenant slug from a Request, header string, email, or cookie.
+ * Always returns 'sahana' or 'texplus' (never a database name).
+ */
+export function extractTenant(target?: string | Request | null): string {
+  if (!target) return 'sahana';
 
   // 1. If a Request object was provided, extract tenant from headers, cookies, or query
   if (typeof target === 'object' && 'headers' in target) {
     const req = target as Request;
 
-    // Header: x-tenant-id or x-company or x-user-email
+    // Header: x-tenant-id
     const headerTenant = req.headers.get('x-tenant-id') || req.headers.get('x-company') || req.headers.get('x-user-email');
     if (headerTenant) {
-      return extractTenantDb(headerTenant);
+      return extractTenant(headerTenant);
     }
 
     // Cookie: cmms_tenant=...
     const cookieHeader = req.headers.get('cookie') || '';
     const cookieMatch = cookieHeader.match(/cmms_tenant=([^;]+)/i);
     if (cookieMatch && cookieMatch[1]) {
-      return extractTenantDb(decodeURIComponent(cookieMatch[1].trim()));
+      return extractTenant(decodeURIComponent(cookieMatch[1].trim()));
     }
 
     // URL Query: ?tenant=... or ?company=...
     try {
       const url = new URL(req.url);
       const q = url.searchParams.get('tenant') || url.searchParams.get('company') || url.searchParams.get('email');
-      if (q) return extractTenantDb(q);
+      if (q) return extractTenant(q);
     } catch {}
 
-    return 'maintanence';
+    return 'sahana';
   }
 
-  // 2. If a string was provided (e.g. an email address or company/db name)
+  // 2. If a string was provided (e.g. an email or company name)
   const str = String(target).toLowerCase().trim();
-  if (str.includes('texplus')) {
-    return 'texplus';
-  }
-  if (str.includes('sahana')) {
-    return 'maintanence';
-  }
+  if (str.includes('texplus')) return 'texplus';
+  if (str.includes('sahana') || str === 'maintanence') return 'sahana';
 
-  return cleanDbName(str);
+  // Check alias table
+  if (TENANT_ALIASES[str]) return TENANT_ALIASES[str];
+
+  return 'sahana';
 }
 
-function resolveDb(client: MongoClient, explicitTarget?: string | Request): Db {
-  const targetDb = extractTenantDb(explicitTarget);
-  if (targetDb && targetDb !== 'maintanence') {
-    return client.db(targetDb);
-  }
+// Keep old name as alias for backward-compat with any code that still calls extractTenantDb
+export const extractTenantDb = extractTenant;
 
-  // 1. Prefer database defined in URI (e.g. /maintanence)
-  try {
-    const fromUri = client.db().databaseName;
-    if (fromUri) {
-      const cleanedUriDb = cleanDbName(fromUri);
-      if (cleanedUriDb) {
-        return client.db(cleanedUriDb);
-      }
-    }
-  } catch (e) {}
-
-  // 2. Sanitize and use MONGODB_DB_NAME env var
-  const cleanedEnv = cleanDbName(process.env.MONGODB_DB_NAME);
-  if (cleanedEnv) {
-    return client.db(cleanedEnv);
-  }
-
-  // 3. Fallback to maintanence
-  return client.db('maintanence');
+/**
+ * Returns the prefixed collection name for a given tenant.
+ * e.g. colName('machines', 'texplus') => 'texplus.machines'
+ *      colName('machines', 'sahana')  => 'sahana.machines'
+ */
+export function colName(collection: string, tenant: string): string {
+  const slug = TENANT_ALIASES[tenant] || tenant || 'sahana';
+  return `${slug}.${collection}`;
 }
 
-export async function getDatabase(target?: string | Request): Promise<Db> {
+/**
+ * A thin Db-like wrapper that auto-prefixes all collection access by tenant.
+ */
+export class TenantDb {
+  constructor(
+    public readonly _db: Db,
+    public readonly tenant: string
+  ) {}
+
+  get databaseName(): string {
+    return this.tenant;
+  }
+
+  get rawDb(): Db {
+    return this._db;
+  }
+
+  collection<T extends Document = Document>(name: string): Collection<T> {
+    return this._db.collection<T>(colName(name, this.tenant));
+  }
+}
+
+/**
+ * Returns a TenantDb scoped to the correct tenant inside the PRIMARY_DB.
+ * All collections are automatically prefixed: e.g. sahana.machines, texplus.machines.
+ */
+export async function getDatabase(target?: string | Request): Promise<TenantDb> {
+  let client: MongoClient;
   try {
-    const client = await clientPromise;
-    return resolveDb(client, target);
+    client = await clientPromise;
   } catch (err) {
     console.warn('Cached clientPromise failed, connecting directly...');
-    const fresh = await connectClient();
-    global._mongoClientPromise = Promise.resolve(fresh);
+    client = await connectClient();
+    global._mongoClientPromise = Promise.resolve(client);
     clientPromise = global._mongoClientPromise;
-    return resolveDb(fresh, target);
   }
+  const tenant = extractTenant(target);
+  const db = client.db(PRIMARY_DB);
+  return new TenantDb(db, tenant);
 }

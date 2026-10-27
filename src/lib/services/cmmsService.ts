@@ -36,10 +36,13 @@ const listeners = {
 };
 
 function getActiveTenant(): string {
-  if (typeof window === 'undefined') return 'maintanence';
+  if (typeof window === 'undefined') return 'sahana';
   try {
     const active = localStorage.getItem('cmms_active_tenant');
-    if (active) return active.toLowerCase();
+    if (active) {
+      const a = active.toLowerCase().trim();
+      return a === 'maintanence' ? 'sahana' : a;
+    }
     const stored = localStorage.getItem('cmms_current_user') || localStorage.getItem('sahana_current_user');
     if (stored) {
       const u = JSON.parse(stored);
@@ -48,7 +51,7 @@ function getActiveTenant(): string {
       if (email.includes('texplus') || company.includes('texplus')) return 'texplus';
     }
   } catch {}
-  return 'maintanence';
+  return 'sahana';
 }
 
 function getLocal<T>(key: string, defaultVal: T): T {
@@ -99,7 +102,7 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 
   if (typeof window !== 'undefined') {
     try {
-      const activeTenant = localStorage.getItem('cmms_active_tenant') || getActiveTenant();
+      const activeTenant = getActiveTenant();
       if (activeTenant) {
         headers.set('x-tenant-id', activeTenant);
       }

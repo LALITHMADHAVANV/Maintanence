@@ -8,10 +8,10 @@ async function main() {
 
   try {
     await client.connect();
-    const db = client.db('textech_cmms');
+    const db = client.db('maintanence');
     const collections = await db.listCollections().toArray();
-    console.log('Collections in textech_cmms:');
-    for (const c of collections) {
+    console.log('Collections in maintanence:');
+    for (const c of collections.sort((a,b) => a.name.localeCompare(b.name))) {
       const count = await db.collection(c.name).countDocuments();
       console.log(`- ${c.name}: ${count} documents`);
     }

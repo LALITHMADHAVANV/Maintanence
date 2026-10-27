@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const col = db.collection<SparePart>('spare_parts');
     let parts = await col.find({}).toArray();
 
-    const isPrimarySahana = db.databaseName === 'maintanence';
+    const isPrimarySahana = db.tenant === 'sahana';
 
     if (isPrimarySahana && (!parts || parts.length < factorySparesSeed.length)) {
       try {

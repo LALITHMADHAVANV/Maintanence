@@ -148,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const tenant = (data.user.email || '').toLowerCase().includes('texplus') ||
           (data.user.company || '').toLowerCase().includes('texplus')
             ? 'texplus'
-            : 'maintanence';
+            : 'sahana';
         localStorage.setItem('cmms_active_tenant', tenant);
         document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
         window.dispatchEvent(new Event('cmms_tenant_changed'));
@@ -168,7 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const tenant = (profile.email || '').toLowerCase().includes('texplus') ||
         (profile.company || '').toLowerCase().includes('texplus')
           ? 'texplus'
-          : 'maintanence';
+          : 'sahana';
       localStorage.setItem('cmms_active_tenant', tenant);
       document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
       window.dispatchEvent(new Event('cmms_tenant_changed'));
