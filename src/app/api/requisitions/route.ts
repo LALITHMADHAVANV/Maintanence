@@ -6,7 +6,10 @@ export async function GET(req: Request) {
   try {
     const db = await getDatabase(req);
     const reqs = await db.collection<PartRequisition>('part_requisitions').find({}).toArray();
-    const cleanReqs = reqs.map(({ _id, ...r }: any) => r);
+    const cleanReqs = reqs.map(({ _id, ...r }: any) => ({
+      ...r,
+      company: r.company || db.companyName,
+    }));
     return NextResponse.json({ success: true, data: cleanReqs });
   } catch (err: unknown) {
     console.error('Error fetching requisitions from MongoDB:', err);
@@ -22,6 +25,7 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
+    (requisition as any).company = db.companyName;
     await db.collection('part_requisitions').updateOne(
       { id: requisition.id },
       { $set: requisition },

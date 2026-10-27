@@ -66,9 +66,7 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
-    if (db.tenant === 'texplus' && (!machine.company || machine.company === 'Sahana Garments Ltd')) {
-      machine.company = 'Texplus';
-    }
+    machine.company = db.companyName;
     await db.collection('machines').updateOne(
       { id: machine.id },
       { $set: machine },

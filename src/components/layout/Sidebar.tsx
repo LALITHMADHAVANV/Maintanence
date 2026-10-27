@@ -680,7 +680,7 @@ export function Sidebar() {
           className="text-center font-black text-xs text-[#15803d] tracking-tight hover:opacity-90 transition pt-1"
           title="Asset Maintenance System (Noolezhai)"
         >
-          Noolezhai
+          ASSET MODULE
         </Link>
 
         {/* Top Notification Bell with unseen counter */}

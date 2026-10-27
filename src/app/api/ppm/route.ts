@@ -6,7 +6,10 @@ export async function GET(req: Request) {
   try {
     const db = await getDatabase(req);
     const ppm = await db.collection<PPMSchedule>('ppm_schedules').find({}).toArray();
-    const cleanPpm = ppm.map(({ _id, ...p }: any) => p);
+    const cleanPpm = ppm.map(({ _id, ...p }: any) => ({
+      ...p,
+      company: p.company || db.companyName,
+    }));
     return NextResponse.json({ success: true, data: cleanPpm });
   } catch (err: unknown) {
     console.error('Error fetching PPM schedules from MongoDB:', err);
@@ -22,6 +25,7 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
+    (item as any).company = db.companyName;
     await db.collection('ppm_schedules').updateOne(
       { id: item.id },
       { $set: item },

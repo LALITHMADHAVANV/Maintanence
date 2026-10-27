@@ -27,7 +27,7 @@ export async function GET(req: Request) {
           const ops = missingSeed.map((sp) => ({
             updateOne: {
               filter: { $or: [{ id: (sp as any).id || sp.partId }, { partId: sp.partId }] },
-              update: { $set: sp },
+              update: { $set: { ...sp, company: 'Sahana Garments Ltd' } },
               upsert: true,
             },
           }));
@@ -40,7 +40,10 @@ export async function GET(req: Request) {
       }
     }
 
-    const cleanParts = (parts || []).map(({ _id, ...p }: any) => p);
+    const cleanParts = (parts || []).map(({ _id, ...p }: any) => ({
+      ...p,
+      company: p.company || db.companyName,
+    }));
     return NextResponse.json({ success: true, data: cleanParts });
   } catch (err: unknown) {
     console.error('Error fetching parts from MongoDB:', err);
@@ -50,13 +53,15 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const part = (await req.json()) as Partial<SparePart> & { id?: string };
+    const part = (await req.json()) as Partial<SparePart> & { id?: string; company?: string };
     const key = part.partId || part.id;
     if (!key) {
       return NextResponse.json({ error: 'Part ID is required' }, { status: 400 });
     }
 
     const db = await getDatabase(req);
+    part.company = db.companyName;
+
     await db.collection('spare_parts').updateOne(
       { $or: [{ id: key }, { partId: key }] },
       { $set: part },

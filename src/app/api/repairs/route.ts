@@ -11,7 +11,10 @@ export async function GET(req: Request) {
       .find({})
       .sort({ reportedAt: -1, _id: -1 })
       .toArray();
-    const cleanRepairs = repairs.map(({ _id, ...r }: any) => r);
+    const cleanRepairs = repairs.map(({ _id, ...r }: any) => ({
+      ...r,
+      company: r.company || db.companyName,
+    }));
     return NextResponse.json({ success: true, data: cleanRepairs });
   } catch (err: unknown) {
     console.error('Error fetching repairs from MongoDB:', err);
@@ -27,6 +30,7 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
+    (ticket as any).company = db.companyName;
     await db.collection('repair_tickets').updateOne(
       { id: ticket.id },
       { $set: ticket },

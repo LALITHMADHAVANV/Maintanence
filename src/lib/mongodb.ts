@@ -143,17 +143,102 @@ export function extractTenant(target?: string | Request | null): string {
 export const extractTenantDb = extractTenant;
 
 /**
- * Returns the prefixed collection name for a given tenant.
- * e.g. colName('machines', 'texplus') => 'texplus.machines'
- *      colName('machines', 'sahana')  => 'sahana.machines'
+ * Helper to get clean collection name (stripping any legacy dot prefix like 'sahana.machines' -> 'machines')
  */
-export function colName(collection: string, tenant: string): string {
-  const slug = TENANT_ALIASES[tenant] || tenant || 'sahana';
-  return `${slug}.${collection}`;
+export function cleanColName(name: string): string {
+  return name.includes('.') ? name.split('.').pop()! : name;
+}
+
+export function colName(collection: string, _tenant?: string): string {
+  return cleanColName(collection);
 }
 
 /**
- * A thin Db-like wrapper that auto-prefixes all collection access by tenant.
+ * Proxy wrapper on MongoDB Collection that automatically enforces company scoping.
+ */
+function wrapTenantCollection<T extends Document = Document>(
+  col: Collection<T>,
+  tenant: string,
+  companyName: string
+): Collection<T> {
+  const isTexplus = tenant === 'texplus';
+  const companyQuery: any = isTexplus
+    ? { company: { $regex: /^texplus/i } }
+    : {
+        $or: [
+          { company: { $regex: /^sahana/i } },
+          { company: { $regex: /^maintanence/i } },
+          { company: { $exists: false } },
+          { company: null },
+          { company: '' },
+        ],
+      };
+
+  function mergeCompany(filter?: any) {
+    if (!filter || Object.keys(filter).length === 0) {
+      return companyQuery;
+    }
+    if (filter.company !== undefined) {
+      return filter;
+    }
+    return { $and: [companyQuery, filter] };
+  }
+
+  return new Proxy(col, {
+    get(target, prop, receiver) {
+      if (prop === 'find') {
+        return (filter?: any, options?: any) => {
+          return target.find(mergeCompany(filter), options);
+        };
+      }
+      if (prop === 'findOne') {
+        return (filter?: any, options?: any) => {
+          return target.findOne(mergeCompany(filter), options);
+        };
+      }
+      if (prop === 'countDocuments') {
+        return (filter?: any, options?: any) => {
+          return target.countDocuments(mergeCompany(filter), options);
+        };
+      }
+      if (prop === 'insertOne') {
+        return (doc: any, options?: any) => {
+          if (doc && !doc.company) {
+            doc.company = companyName;
+          }
+          return target.insertOne(doc, options);
+        };
+      }
+      if (prop === 'insertMany') {
+        return (docs: any[], options?: any) => {
+          if (Array.isArray(docs)) {
+            docs.forEach((d) => {
+              if (d && !d.company) d.company = companyName;
+            });
+          }
+          return target.insertMany(docs, options);
+        };
+      }
+      if (prop === 'updateOne') {
+        return (filter: any, update: any, options?: any) => {
+          if (options?.upsert) {
+            if (update && update.$set && !update.$set.company) {
+              update.$set.company = companyName;
+            } else if (update && !update.$set) {
+              update.$setOnInsert = { ...(update.$setOnInsert || {}), company: companyName };
+            }
+          }
+          return target.updateOne(filter, update, options);
+        };
+      }
+      const val = Reflect.get(target, prop, receiver);
+      return typeof val === 'function' ? val.bind(target) : val;
+    },
+  });
+}
+
+/**
+ * A Db wrapper that routes to unified tables categorized by company name.
  */
 export class TenantDb {
   constructor(
@@ -169,8 +254,41 @@ export class TenantDb {
     return this._db;
   }
 
+  get companyName(): string {
+    return this.tenant === 'texplus' ? 'Texplus' : 'Sahana Garments Ltd';
+  }
+
+  companyFilter(baseFilter?: any): any {
+    const isTexplus = this.tenant === 'texplus';
+    const compCondition = isTexplus
+      ? { company: { $regex: /^texplus/i } }
+      : {
+          $or: [
+            { company: { $regex: /^sahana/i } },
+            { company: { $regex: /^maintanence/i } },
+            { company: { $exists: false } },
+            { company: null },
+            { company: '' },
+          ],
+        };
+
+    if (!baseFilter || Object.keys(baseFilter).length === 0) {
+      return compCondition;
+    }
+    if (baseFilter.company !== undefined) {
+      return baseFilter;
+    }
+    return { $and: [compCondition, baseFilter] };
+  }
+
   collection<T extends Document = Document>(name: string): Collection<T> {
-    return this._db.collection<T>(colName(name, this.tenant));
+    const clean = cleanColName(name);
+    return wrapTenantCollection(this._db.collection<T>(clean), this.tenant, this.companyName);
+  }
+
+  rawCollection<T extends Document = Document>(name: string): Collection<T> {
+    const clean = cleanColName(name);
+    return this._db.collection<T>(clean);
   }
 }
 
