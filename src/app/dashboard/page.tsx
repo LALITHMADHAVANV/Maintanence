@@ -20,6 +20,7 @@ import {
   subscribePPMSchedules,
   subscribeParts,
   subscribeRequisitions,
+  apiFetch,
 } from '@/lib/services/cmmsService';
 
 export default function DashboardPage() {
@@ -76,26 +77,26 @@ export default function DashboardPage() {
   const fetchAllData = async () => {
     try {
       const [machRes, repRes, ppmRes, partRes, reqRes] = await Promise.allSettled([
-        fetch('/api/machines').then((r) => r.json()),
-        fetch('/api/repairs').then((r) => r.json()),
-        fetch('/api/ppm').then((r) => r.json()),
-        fetch('/api/parts').then((r) => r.json()),
-        fetch('/api/requisitions').then((r) => r.json()),
+        apiFetch('/api/machines').then((r) => r.json()),
+        apiFetch('/api/repairs').then((r) => r.json()),
+        apiFetch('/api/ppm').then((r) => r.json()),
+        apiFetch('/api/parts').then((r) => r.json()),
+        apiFetch('/api/requisitions').then((r) => r.json()),
       ]);
 
-      if (machRes.status === 'fulfilled' && machRes.value?.data?.length > 0) {
+      if (machRes.status === 'fulfilled' && Array.isArray(machRes.value?.data)) {
         setMachines(machRes.value.data);
       }
-      if (repRes.status === 'fulfilled' && repRes.value?.data?.length > 0) {
+      if (repRes.status === 'fulfilled' && Array.isArray(repRes.value?.data)) {
         setRepairs(repRes.value.data);
       }
-      if (ppmRes.status === 'fulfilled' && ppmRes.value?.data?.length > 0) {
+      if (ppmRes.status === 'fulfilled' && Array.isArray(ppmRes.value?.data)) {
         setPpmSchedules(ppmRes.value.data);
       }
-      if (partRes.status === 'fulfilled' && partRes.value?.data?.length > 0) {
+      if (partRes.status === 'fulfilled' && Array.isArray(partRes.value?.data)) {
         setParts(partRes.value.data);
       }
-      if (reqRes.status === 'fulfilled' && reqRes.value?.data?.length > 0) {
+      if (reqRes.status === 'fulfilled' && Array.isArray(reqRes.value?.data)) {
         setRequisitions(reqRes.value.data);
       }
 

@@ -11,9 +11,12 @@ export async function GET(req: Request) {
     const db = await getDatabase(req);
     let machines = await db.collection<Machine>('machines').find({}).toArray();
 
-    // If database has fewer machines than our comprehensive seed (e.g. if Unit 2 was incomplete),
-    // automatically sync missing seed machines so all 495 plant assets are always present.
-    if (!machines || machines.length < plantAssetsSeed.length) {
+    const isTexplus = db.databaseName === 'texplus';
+    const isPrimarySahana = db.databaseName === 'maintanence';
+    const tenantCompany = isTexplus ? 'Texplus' : 'Sahana Garments Ltd';
+
+    // Only auto-sync comprehensive seed assets for the primary Sahana database ('maintanence')
+    if (isPrimarySahana && (!machines || machines.length < plantAssetsSeed.length)) {
       try {
         const existingIds = new Set((machines || []).map((m: any) => (m.id || '').toUpperCase()));
         const missingSeed = (plantAssetsSeed as Machine[]).filter(
@@ -35,9 +38,6 @@ export async function GET(req: Request) {
       }
     }
 
-    const isTexplus = db.databaseName === 'texplus';
-    const tenantCompany = isTexplus ? 'Texplus' : 'Sahana Garments Ltd';
-
     if (machines && machines.length > 0) {
       const cleanMachines = machines.map(({ _id, ...m }: any) => ({
         ...m,
@@ -46,14 +46,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: true, data: cleanMachines });
     }
 
-    const fallbackSeed = (plantAssetsSeed as Machine[]).map((m) => ({
-      ...m,
-      company: isTexplus ? 'Texplus' : m.company,
-    }));
-    return NextResponse.json({ success: true, data: fallbackSeed });
-  } catch (err: unknown) {
-    console.warn('MongoDB machines unavailable, returning seed assets fallback:', (err as any)?.message || err);
+    // Secondary companies (e.g. Texplus) start with their own machines (0 initially)
+    if (!isPrimarySahana) {
+      return NextResponse.json({ success: true, data: [] });
+    }
+
     return NextResponse.json({ success: true, data: plantAssetsSeed });
+  } catch (err: unknown) {
+    console.warn('MongoDB machines unavailable, returning fallback:', (err as any)?.message || err);
+    return NextResponse.json({ success: true, data: [] });
   }
 }
 

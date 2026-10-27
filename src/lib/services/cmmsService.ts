@@ -115,24 +115,21 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 export function initLocalSeedData(): void {
   if (typeof window === 'undefined') return;
   const isTexplus = getActiveTenant() === 'texplus';
-  const tenantPrefix = isTexplus ? 'texplus_' : '';
+  if (isTexplus) {
+    // For Texplus (or other companies), do not auto-populate with Sahana seed machines or parts!
+    // Texplus starts clean so they can register their own plant assets.
+    return;
+  }
 
-  const cacheVersion = `cmms_v13_varieties_hemming_rib_fl_ol_${isTexplus ? 'texplus' : 'sahana'}`;
-  if (localStorage.getItem(`${tenantPrefix}cmms_cache_ver`) !== cacheVersion) {
-    localStorage.removeItem(`${getActiveTenant()}_${STORAGE_KEYS.MACHINES}`);
-    localStorage.removeItem(`${getActiveTenant()}_${STORAGE_KEYS.SEEDED}`);
-    if (!isTexplus) {
-      localStorage.removeItem(STORAGE_KEYS.MACHINES);
-      localStorage.removeItem(STORAGE_KEYS.SEEDED);
-    }
-    localStorage.setItem(`${tenantPrefix}cmms_cache_ver`, cacheVersion);
+  const cacheVersion = 'cmms_v13_varieties_hemming_rib_fl_ol_sahana';
+  if (localStorage.getItem('cmms_cache_ver') !== cacheVersion) {
+    localStorage.removeItem(STORAGE_KEYS.MACHINES);
+    localStorage.removeItem(STORAGE_KEYS.SEEDED);
+    localStorage.setItem('cmms_cache_ver', cacheVersion);
   }
   const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   if (!currentMachines || currentMachines.length < (plantAssetsSeed as any).length) {
-    const seeded = isTexplus
-      ? (plantAssetsSeed as unknown as Machine[]).map((m) => ({ ...m, company: 'Texplus' }))
-      : (plantAssetsSeed as unknown as Machine[]);
-    setLocal(STORAGE_KEYS.MACHINES, seeded);
+    setLocal(STORAGE_KEYS.MACHINES, plantAssetsSeed as unknown as Machine[]);
   }
 
   const sparesCacheVer = 'cmms_spares_v260_mapped_full';

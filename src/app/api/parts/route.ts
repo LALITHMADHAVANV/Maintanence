@@ -15,7 +15,9 @@ export async function GET(req: Request) {
     const col = db.collection<SparePart>('spare_parts');
     let parts = await col.find({}).toArray();
 
-    if (!parts || parts.length < factorySparesSeed.length) {
+    const isPrimarySahana = db.databaseName === 'maintanence';
+
+    if (isPrimarySahana && (!parts || parts.length < factorySparesSeed.length)) {
       try {
         const existingIds = new Set((parts || []).map((p: any) => (p.partId || p.id || '').toUpperCase()));
         const missingSeed = (factorySparesSeed as unknown as SparePart[]).filter(
@@ -38,11 +40,11 @@ export async function GET(req: Request) {
       }
     }
 
-    const cleanParts = parts.map(({ _id, ...p }: any) => p);
+    const cleanParts = (parts || []).map(({ _id, ...p }: any) => p);
     return NextResponse.json({ success: true, data: cleanParts });
   } catch (err: unknown) {
-    console.error('Error fetching parts from MongoDB, using seed fallback:', err);
-    return NextResponse.json({ success: true, data: factorySparesSeed });
+    console.error('Error fetching parts from MongoDB:', err);
+    return NextResponse.json({ success: true, data: [] });
   }
 }
 
