@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
@@ -2628,7 +2629,13 @@ export default function HistoryPage() {
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => {
+                  document.body.classList.add('printing-single-qr-active');
+                  window.print();
+                  setTimeout(() => {
+                    document.body.classList.remove('printing-single-qr-active');
+                  }, 1000);
+                }}
                 className="flex-1 py-2 px-3 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shadow-indigo-600/30"
               >
                 <Printer className="w-3.5 h-3.5" />
@@ -2637,6 +2644,33 @@ export default function HistoryPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Dedicated Portal for Single QR Print (Zero page details) */}
+      {selectedQrAsset && typeof document !== 'undefined' && createPortal(
+        <div id="single-qr-print-portal" className="hidden print:flex flex-col items-center justify-center p-6 bg-white">
+          <div className="p-4 bg-white rounded-2xl border-2 border-black flex flex-col items-center text-center">
+            <QRCodeSVG
+              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/maintenance/scan/${encodeURIComponent(selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
+              size={180}
+              level="H"
+              bgColor="#ffffff"
+              fgColor="#000000"
+            />
+            <div className="mt-3 font-mono font-black text-sm text-black">
+              {selectedQrAsset.assetId}
+            </div>
+            <div className="text-xs font-bold text-black mt-0.5">
+              {selectedQrAsset.brand} • {selectedQrAsset.model}
+            </div>
+            {selectedQrAsset.unit && (
+              <div className="text-[11px] font-semibold text-black mt-0.5">
+                {selectedQrAsset.unit}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* 5. MODAL: BULK QR CODE PRINTING (CHOSEN NUMBER / RANGE / CUSTOM) */}

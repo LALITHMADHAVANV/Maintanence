@@ -89,6 +89,32 @@ body {
     display: none !important;
   }
 
+  /* Dedicated QR Print Isolation: When printing QR codes, hide all other page elements */
+  body.printing-bulk-qr-active > *:not(#bulk-qr-print-portal),
+  body.printing-single-qr-active > *:not(#single-qr-print-portal) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.printing-bulk-qr-active #bulk-qr-print-portal,
+  body.printing-single-qr-active #single-qr-print-portal {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    z-index: 99999999 !important;
+  }
+
+  body.printing-bulk-qr-active #bulk-qr-print-portal *,
+  body.printing-single-qr-active #single-qr-print-portal * {
+    visibility: visible !important;
+  }
+
   /* Strip shadows and unwanted artifacts on paper */
   * {
     box-shadow: none !important;
