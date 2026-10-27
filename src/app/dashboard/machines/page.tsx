@@ -84,6 +84,7 @@ export default function MachinesPage() {
   }, [user]);
 
   const [mCompany, setMCompany] = useState<string>(() => userCompany);
+  const isTexplusUser = userCompany.toLowerCase().includes('texplus');
 
   // Sync company if user auth session loads asynchronously
   useEffect(() => {
@@ -1348,6 +1349,9 @@ export default function MachinesPage() {
             <div className="flex-1 overflow-y-auto p-4 divide-y divide-slate-100">
               {machines
                 .filter((m) => {
+                  const mComp = (m.company || '').toLowerCase();
+                  if (isTexplusUser && !mComp.includes('texplus')) return false;
+                  if (!isTexplusUser && mComp.includes('texplus')) return false;
                   if (!isAdmin && !matchesUnit(m.unit, effectiveUnit)) return false;
                   if (!pickerSearchQuery.trim()) return true;
                   const q = pickerSearchQuery.toLowerCase();

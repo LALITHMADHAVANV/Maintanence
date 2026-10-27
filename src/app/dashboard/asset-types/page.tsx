@@ -136,6 +136,23 @@ function AssetsPageContent() {
   const { user, role } = useAuth();
   const isAdmin = isUserAdmin(role);
   const [machines, setMachines] = useState<Machine[]>([]);
+
+  // User's assigned enterprise company from authenticated session
+  const userCompany = useMemo(() => {
+    if (user?.company && user.company.trim()) return user.company.trim();
+    if (typeof window !== 'undefined') {
+      const activeTenant = localStorage.getItem('cmms_active_tenant');
+      if (activeTenant === 'texplus') return 'Texplus';
+      const stored = localStorage.getItem('cmms_company_name');
+      if (stored && stored.trim()) return stored.trim();
+    }
+    const email = (user?.email || '').toLowerCase();
+    if (email.includes('texplus')) return 'Texplus';
+    return 'Sahana Garments Ltd';
+  }, [user]);
+
+  const isTexplus = userCompany.toLowerCase().includes('texplus');
+
   const [selectedCategory, setSelectedCategory] = useState<MainCategory | 'ALL'>('ALL');
   const [selectedPlant, setSelectedPlant] = useState<string>(() => {
     if (isUserAdmin(role)) return unitParam || 'ALL';
@@ -228,9 +245,13 @@ function AssetsPageContent() {
     }
   };
 
-  // Convert machines into uniform table items matching the PDF layout
+  // Convert machines into uniform table items matching company scope
   const allItems: AssetItem[] = useMemo(() => {
-    const sourceMachines = machines.length > 0 ? machines : (plantAssetsSeed as unknown as Machine[]);
+    const sourceMachines = isTexplus
+      ? machines.filter((m) => (m.company || '').toLowerCase().includes('texplus'))
+      : machines.length > 0
+      ? machines.filter((m) => !(m.company || '').toLowerCase().includes('texplus'))
+      : (plantAssetsSeed as unknown as Machine[]);
     return sourceMachines.map((m, idx) => {
       const cat = mapToMainCategory(m.category);
       const catLabel =
@@ -273,7 +294,7 @@ function AssetsPageContent() {
         rawMachine: m,
       };
     });
-  }, [machines]);
+  }, [machines, isTexplus]);
 
   // Unit-scoped items: when a unit/plant is selected, separate all data by this unit!
   const unitScopedItems = useMemo(() => {
@@ -569,11 +590,13 @@ function AssetsPageContent() {
                 Asset Master Registry
               </h1>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                Official Plant Data ({allItems.length} Assets)
+                {isTexplus ? 'Texplus Plant Data' : 'Official Plant Data'} ({allItems.length} Assets)
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Plant equipment catalog reflecting official unit machine types, serials, and locations from plant records.
+              {isTexplus
+                ? 'Texplus plant equipment catalog reflecting company machinery, serials, and locations.'
+                : 'Plant equipment catalog reflecting official unit machine types, serials, and locations from plant records.'}
             </p>
           </div>
         </div>
@@ -967,8 +990,31 @@ function AssetsPageContent() {
               <tbody className="divide-y divide-slate-200">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400 bg-white">
-                      No assets found matching the selected filter criteria.
+                    <td colSpan={11} className="py-14 text-center bg-white">
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto space-y-3">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                          <Boxes className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            {isTexplus ? 'No Texplus Assets Registered Yet' : 'No assets found'}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {isTexplus
+                              ? 'Your Texplus asset registry is clean and ready. Click below to register your first plant machinery or asset.'
+                              : 'No plant machinery matched your selected search and filter criteria.'}
+                          </p>
+                        </div>
+                        {isTexplus && (
+                          <Link
+                            href="/dashboard/machines"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-xs mt-2"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Register New Asset</span>
+                          </Link>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (
