@@ -9,6 +9,7 @@ import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/uni
 import { normalizeRole } from '@/lib/constants/roles';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
 import { QRCodeSVG } from 'qrcode.react';
+import { BulkQrPrintModal, BulkQrAsset } from '@/components/history/BulkQrPrintModal';
 import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
 import type { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
 import { formatAssetLocation } from '@/lib/formatters';
@@ -280,6 +281,7 @@ export default function HistoryPage() {
 
   // QR Modal Selection State
   const [selectedQrAsset, setSelectedQrAsset] = useState<AssetHistoryRecord | null>(null);
+  const [isBulkQrModalOpen, setIsBulkQrModalOpen] = useState<boolean>(false);
 
   // Subscribe to live machines, repairs, and PPM from DB/storage
   useEffect(() => {
@@ -317,13 +319,20 @@ export default function HistoryPage() {
   };
 
   // Combined items populated strictly from live registered machines, repairs, and PPM (scoped to unit for non-admins)
+  const isTexplusUser = (user?.company || '').toLowerCase().includes('texplus') ||
+    (typeof window !== 'undefined' && (localStorage.getItem('cmms_active_tenant') === 'texplus' || (localStorage.getItem('cmms_company_name') || '').toLowerCase().includes('texplus')));
+
   const allItems = useMemo(() => {
+    const tenantMachines = isTexplusUser
+      ? liveMachines.filter((m) => (m.company || '').toLowerCase().includes('texplus'))
+      : liveMachines.filter((m) => !(m.company || '').toLowerCase().includes('texplus'));
+
     const scopedLiveMachines = !isAdmin
-      ? liveMachines.filter((m) => matchesUnit(m.unit, effectiveUnit))
-      : liveMachines;
+      ? tenantMachines.filter((m) => matchesUnit(m.unit, effectiveUnit))
+      : tenantMachines;
     const scopedInitialItems = !isAdmin
-      ? items.filter((i) => matchesUnit(i.unit, effectiveUnit))
-      : items;
+      ? (isTexplusUser ? [] : items).filter((i) => matchesUnit(i.unit, effectiveUnit))
+      : (isTexplusUser ? [] : items);
 
     const initialIds = new Set(scopedInitialItems.map((i) => i.assetId.toLowerCase()));
     const extraLive: AssetHistoryRecord[] = scopedLiveMachines
@@ -429,11 +438,33 @@ export default function HistoryPage() {
           serviceLogs,
           ppmChecklist,
           locationHistory: locHistory,
-        };
+          mcNo: (m as any).mcNo || m.id,
+          company: m.company,
+          currentLine: m.currentLine || m.area || m.unit,
+        } as any;
       });
 
     return [...scopedInitialItems, ...extraLive];
-  }, [items, liveMachines, liveRepairs, livePpm, isAdmin, effectiveUnit]);
+  }, [items, liveMachines, liveRepairs, livePpm, isAdmin, effectiveUnit, isTexplusUser]);
+
+  // Prepared assets for bulk QR printing modal
+  const bulkQrAssets: BulkQrAsset[] = useMemo(() => {
+    return allItems.map((item, idx) => ({
+      id: item.assetId,
+      mcNo: (item as any).mcNo || (item as any).serialNo || item.assetId,
+      name: item.name,
+      brand: item.brand,
+      model: item.model,
+      type: item.subCategory || item.category,
+      typeName: item.categoryLabel,
+      unit: item.unit,
+      currentLine: (item as any).currentLine || item.location || item.unit,
+      location: item.location || item.unit,
+      company: (item as any).company,
+      status: item.status,
+      sNo: idx + 1,
+    }));
+  }, [allItems]);
 
   // Helper to resolve assigned mechanic for an asset
   const getAssetMechanic = (asset: AssetHistoryRecord): string => {
@@ -1176,6 +1207,16 @@ export default function HistoryPage() {
               <span>Active TNAs</span>
             </Link>
           )}
+          <button
+            type="button"
+            onClick={() => setIsBulkQrModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            title="Print Bulk QR Codes for machinery & assets"
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Bulk QR</span>
+          </button>
         </div>
         <PersonnelWorkHistoryTable />
       </div>
@@ -1215,6 +1256,16 @@ export default function HistoryPage() {
               <Clock className="w-3.5 h-3.5 text-amber-600" />
               <span>Active TNAs</span>
             </Link>
+            <button
+              type="button"
+              onClick={() => setIsBulkQrModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Print Bulk QR Codes for machinery & assets"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Bulk QR</span>
+            </button>
             <button
               type="button"
               onClick={() => setAdminTab('ASSETS')}
@@ -1894,6 +1945,16 @@ export default function HistoryPage() {
           </Link>
           <button
             type="button"
+            onClick={() => setIsBulkQrModalOpen(true)}
+            className="h-8 px-3 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+            title="Print Bulk QR Codes for machinery & assets"
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Bulk QR</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setAdminTab('PERSONNEL')}
             className="h-8 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
             title="Switch to Completed Works History Log"
@@ -1966,6 +2027,18 @@ export default function HistoryPage() {
               />
               <span className="whitespace-nowrap">In-charge</span>
             </label>
+
+            {/* Bulk QR Print Button */}
+            <button
+              type="button"
+              onClick={() => setIsBulkQrModalOpen(true)}
+              className="h-8 px-2.5 sm:px-3 text-[11px] sm:text-xs font-bold bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 border border-indigo-200 rounded-lg text-indigo-700 inline-flex items-center gap-1.5 cursor-pointer shadow-2xs transition whitespace-nowrap"
+              title="Print Bulk QR by chosen number or range"
+            >
+              <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+              <Printer className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Bulk QR</span>
+            </button>
 
             {/* Export Button */}
             <button
@@ -2565,6 +2638,13 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
+
+      {/* 5. MODAL: BULK QR CODE PRINTING (CHOSEN NUMBER / RANGE / CUSTOM) */}
+      <BulkQrPrintModal
+        isOpen={isBulkQrModalOpen}
+        onClose={() => setIsBulkQrModalOpen(false)}
+        assets={bulkQrAssets}
+      />
     </div>
   );
 }
