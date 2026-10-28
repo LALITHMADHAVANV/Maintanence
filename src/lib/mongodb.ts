@@ -1,21 +1,49 @@
 import { MongoClient, Db, Collection, Document } from 'mongodb';
+import { validateActiveCompany, getCompanyBySlug, CompanyRecord, ensureRegistryInitialized } from './registry';
+import { verifySessionToken, extractSessionToken, SessionPayload } from './auth';
 
-const defaultCloudUri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0';
-const localUri = 'mongodb://127.0.0.1:27017/maintanence';
-
-// The ONE database that holds all tenants as prefixed collections
-const PRIMARY_DB = 'maintanence';
-
-// Tenant name mappings
-const TENANT_ALIASES: Record<string, string> = {
-  sahana: 'sahana',
-  maintanence: 'sahana',
-  texplus: 'texplus',
-};
+const defaultCloudUri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/?appName=Cluster0';
+const localUri = 'mongodb://127.0.0.1:27017';
 
 declare global {
   // eslint-disable-next-line no-var
   var _mongoClientPromise: Promise<MongoClient> | undefined;
+}
+
+export class TenantError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 400,
+    public code: string = 'TENANT_ERROR'
+  ) {
+    super(message);
+    this.name = 'TenantError';
+  }
+}
+
+export class TenantNotFoundError extends TenantError {
+  constructor(slug: string) {
+    super(`Workspace "${slug}" not found in company registry`, 404, 'WORKSPACE_NOT_FOUND');
+    this.name = 'TenantNotFoundError';
+  }
+}
+
+export class TenantInactiveError extends TenantError {
+  constructor(slug: string) {
+    super(`Workspace "${slug}" is inactive or suspended`, 403, 'WORKSPACE_INACTIVE');
+    this.name = 'TenantInactiveError';
+  }
+}
+
+export class CrossTenantAccessError extends TenantError {
+  constructor(authenticatedSlug: string, requestedSlug: string) {
+    super(
+      `Access denied: Authenticated workspace "${authenticatedSlug}" cannot access data belonging to "${requestedSlug}"`,
+      403,
+      'CROSS_TENANT_ACCESS_FORBIDDEN'
+    );
+    this.name = 'CrossTenantAccessError';
+  }
 }
 
 function isValidMongoUri(uri?: string | null): boolean {
@@ -54,23 +82,27 @@ async function connectClient(): Promise<MongoClient> {
   try {
     const client = new MongoClient(primaryUri, options);
     await client.connect();
+    // Warm-up registry
+    await ensureRegistryInitialized(client);
     return client;
   } catch (err: unknown) {
     if (primaryUri !== defaultCloudUri && isValidMongoUri(defaultCloudUri)) {
-      console.warn(`Configured MongoDB URI failed (${(err as any)?.message || err}). Falling back to default cloud cluster...`);
+      console.warn(`Primary MongoDB URI failed, attempting default cloud cluster...`);
       try {
         const cloudClient = new MongoClient(defaultCloudUri, options);
         await cloudClient.connect();
+        await ensureRegistryInitialized(cloudClient);
         return cloudClient;
       } catch (cloudErr) {
         console.warn('Default cloud fallback failed:', (cloudErr as any)?.message || cloudErr);
       }
     }
     if (primaryUri !== localUri) {
-      console.warn(`Primary MongoDB failed (${(err as any)?.message || err}). Falling back to local MongoDB at ${localUri}...`);
+      console.warn(`Falling back to local MongoDB at ${localUri}...`);
       try {
         const fallbackClient = new MongoClient(localUri, options);
         await fallbackClient.connect();
+        await ensureRegistryInitialized(fallbackClient);
         return fallbackClient;
       } catch (fallbackErr) {
         console.warn('Local MongoDB fallback also failed:', (fallbackErr as any)?.message || fallbackErr);
@@ -95,218 +127,241 @@ if (process.env.NODE_ENV === 'development') {
 export default clientPromise;
 
 /**
- * Extract tenant slug from a Request, header string, email, or cookie.
- * Always returns 'sahana' or 'texplus' (never a database name).
+ * Returns the singleton MongoClient instance
  */
-export function extractTenant(target?: string | Request | null): string {
-  if (!target) return 'sahana';
-
-  // 1. If a Request object was provided, extract tenant from headers, cookies, or query
-  if (typeof target === 'object' && 'headers' in target) {
-    const req = target as Request;
-
-    // Header: x-tenant-id
-    const headerTenant = req.headers.get('x-tenant-id') || req.headers.get('x-company') || req.headers.get('x-user-email');
-    if (headerTenant) {
-      return extractTenant(headerTenant);
-    }
-
-    // Cookie: cmms_tenant=...
-    const cookieHeader = req.headers.get('cookie') || '';
-    const cookieMatch = cookieHeader.match(/cmms_tenant=([^;]+)/i);
-    if (cookieMatch && cookieMatch[1]) {
-      return extractTenant(decodeURIComponent(cookieMatch[1].trim()));
-    }
-
-    // URL Query: ?tenant=... or ?company=...
-    try {
-      const url = new URL(req.url);
-      const q = url.searchParams.get('tenant') || url.searchParams.get('company') || url.searchParams.get('email');
-      if (q) return extractTenant(q);
-    } catch {}
-
-    return 'sahana';
+export async function getMongoClient(): Promise<MongoClient> {
+  try {
+    return await clientPromise;
+  } catch {
+    const fresh = await connectClient();
+    global._mongoClientPromise = Promise.resolve(fresh);
+    clientPromise = global._mongoClientPromise;
+    return fresh;
   }
-
-  // 2. If a string was provided (e.g. an email or company name)
-  const str = String(target).toLowerCase().trim();
-  if (str.includes('texplus')) return 'texplus';
-  if (str.includes('sahana') || str === 'maintanence') return 'sahana';
-
-  // Check alias table
-  if (TENANT_ALIASES[str]) return TENANT_ALIASES[str];
-
-  return 'sahana';
 }
 
-// Keep old name as alias for backward-compat with any code that still calls extractTenantDb
-export const extractTenantDb = extractTenant;
+/**
+ * Normalizes input slug to standard clean format
+ */
+export function normalizeCompanySlug(raw?: string | null): string {
+  if (!raw) return '';
+  return String(raw).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+}
 
 /**
- * Helper to get clean collection name (stripping any legacy dot prefix like 'sahana.machines' -> 'machines')
+ * Validates company and returns its dedicated database.
+ * Reuses the MongoDB connection efficiently.
+ */
+export async function getCompanyDatabase(companySlug: string): Promise<{ db: Db; company: CompanyRecord }> {
+  const client = await getMongoClient();
+  const cleanSlug = normalizeCompanySlug(companySlug);
+  
+  if (!cleanSlug) {
+    throw new TenantError('Company slug is required', 400);
+  }
+
+  const { valid, company, error } = await validateActiveCompany(client, cleanSlug);
+  if (!valid || !company) {
+    if (error && error.includes('inactive')) {
+      throw new TenantInactiveError(cleanSlug);
+    }
+    throw new TenantNotFoundError(cleanSlug);
+  }
+
+  // Reuses the MongoClient connection to access the tenant's isolated database
+  const db = client.db(company.databaseName);
+  return { db, company };
+}
+
+/**
+ * Helper to get clean collection name
  */
 export function cleanColName(name: string): string {
   return name.includes('.') ? name.split('.').pop()! : name;
 }
 
-export function colName(collection: string, _tenant?: string): string {
-  return cleanColName(collection);
-}
-
 /**
- * Proxy wrapper on MongoDB Collection that automatically enforces company scoping.
- */
-function wrapTenantCollection<T extends Document = Document>(
-  col: Collection<T>,
-  tenant: string,
-  companyName: string
-): Collection<T> {
-  const isTexplus = tenant === 'texplus';
-  const companyQuery: any = isTexplus
-    ? { company: { $regex: /^texplus/i } }
-    : {
-        $or: [
-          { company: { $regex: /^sahana/i } },
-          { company: { $regex: /^maintanence/i } },
-          { company: { $exists: false } },
-          { company: null },
-          { company: '' },
-        ],
-      };
-
-  function mergeCompany(filter?: any) {
-    if (!filter || Object.keys(filter).length === 0) {
-      return companyQuery;
-    }
-    if (filter.company !== undefined) {
-      return filter;
-    }
-    return { $and: [companyQuery, filter] };
-  }
-
-  return new Proxy(col, {
-    get(target, prop, receiver) {
-      if (prop === 'find') {
-        return (filter?: any, options?: any) => {
-          return target.find(mergeCompany(filter), options);
-        };
-      }
-      if (prop === 'findOne') {
-        return (filter?: any, options?: any) => {
-          return target.findOne(mergeCompany(filter), options);
-        };
-      }
-      if (prop === 'countDocuments') {
-        return (filter?: any, options?: any) => {
-          return target.countDocuments(mergeCompany(filter), options);
-        };
-      }
-      if (prop === 'insertOne') {
-        return (doc: any, options?: any) => {
-          if (doc && !doc.company) {
-            doc.company = companyName;
-          }
-          return target.insertOne(doc, options);
-        };
-      }
-      if (prop === 'insertMany') {
-        return (docs: any[], options?: any) => {
-          if (Array.isArray(docs)) {
-            docs.forEach((d) => {
-              if (d && !d.company) d.company = companyName;
-            });
-          }
-          return target.insertMany(docs, options);
-        };
-      }
-      if (prop === 'updateOne') {
-        return (filter: any, update: any, options?: any) => {
-          if (options?.upsert) {
-            if (update && update.$set && !update.$set.company) {
-              update.$set.company = companyName;
-            } else if (update && !update.$set) {
-              update.$setOnInsert = { ...(update.$setOnInsert || {}), company: companyName };
-            }
-          }
-          return target.updateOne(filter, update, options);
-        };
-      }
-      const val = Reflect.get(target, prop, receiver);
-      return typeof val === 'function' ? val.bind(target) : val;
-    },
-  });
-}
-
-/**
- * A Db wrapper that routes to unified tables categorized by company name.
+ * TenantDb encapsulates a dedicated company database instance
  */
 export class TenantDb {
   constructor(
     public readonly _db: Db,
-    public readonly tenant: string
+    public readonly company: CompanyRecord,
+    public readonly sessionUser?: SessionPayload | null
   ) {}
 
   get databaseName(): string {
-    return this.tenant;
+    return this.company.databaseName;
   }
 
   get rawDb(): Db {
     return this._db;
   }
 
-  get companyName(): string {
-    return this.tenant === 'texplus' ? 'Texplus' : 'Sahana Garments Ltd';
+  get tenant(): string {
+    return this.company.slug;
   }
 
-  companyFilter(baseFilter?: any): any {
-    const isTexplus = this.tenant === 'texplus';
-    const compCondition = isTexplus
-      ? { company: { $regex: /^texplus/i } }
-      : {
-          $or: [
-            { company: { $regex: /^sahana/i } },
-            { company: { $regex: /^maintanence/i } },
-            { company: { $exists: false } },
-            { company: null },
-            { company: '' },
-          ],
-        };
-
-    if (!baseFilter || Object.keys(baseFilter).length === 0) {
-      return compCondition;
-    }
-    if (baseFilter.company !== undefined) {
-      return baseFilter;
-    }
-    return { $and: [compCondition, baseFilter] };
+  get companyName(): string {
+    return this.company.name;
   }
 
   collection<T extends Document = Document>(name: string): Collection<T> {
     const clean = cleanColName(name);
-    return wrapTenantCollection(this._db.collection<T>(clean), this.tenant, this.companyName);
+    const rawCol = this._db.collection<T>(clean);
+    const companyName = this.company.name;
+    const companySlug = this.company.slug;
+
+    // Attach company metadata on new documents automatically
+    return new Proxy(rawCol, {
+      get(target, prop, receiver) {
+        if (prop === 'insertOne') {
+          return (doc: any, options?: any) => {
+            if (doc && typeof doc === 'object') {
+              if (!doc.company) doc.company = companyName;
+              if (!doc.companySlug) doc.companySlug = companySlug;
+            }
+            return target.insertOne(doc, options);
+          };
+        }
+        if (prop === 'insertMany') {
+          return (docs: any[], options?: any) => {
+            if (Array.isArray(docs)) {
+              docs.forEach((d) => {
+                if (d && typeof d === 'object') {
+                  if (!d.company) d.company = companyName;
+                  if (!d.companySlug) d.companySlug = companySlug;
+                }
+              });
+            }
+            return target.insertMany(docs, options);
+          };
+        }
+        if (prop === 'updateOne') {
+          return (filter: any, update: any, options?: any) => {
+            if (options?.upsert) {
+              if (update && update.$set) {
+                if (!update.$set.company) update.$set.company = companyName;
+                if (!update.$set.companySlug) update.$set.companySlug = companySlug;
+              } else if (update && !update.$set) {
+                update.$setOnInsert = {
+                  ...(update.$setOnInsert || {}),
+                  company: companyName,
+                  companySlug: companySlug,
+                };
+              }
+            }
+            return target.updateOne(filter, update, options);
+          };
+        }
+        const val = Reflect.get(target, prop, receiver);
+        return typeof val === 'function' ? val.bind(target) : val;
+      },
+    });
   }
 
   rawCollection<T extends Document = Document>(name: string): Collection<T> {
-    const clean = cleanColName(name);
-    return this._db.collection<T>(clean);
+    return this._db.collection<T>(cleanColName(name));
   }
 }
 
 /**
- * Returns a TenantDb scoped to the correct tenant inside the PRIMARY_DB.
- * All collections are automatically prefixed: e.g. sahana.machines, texplus.machines.
+ * Authoritatively resolves tenant company and dedicated database from an API request.
+ * Enforces strict multi-tenant isolation:
+ * - Checks cryptographic session token first.
+ * - Compares with any client-supplied company slug. Rejects cross-tenant attempts with 403 Forbidden.
+ * - If unauthenticated (e.g. login), validates slug against central registry.
+ */
+export async function resolveTenantFromRequest(req: Request): Promise<{
+  db: Db;
+  company: CompanyRecord;
+  sessionUser: SessionPayload | null;
+}> {
+  const client = await getMongoClient();
+
+  // 1. Check for cryptographically signed session token
+  const token = extractSessionToken(req);
+  const sessionUser = token ? verifySessionToken(token) : null;
+
+  // 2. Extract any client-supplied company slug from header, cookie, or URL query
+  let clientSuppliedSlug = '';
+  
+  // Headers
+  const headerSlug = req.headers.get('x-company-slug') || req.headers.get('x-company') || req.headers.get('x-tenant-id');
+  if (headerSlug) clientSuppliedSlug = normalizeCompanySlug(headerSlug);
+
+  // Cookie
+  if (!clientSuppliedSlug) {
+    const cookieHeader = req.headers.get('cookie') || '';
+    const cookieMatch = cookieHeader.match(/cmms_active_company=([^;]+)/i) || cookieHeader.match(/cmms_tenant=([^;]+)/i);
+    if (cookieMatch && cookieMatch[1]) {
+      clientSuppliedSlug = normalizeCompanySlug(decodeURIComponent(cookieMatch[1]));
+    }
+  }
+
+  // URL query
+  if (!clientSuppliedSlug) {
+    try {
+      const url = new URL(req.url);
+      const q = url.searchParams.get('company') || url.searchParams.get('tenant') || url.searchParams.get('companySlug');
+      if (q) clientSuppliedSlug = normalizeCompanySlug(q);
+    } catch {}
+  }
+
+  // 3. If user is authenticated, their session token is authoritative
+  if (sessionUser && sessionUser.companySlug) {
+    const authSlug = normalizeCompanySlug(sessionUser.companySlug);
+
+    // Cross-tenant tampering defense:
+    // If the frontend explicitly supplied a different company slug than the session token, REJECT!
+    if (clientSuppliedSlug && clientSuppliedSlug !== authSlug) {
+      throw new CrossTenantAccessError(authSlug, clientSuppliedSlug);
+    }
+
+    const { db, company } = await getCompanyDatabase(authSlug);
+    return { db, company, sessionUser };
+  }
+
+  // 4. For unauthenticated requests (e.g. login, registry checks, public lookup):
+  // Resolve client-supplied slug or fallback to default
+  const targetSlug = clientSuppliedSlug || 'esstee';
+  const { db, company } = await getCompanyDatabase(targetSlug);
+  return { db, company, sessionUser: null };
+}
+
+/**
+ * Universal getDatabase helper compatible with legacy routes and modern requests.
+ * Automatically selects the appropriate dedicated database (e.g. compliance_esstee, compliance_texplus).
  */
 export async function getDatabase(target?: string | Request): Promise<TenantDb> {
-  let client: MongoClient;
-  try {
-    client = await clientPromise;
-  } catch (err) {
-    console.warn('Cached clientPromise failed, connecting directly...');
-    client = await connectClient();
-    global._mongoClientPromise = Promise.resolve(client);
-    clientPromise = global._mongoClientPromise;
+  if (target && typeof target === 'object' && 'headers' in target) {
+    const { db, company, sessionUser } = await resolveTenantFromRequest(target as Request);
+    return new TenantDb(db, company, sessionUser);
   }
-  const tenant = extractTenant(target);
-  const db = client.db(PRIMARY_DB);
-  return new TenantDb(db, tenant);
+
+  let slug = 'esstee';
+  if (typeof target === 'string' && target.trim()) {
+    const lower = target.toLowerCase().trim();
+    if (lower.includes('texplus')) slug = 'texplus';
+    else if (lower.includes('esstee') || lower.includes('sahana')) slug = 'esstee';
+    else slug = normalizeCompanySlug(lower) || 'esstee';
+  }
+
+  const { db, company } = await getCompanyDatabase(slug);
+  return new TenantDb(db, company, null);
 }
+
+// Keep legacy alias for backward compatibility
+export const extractTenant = (target?: string | Request | null): string => {
+  if (!target) return 'esstee';
+  if (typeof target === 'object' && 'headers' in target) {
+    const h = (target as Request).headers.get('x-company-slug') || (target as Request).headers.get('x-tenant-id');
+    if (h) return normalizeCompanySlug(h);
+    return 'esstee';
+  }
+  const s = String(target).toLowerCase();
+  if (s.includes('texplus')) return 'texplus';
+  return 'esstee';
+};
+export const extractTenantDb = extractTenant;
+export const colName = (c: string) => cleanColName(c);

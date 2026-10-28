@@ -1,481 +1,230 @@
 import { NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/mongodb';
-import { UserProfile, UserRole } from '@/types/cmms';
+import { getMongoClient, getCompanyDatabase, normalizeCompanySlug, TenantNotFoundError, TenantInactiveError } from '@/lib/mongodb';
+import { validateActiveCompany } from '@/lib/registry';
+import { verifyPassword, hashPassword, createSessionToken, sanitizeUserProfile, SESSION_COOKIE_NAME, ACTIVE_COMPANY_COOKIE } from '@/lib/auth';
+import { UserRole } from '@/types/cmms';
 
-const ROLE_DEFAULT_PASSWORDS: Record<string, string> = {
-  CEO: 'ceo123',
-  ADMIN: 'admin123',
-  ASSET_MANAGER: 'admin123',
-  SENIOR_MECHANIC: 'senior123',
-  MECHANIC: 'mechanic123',
-  SENIOR_ELECTRICIAN: 'senior123',
-  ELECTRICIAN: 'electrician123',
-  STORE_PERSON: 'stores123',
-};
-
-function resolveRoleFromIdentifier(identifier: string): UserRole {
-  const lower = identifier.toLowerCase();
-  if (lower.includes('ceo')) return 'CEO';
-  if (lower.includes('admin') || lower.includes('adm')) return 'ADMIN';
-  if (lower.includes('electrician') || lower.includes('elec')) {
-    if (lower.includes('senior') || lower.includes('chief') || lower.includes('lead')) return 'SENIOR_ELECTRICIAN';
-    return 'ELECTRICIAN';
-  }
-  if (lower.includes('senior')) return 'SENIOR_MECHANIC';
-  if (lower.includes('store')) return 'STORE_PERSON';
-  return 'MECHANIC';
-}
-
-function resolveUserTitle(role: UserRole): string {
-  switch (role) {
-    case 'CEO':
-      return 'Chief Executive Officer (Managing Director)';
-    case 'ADMIN':
-    case 'ASSET_MANAGER':
-      return 'Plant Administrator & Asset Director';
-    case 'SENIOR_MECHANIC':
-      return 'Senior Sewing Master Mechanic';
-    case 'SENIOR_ELECTRICIAN':
-      return 'Senior Plant Electrician & Automation Lead';
-    case 'ELECTRICIAN':
-      return 'Industrial Plant Electrician';
-    case 'STORE_PERSON':
-      return 'Tool Crib & Store In-Charge';
-    case 'MECHANIC':
-      return 'Line Sewing Mechanic';
-    default:
-      return (role as string) || 'Garment Factory Specialist';
-  }
-}
-
-function resolveCompanyFromUser(dbUser: any, identifier: string): string {
-  if (dbUser?.company && typeof dbUser.company === 'string' && dbUser.company.trim()) {
-    return dbUser.company.trim();
-  }
-  const email = (dbUser?.email || identifier || '').toLowerCase();
-  if (email.includes('texplus')) return 'Texplus';
-  if (email.includes('sahana')) return 'Sahana Garments Ltd';
-  if (email.includes('textech')) return 'Textech Apparel';
-  if (email.includes('@')) {
-    const domain = email.split('@')[1];
-    const namePart = domain ? domain.split('.')[0] : '';
-    if (namePart && namePart !== 'gmail' && namePart !== 'yahoo' && namePart !== 'outlook') {
-      return namePart.charAt(0).toUpperCase() + namePart.slice(1) + ' Garments Ltd';
-    }
-  }
-  return 'Sahana Garments Ltd';
-}
-
-const KNOWN_STAFF: Array<UserProfile & { password?: string; aliasMatch?: string[] }> = [
-  {
-    uid: 'ADM-TEXPLUS',
-    name: 'Texplus Administrator',
-    email: 'admin@texplus.com',
-    role: 'ADMIN',
-    title: 'Plant Administrator & Asset Director',
-    phone: '+91 98401 22002',
-    department: 'Factory Operations',
-    employeeId: 'EMP-ADM-TP',
-    unit: 'All Units',
-    company: 'Texplus',
-    status: 'ACTIVE',
-    password: 'admin123',
-    aliasMatch: ['admin@texplus', 'admin@texplus.com'],
-  },
-  {
-    uid: 'ADM-01',
-    name: 'Plant Administrator',
-    email: 'admin@sahana.com',
-    role: 'ADMIN',
-    title: 'Plant Administrator & Asset Director',
-    phone: '+91 98401 22002',
-    department: 'Factory Operations',
-    employeeId: 'EMP-ADM-01',
-    unit: 'All Units',
-    status: 'ACTIVE',
-    password: 'admin123',
-    aliasMatch: ['admin', 'administrator', 'adm-01', 'emp-adm-01'],
-  },
-  {
-    uid: 'ADM-SU1',
-    name: 'Jaya Prakash',
-    email: 'admin@su1.com',
-    role: 'ADMIN',
-    title: 'Unit 1 Plant Administrator & Asset Director',
-    phone: '+91 98401 22010',
-    department: 'Factory Operations',
-    employeeId: 'EMP-497',
-    unit: 'Unit 1',
-    status: 'ACTIVE',
-    password: 'admin123u1',
-    aliasMatch: ['admin@su1', 'admin@su1.com', 'emp-497', 'jaya prakash'],
-  },
-  {
-    uid: 'ADM-SU2',
-    name: 'Vignesh',
-    email: 'admin@su2.com',
-    role: 'ADMIN',
-    title: 'Unit 2 Plant Administrator & Asset Director',
-    phone: '+91 98401 22020',
-    department: 'Factory Operations',
-    employeeId: 'EMP-238',
-    unit: 'Unit 2',
-    status: 'ACTIVE',
-    password: 'admin123u2',
-    aliasMatch: ['admin@su2', 'admin@su2.com', 'emp-238', 'vignesh'],
-  },
-  {
-    uid: 'MEC-01',
-    name: 'Sabaris',
-    email: 'mechanic@sahana.com',
-    role: 'MECHANIC',
-    title: 'Line Sewing Mechanic',
-    phone: '+91 98401 22002',
-    department: 'Maintenance Workshop',
-    employeeId: 'EMP-MEC-01',
-    unit: 'All Units',
-    status: 'ACTIVE',
-    password: 'mechanic123',
-    aliasMatch: ['mechanic', 'mech', 'sabaris', 'emp-mec-01'],
-  },
-  {
-    uid: 'MEC-U1-01',
-    name: 'Viknesh_kumar',
-    email: 'mech2@sahana.com',
-    role: 'MECHANIC',
-    title: 'Unit 1 Maintenance Mechanic',
-    phone: '+91 98401 22003',
-    department: 'Maintenance Workshop',
-    employeeId: 'EMP-MEC-U1',
-    unit: 'Unit 1',
-    status: 'ACTIVE',
-    password: 'mech@123',
-    aliasMatch: ['mech2', 'mech2@sahana.com', 'viknesh_kumar', 'emp-mec-u1'],
-  },
-  {
-    uid: 'MEC-U2-01',
-    name: 'Sabarinathan',
-    email: 'mechanic1@sahana.com',
-    role: 'MECHANIC',
-    title: 'Unit 2 Maintenance Mechanic',
-    phone: '+91 98401 22004',
-    department: 'Maintenance Workshop',
-    employeeId: 'EMP-MEC-U2',
-    unit: 'Unit 2',
-    status: 'ACTIVE',
-    password: 'mech1@123',
-    aliasMatch: ['mech1', 'mechanic1', 'mechanic1@sahana.com', 'sabarinathan', 'emp-mec-u2'],
-  },
-  {
-    uid: 'STR-01',
-    name: 'Revathi',
-    email: 'store@sahana.com',
-    role: 'STORE_PERSON',
-    title: 'Tool Crib & Store In-Charge',
-    phone: '+91 98401 22005',
-    department: 'Spare Parts Stores',
-    employeeId: '101',
-    unit: 'All Units',
-    status: 'ACTIVE',
-    password: 'store@123',
-    aliasMatch: ['store', 'stores', 'storekeeper', 'revathi', '101'],
-  },
-  {
-    uid: 'CEO-01',
-    name: 'Chief Executive Officer',
-    email: 'ceo@sahana.com',
-    role: 'CEO',
-    title: 'Chief Executive Officer (Managing Director)',
-    phone: '+91 98401 22001',
-    department: 'Executive Management',
-    employeeId: 'EMP-CEO-01',
-    unit: 'All Units',
-    status: 'ACTIVE',
-    password: 'ceo123',
-    aliasMatch: ['ceo', 'md', 'managing director', 'emp-ceo-01'],
-  },
-];
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   let identifier = '';
   let pass = '';
+  let requestedCompany = '';
 
   try {
-    let rawEmail = '';
-    let rawPass = '';
     try {
       const body = await req.json();
-      rawEmail = body?.email || '';
-      rawPass = body?.password || '';
+      identifier = body?.email || body?.identifier || '';
+      pass = body?.password || '';
+      requestedCompany = body?.companySlug || body?.company || '';
     } catch {
       try {
         const text = await req.text();
         const parsed = JSON.parse(text);
-        rawEmail = parsed?.email || '';
-        rawPass = parsed?.password || '';
-      } catch {
-        try {
-          const url = new URL(req.url);
-          rawEmail = url.searchParams.get('email') || '';
-          rawPass = url.searchParams.get('password') || '';
-        } catch {}
-      }
+        identifier = parsed?.email || parsed?.identifier || '';
+        pass = parsed?.password || '';
+        requestedCompany = parsed?.companySlug || parsed?.company || '';
+      } catch {}
     }
 
-    identifier = (rawEmail || '').trim().toLowerCase();
-    pass = (rawPass || '').trim();
+    // Also check headers and query params if not provided in body
+    if (!requestedCompany) {
+      requestedCompany = req.headers.get('x-company-slug') || req.headers.get('x-company') || '';
+    }
+    if (!requestedCompany) {
+      try {
+        const url = new URL(req.url);
+        requestedCompany = url.searchParams.get('company') || url.searchParams.get('companySlug') || '';
+      } catch {}
+    }
 
-    if (!identifier || !pass) {
+    const cleanInput = (identifier || '').trim();
+    const cleanPass = (pass || '').trim();
+
+    if (!cleanInput || !cleanPass) {
       return NextResponse.json(
-        { error: 'Email or Employee ID and password are required' },
+        { error: 'Email / Employee ID and password are required' },
         { status: 400 }
       );
     }
 
-    const cleanInput = identifier.trim();
+    // Infer company slug from email domain or alias if still empty
     const cleanLower = cleanInput.toLowerCase();
-    const localPart = cleanLower.includes('@') ? cleanLower.split('@')[0] : cleanLower;
-    const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    const targetTenant = identifier.includes('texplus') ? 'texplus' : 'sahana';
-    let dbUser: any = null;
-    let collection: any = null;
-
-    // 1. Attempt lookup from MongoDB for specific tenant
-    try {
-      const db = await getDatabase(targetTenant);
-      collection = db.collection('users');
-
-      // First Priority: Exact identifier match
-      const exactQuery = {
-        $or: [
-          { email: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-          { email: { $regex: new RegExp(`^${escapedInput}\\.com$`, 'i') } },
-          { employeeId: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-          { uid: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-          { name: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-        ],
-      };
-
-      dbUser = await collection.findOne(exactQuery);
-
-      // Second Priority: Alias / role shortcuts if exact match not found
-      if (!dbUser) {
-        const escapedLocal = localPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const aliasConditions: any[] = [
-          { email: { $regex: new RegExp(`^${escapedLocal}@sahana(\\.com)?$`, 'i') } },
-          { employeeId: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
-          { uid: { $regex: new RegExp(`^${escapedLocal}$`, 'i') } },
-        ];
-
-        if (cleanLower === 'admin' || cleanLower === 'administrator') {
-          aliasConditions.push({ email: 'admin@sahana.com' }, { role: { $regex: /^admin$/i } });
-        } else if (cleanLower === 'ceo' || cleanLower === 'md') {
-          aliasConditions.push({ role: { $regex: /^ceo$/i } }, { email: 'ceo@sahana.com' });
-        } else if (cleanLower === 'store' || cleanLower === 'stores' || cleanLower === 'storekeeper') {
-          aliasConditions.push({ role: { $regex: /^store/i } }, { email: 'store@sahana.com' }, { employeeId: '101' });
-        } else if (cleanLower === 'mechanic' || cleanLower === 'mech') {
-          aliasConditions.push({ role: { $regex: /^mechanic$/i } }, { email: 'mechanic@sahana.com' });
-        } else if (cleanLower.includes('su1')) {
-          aliasConditions.push({ email: 'admin@su1.com' }, { email: 'admin@su1' }, { employeeId: 'EMP-497' });
-        } else if (cleanLower.includes('su2')) {
-          aliasConditions.push({ email: 'admin@su2.com' }, { email: 'admin@su2' }, { employeeId: 'EMP-238' });
-        }
-
-        dbUser = await collection.findOne({ $or: aliasConditions });
-      }
-    } catch (dbErr) {
-      console.warn('MongoDB query unavailable during login, evaluating static staff credentials:', (dbErr as any)?.message || dbErr);
+    if (!requestedCompany) {
+      if (cleanLower.includes('texplus')) requestedCompany = 'texplus';
+      else if (cleanLower.includes('esstee') || cleanLower.includes('sahana')) requestedCompany = 'esstee';
+      else requestedCompany = 'esstee';
     }
 
-    // 2. Fallback to KNOWN_STAFF in-memory registry if DB query returned nothing or failed
-    if (!dbUser) {
-      const staffMatch = KNOWN_STAFF.find((s) => {
-        const emailLower = (s.email || '').toLowerCase();
-        const empLower = (s.employeeId || '').toLowerCase();
-        const uidLower = (s.uid || '').toLowerCase();
-        const nameLower = (s.name || '').toLowerCase();
-        if (
-          emailLower === cleanLower ||
-          emailLower === `${cleanLower}@sahana.com` ||
-          emailLower.startsWith(`${cleanLower}@`) ||
-          empLower === cleanLower ||
-          uidLower === cleanLower ||
-          nameLower === cleanLower
-        ) {
-          return true;
-        }
-        return s.aliasMatch?.some((a) => a.toLowerCase() === cleanLower || cleanLower.includes(a.toLowerCase()));
-      });
-      if (staffMatch) {
-        dbUser = { ...staffMatch };
-      }
-    }
+    const companySlug = normalizeCompanySlug(requestedCompany);
 
-    if (dbUser) {
-      // Normalize role to canonical uppercase enum
-      const rawRole = (dbUser.role || 'MECHANIC').toString().trim().toUpperCase();
-      let normalizedRole: UserRole = 'MECHANIC';
-      if (rawRole === 'ADMIN' || rawRole.includes('ADMIN')) {
-        normalizedRole = 'ADMIN';
-      } else if (rawRole === 'CEO') {
-        normalizedRole = 'CEO';
-      } else if (rawRole === 'STORE_PERSON' || rawRole.includes('STORE')) {
-        normalizedRole = 'STORE_PERSON';
-      } else if (rawRole === 'SENIOR_MECHANIC' || rawRole === 'SR_MECHANIC' || rawRole.includes('SENIOR_MECH')) {
-        normalizedRole = 'SENIOR_MECHANIC';
-      } else if (rawRole === 'SENIOR_ELECTRICIAN' || rawRole === 'SR_ELECTRICIAN') {
-        normalizedRole = 'SENIOR_ELECTRICIAN';
-      } else if (rawRole === 'ELECTRICIAN') {
-        normalizedRole = 'ELECTRICIAN';
-      } else if (rawRole === 'ASSET_MANAGER') {
-        normalizedRole = 'ASSET_MANAGER';
-      } else {
-        normalizedRole = 'MECHANIC';
-      }
+    // 1. Validate company against Central Client Registry
+    const client = await getMongoClient();
+    const { valid, company, error: registryError } = await validateActiveCompany(client, companySlug);
 
-      const expectedPassword =
-        dbUser.password ||
-        dbUser.defaultPassword ||
-        ROLE_DEFAULT_PASSWORDS[normalizedRole] ||
-        'admin123';
-
-      const isValidPassword =
-        pass === expectedPassword ||
-        pass === dbUser.password ||
-        pass === dbUser.defaultPassword ||
-        pass === ROLE_DEFAULT_PASSWORDS[normalizedRole] ||
-        pass.toLowerCase() === (dbUser.password || '').toLowerCase() ||
-        pass === 'admin123' ||
-        pass === 'password123' ||
-        pass === 'TT@Cmms1234';
-
-      if (!isValidPassword) {
+    if (!valid || !company) {
+      if (registryError && registryError.includes('inactive')) {
         return NextResponse.json(
-          { error: 'Invalid password. Please check your credentials.' },
-          { status: 401 }
+          { error: `Workspace "${companySlug}" is currently inactive or suspended.`, code: 'WORKSPACE_INACTIVE' },
+          { status: 403 }
         );
       }
+      return NextResponse.json(
+        { error: `Workspace "${companySlug}" not found in company registry.`, code: 'WORKSPACE_NOT_FOUND' },
+        { status: 404 }
+      );
+    }
 
-      // If user had legacy non-normalized role or missing .com in email, quietly heal it in DB
-      let normalizedEmail = dbUser.email || (cleanLower.includes('@') ? cleanLower : `${localPart}@sahana.com`);
-      if (normalizedEmail.endsWith('@sahana')) {
-        normalizedEmail = `${normalizedEmail}.com`;
+    // 2. Access ONLY the validated company's dedicated database
+    const { db } = await getCompanyDatabase(company.slug);
+    const usersCol = db.collection('users');
+
+    // Prepare search queries
+    const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const localPart = cleanLower.includes('@') ? cleanLower.split('@')[0] : cleanLower;
+    const escapedLocal = localPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Look for user in company's users collection
+    const query = {
+      $or: [
+        { email: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+        { email: { $regex: new RegExp(`^${escapedLocal}@${company.slug}(\\.com)?$`, 'i') } },
+        { email: { $regex: new RegExp(`^${escapedLocal}@.*$`, 'i') } },
+        { employeeId: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+        { uid: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+        { name: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
+      ],
+    };
+
+    let dbUser = await usersCol.findOne(query);
+
+    // Special quick alias for admin/supervisors if logging in with 'admin' or role name
+    if (!dbUser) {
+      if (cleanLower === 'admin' || cleanLower === 'administrator') {
+        dbUser = await usersCol.findOne({
+          $or: [
+            { role: 'ADMIN' },
+            { email: { $regex: /^admin@/i } },
+          ],
+        });
+      } else if (cleanLower === 'ceo' || cleanLower === 'md') {
+        dbUser = await usersCol.findOne({
+          $or: [
+            { role: 'CEO' },
+            { email: { $regex: /^ceo@/i } },
+          ],
+        });
+      } else if (cleanLower === 'mechanic' || cleanLower === 'mech') {
+        dbUser = await usersCol.findOne({
+          $or: [
+            { role: 'MECHANIC' },
+            { email: { $regex: /^mechanic@/i } },
+          ],
+        });
       }
-      if (collection && dbUser._id && (dbUser.role !== normalizedRole || dbUser.email !== normalizedEmail)) {
-        collection.updateOne(
+    }
+
+    if (!dbUser) {
+      return NextResponse.json(
+        { error: `No staff account found for "${cleanInput}" in workspace "${company.name}".` },
+        { status: 404 }
+      );
+    }
+
+    if (dbUser.status && dbUser.status === 'INACTIVE') {
+      return NextResponse.json(
+        { error: 'Your account is deactivated. Please contact your system administrator.' },
+        { status: 403 }
+      );
+    }
+
+    // 3. Verify Password using Bcrypt
+    const storedHashOrPlain = dbUser.passwordHash || dbUser.password || dbUser.defaultPassword || '';
+    const isPasswordValid = await verifyPassword(cleanPass, storedHashOrPlain);
+
+    if (!isPasswordValid) {
+      return NextResponse.json(
+        { error: 'Invalid password. Please check your credentials.' },
+        { status: 401 }
+      );
+    }
+
+    // If password was stored in plaintext, seamlessly upgrade it to a bcrypt hash
+    if (!dbUser.passwordHash || !/^\$2[aby]\$\d{2}\$/.test(dbUser.passwordHash)) {
+      try {
+        const freshHash = await hashPassword(cleanPass);
+        await usersCol.updateOne(
           { _id: dbUser._id },
-          { $set: { role: normalizedRole, email: normalizedEmail, updatedAt: new Date().toISOString() } }
-        ).catch(() => {});
+          { $set: { passwordHash: freshHash, updatedAt: new Date().toISOString() }, $unset: { password: '' } }
+        );
+      } catch (upgradeErr) {
+        console.warn('Password hash upgrade warning:', upgradeErr);
       }
-
-      const assignedCompany = resolveCompanyFromUser(dbUser, identifier);
-
-      const profile: UserProfile = {
-        uid: dbUser.uid || String(dbUser._id || 'ADM-01'),
-        name: dbUser.name || 'Factory Staff',
-        email: normalizedEmail,
-        role: normalizedRole,
-        title: dbUser.title || resolveUserTitle(normalizedRole),
-        phone: dbUser.phone || '',
-        department: dbUser.department || 'Maintenance Workshop',
-        employeeId: dbUser.employeeId || '',
-        unit: dbUser.unit || 'All Units',
-        zones: Array.isArray(dbUser.zones) ? dbUser.zones : (dbUser.zone ? [dbUser.zone] : []),
-        company: assignedCompany,
-        status: dbUser.status || 'ACTIVE',
-      };
-
-      const res = NextResponse.json({ success: true, user: profile });
-      res.cookies.set('cmms_tenant', targetTenant, {
-        path: '/',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-      });
-      return res;
     }
 
-    // Role-based fallback: if account isn't yet explicitly created in DB, allow login by role identifier
-    const resolvedRole = resolveRoleFromIdentifier(identifier);
-    const expectedRolePass = ROLE_DEFAULT_PASSWORDS[resolvedRole];
-    const isRolePassValid =
-      pass === expectedRolePass ||
-      pass === 'admin123' ||
-      pass === 'password123' ||
-      pass === 'TT@Cmms1234';
+    // 4. Create cryptographically signed session token
+    const rawRole = (dbUser.role || 'MECHANIC').toString().trim().toUpperCase() as UserRole;
+    const token = createSessionToken({
+      uid: dbUser.uid || String(dbUser._id),
+      email: (dbUser.email || '').toLowerCase().trim(),
+      role: rawRole,
+      name: dbUser.name || 'Factory Staff',
+      companySlug: company.slug,
+      companyName: company.name,
+    });
 
-    if (isRolePassValid) {
-      const isAdministrator = resolvedRole === 'ADMIN' || identifier.includes('admin');
-      const assignedCompany = resolveCompanyFromUser(null, identifier);
-      const profile: UserProfile = {
-        uid: `${resolvedRole.slice(0, 3)}-01`,
-        name: isAdministrator ? 'Plant Administrator' : `${resolvedRole.replace('_', ' ')} Staff`,
-        email: identifier.includes('@') ? identifier : `${identifier}@sahana.com`,
-        role: isAdministrator ? 'ADMIN' : resolvedRole,
-        title: resolveUserTitle(isAdministrator ? 'ADMIN' : resolvedRole),
-        phone: '+91 98401 22002',
-        department: isAdministrator ? 'Factory Operations' : 'Maintenance Workshop',
-        employeeId: `EMP-${resolvedRole.slice(0, 3)}-01`,
-        unit: 'All Units',
-        company: assignedCompany,
-        status: 'ACTIVE',
-      };
+    // 5. Sanitize user profile (no secrets returned)
+    const profile = sanitizeUserProfile(dbUser, company.slug, company.name);
 
-      // Auto-upsert into MongoDB for future persistence
-      if (collection) {
-        try {
-          await collection.updateOne(
-            { email: profile.email },
-            {
-              $set: {
-                ...profile,
-                password: pass,
-                defaultPassword: pass,
-                updatedAt: new Date().toISOString(),
-              },
-            },
-            { upsert: true }
-          );
-        } catch (e) {
-          console.warn('Could not auto-persist role profile:', e);
-        }
-      }
+    // 6. Set secure cookies
+    const res = NextResponse.json({
+      success: true,
+      user: profile,
+      company: {
+        slug: company.slug,
+        name: company.name,
+      },
+    });
 
-      const res = NextResponse.json({ success: true, user: profile });
-      res.cookies.set('cmms_tenant', targetTenant, {
-        path: '/',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 30,
-      });
-      return res;
-    }
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieAge = 60 * 60 * 24 * 30; // 30 days
 
-    return NextResponse.json(
-      { error: 'Staff account not found. Please verify your Employee ID or Email.' },
-      { status: 404 }
-    );
+    // Secure HttpOnly session cookie
+    res.cookies.set(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: cookieAge,
+    });
+
+    // Client-accessible active company cookie
+    res.cookies.set(ACTIVE_COMPANY_COOKIE, company.slug, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: cookieAge,
+    });
+
+    // Legacy compatibility cookie
+    res.cookies.set('cmms_tenant', company.slug, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: cookieAge,
+    });
+
+    return res;
   } catch (err: unknown) {
     console.error('Login error:', err);
-
-    // If something completely unexpected crashed, perform emergency authentication for known credentials
-    if (identifier && pass) {
-      const cleanLower = identifier.trim().toLowerCase();
-      const staffMatch = KNOWN_STAFF.find((s) => {
-        const emailLower = (s.email || '').toLowerCase();
-        const empLower = (s.employeeId || '').toLowerCase();
-        return (
-          emailLower === cleanLower ||
-          emailLower.startsWith(`${cleanLower}@`) ||
-          empLower === cleanLower ||
-          s.aliasMatch?.some((a) => a.toLowerCase() === cleanLower || cleanLower.includes(a.toLowerCase()))
-        );
-      });
-
-      if (staffMatch && (pass === staffMatch.password || pass === 'admin123')) {
-        return NextResponse.json({ success: true, user: staffMatch });
-      }
+    if (err instanceof TenantNotFoundError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 404 });
     }
-
+    if (err instanceof TenantInactiveError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 403 });
+    }
     return NextResponse.json(
       { error: (err as any)?.message || 'Authentication service error' },
       { status: 500 }

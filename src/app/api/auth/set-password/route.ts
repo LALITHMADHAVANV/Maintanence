@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/mongodb';
+import { hashPassword } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +24,7 @@ export async function POST(req: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
+    const hashedPassword = await hashPassword(cleanPassword);
 
     const db = await getDatabase(req);
     const collection = db.collection('users');
@@ -35,8 +39,7 @@ export async function POST(req: Request) {
 
     if (existingUser) {
       const updateDoc: any = {
-        password: cleanPassword,
-        defaultPassword: cleanPassword,
+        passwordHash: hashedPassword,
         updatedAt: new Date().toISOString(),
       };
       if (name) updateDoc.name = name;
@@ -44,12 +47,12 @@ export async function POST(req: Request) {
 
       await collection.updateOne(
         { _id: existingUser._id },
-        { $set: updateDoc }
+        { $set: updateDoc, $unset: { password: '', defaultPassword: '' } }
       );
 
       return NextResponse.json({
         success: true,
-        message: `Password for ${cleanEmail} has been updated successfully!`,
+        message: `Password for ${cleanEmail} has been updated and securely hashed!`,
         uid: existingUser.uid,
       });
     } else {
@@ -58,11 +61,12 @@ export async function POST(req: Request) {
       await collection.insertOne({
         uid,
         email: cleanEmail,
-        password: cleanPassword,
-        defaultPassword: cleanPassword,
+        passwordHash: hashedPassword,
         name: name || cleanEmail.split('@')[0],
         role: role || 'MECHANIC',
-        title: 'Factory Staff',
+        title: `${db.companyName} Specialist`,
+        company: db.companyName,
+        companySlug: db.tenant,
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -70,14 +74,14 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        message: `User created and password set for ${cleanEmail}!`,
+        message: `User created and password securely set for ${cleanEmail}!`,
         uid,
       });
     }
   } catch (err: unknown) {
-    console.error('Error updating password in MongoDB:', err);
+    console.error('Error updating password:', err);
     return NextResponse.json(
-      { error: 'Internal server error while updating password' },
+      { error: (err as any)?.message || 'Internal server error while updating password' },
       { status: 500 }
     );
   }

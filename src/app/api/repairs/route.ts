@@ -30,25 +30,50 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
-    (ticket as any).company = db.companyName;
-    await db.collection('repair_tickets').updateOne(
+
+    // 1. Authoritative Company Resolution:
+    // Look up the machine in the database to guarantee the ticket is placed into the required company
+    let machine: any = null;
+    let targetCompany = (ticket as any).company;
+
+    if (ticket.machineId) {
+      machine = await db.rawCollection('machines').findOne({ id: ticket.machineId });
+      if (machine?.company) {
+        targetCompany = machine.company;
+      }
+    }
+
+    if (!targetCompany) {
+      targetCompany = db.companyName;
+    }
+
+    const isTexplus = targetCompany.toLowerCase().includes('texplus');
+    const authoritativeCompany = isTexplus ? 'Texplus' : db.companyName;
+
+    (ticket as any).company = authoritativeCompany;
+    (ticket as any).companySlug = db.tenant;
+    if (machine?.unit && !ticket.unit) {
+      ticket.unit = machine.unit;
+    }
+
+    // Save ticket with the authoritative company
+    await db.rawCollection('repair_tickets').updateOne(
       { id: ticket.id },
-      { $set: ticket },
+      { $set: { ...ticket, company: authoritativeCompany } },
       { upsert: true }
     );
 
-    // If ticket is reported, also optionally ensure machine status is BREAKDOWN if active
+    // 2. Ensure machine status is updated to BREAKDOWN directly in machines collection
     if (ticket.machineId && ticket.status !== 'COMPLETED') {
-      await db.collection('machines').updateOne(
+      await db.rawCollection('machines').updateOne(
         { id: ticket.machineId },
-        { $set: { status: 'BREAKDOWN' } }
+        { $set: { status: 'BREAKDOWN', updatedAt: new Date().toISOString() } }
       );
     }
 
-    // Trigger Telegram notification for new breakdown tickets (routed by Unit with Attender)
+    // 3. Trigger Telegram notification for new breakdown tickets (routed by Unit with Attender)
     if (ticket.status === 'PENDING' || !ticket.resolvedAt) {
       try {
-        const machine = await db.collection('machines').findOne({ id: ticket.machineId });
         const targetUnit = ticket.unit || (machine as any)?.unit || 'UNIT - 1';
         const attender = ticket.attendedBy || (ticket as any).assignedTo || undefined;
 
@@ -72,7 +97,11 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, message: `Repair ticket ${ticket.id} saved` });
+    return NextResponse.json({
+      success: true,
+      message: `Repair ticket ${ticket.id} saved under ${authoritativeCompany}`,
+      company: authoritativeCompany,
+    });
   } catch (err: unknown) {
     console.error('Error saving repair ticket in MongoDB:', err);
     return NextResponse.json({ error: 'Failed to save repair ticket' }, { status: 500 });
@@ -87,18 +116,29 @@ export async function PATCH(req: Request) {
     }
 
     const db = await getDatabase(req);
-    await db.collection('repair_tickets').updateOne(
+
+    // Look up existing ticket in raw collection to preserve authoritative company & machineId
+    const existingTicket = await db.rawCollection('repair_tickets').findOne({
+      $or: [{ id }, { ticketId: id }],
+    });
+
+    const ticketCompany = existingTicket?.company || updates.company || db.companyName;
+    const isTexplus = (ticketCompany || '').toLowerCase().includes('texplus');
+    const authoritativeCompany = isTexplus ? 'Texplus' : db.companyName;
+
+    await db.rawCollection('repair_tickets').updateOne(
       { $or: [{ id }, { ticketId: id }] },
-      { $set: updates },
+      { $set: { ...updates, company: existingTicket?.company || authoritativeCompany, companySlug: db.tenant } },
       { upsert: true }
     );
+
+    const machineId = existingTicket?.machineId || updates.machineId;
 
     // 1. If technician starts work (status = IN_PROGRESS or startedAt is set), dispatch STARTED notification
     if (updates.status === 'IN_PROGRESS' || (updates.startedAt && updates.status !== 'COMPLETED')) {
       try {
-        const ticket = await db.collection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
-        const machineId = ticket?.machineId || updates.machineId;
-        const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
+        const ticket = existingTicket || await db.rawCollection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
+        const machine = machineId ? await db.rawCollection('machines').findOne({ id: machineId }) : null;
         const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
         const attender = updates.attendedBy || ticket?.attendedBy || 'Technician';
 
@@ -122,18 +162,17 @@ export async function PATCH(req: Request) {
       }
     }
 
-    // 2. If ticket is marked COMPLETED, dispatch resolved notification to the same unit Telegram group
+    // 2. If ticket is marked COMPLETED, restore machine to ACTIVE and dispatch resolved alert
     if (updates.status === 'COMPLETED') {
       try {
-        const ticket = await db.collection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
-        const machineId = ticket?.machineId || updates.machineId;
         if (machineId) {
-          await db.collection('machines').updateOne(
+          await db.rawCollection('machines').updateOne(
             { id: machineId },
-            { $set: { status: 'ACTIVE' } }
+            { $set: { status: 'ACTIVE', updatedAt: new Date().toISOString() } }
           );
         }
-        const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
+        const ticket = existingTicket || await db.rawCollection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
+        const machine = machineId ? await db.rawCollection('machines').findOne({ id: machineId }) : null;
         const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
         const completedBy = updates.attendedBy || ticket?.attendedBy || 'Technician';
 
@@ -193,15 +232,14 @@ export async function PATCH(req: Request) {
     // 3. If ticket is marked REJECTED, restore machine to ACTIVE and dispatch rejection alert
     if (updates.status === 'REJECTED') {
       try {
-        const ticket = await db.collection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
-        const machineId = ticket?.machineId || updates.machineId;
         if (machineId) {
-          await db.collection('machines').updateOne(
+          await db.rawCollection('machines').updateOne(
             { id: machineId },
-            { $set: { status: 'ACTIVE' } }
+            { $set: { status: 'ACTIVE', updatedAt: new Date().toISOString() } }
           );
         }
-        const machine = machineId ? await db.collection('machines').findOne({ id: machineId }) : null;
+        const ticket = existingTicket || await db.rawCollection('repair_tickets').findOne({ $or: [{ id }, { ticketId: id }] });
+        const machine = machineId ? await db.rawCollection('machines').findOne({ id: machineId }) : null;
         const targetUnit = ticket?.unit || (machine as any)?.unit || 'UNIT - 1';
         const rejectedBy = updates.attendedBy || updates.rejectedBy || ticket?.attendedBy || 'Supervisor';
         const reason = updates.actionTaken || updates.rejectionReason || ticket?.actionTaken || 'False alarm / operator cleared';
@@ -242,7 +280,11 @@ export async function DELETE(req: Request) {
     const db = await getDatabase(req);
 
     if (all) {
-      const result = await db.collection('repair_tickets').deleteMany({});
+      const isTexplus = db.tenant === 'texplus';
+      const companyFilter = isTexplus
+        ? { company: { $regex: /^texplus/i } }
+        : { company: { $not: { $regex: /^texplus/i } } };
+      const result = await db.rawCollection('repair_tickets').deleteMany(companyFilter);
       return NextResponse.json({
         success: true,
         message: `Deleted ${result.deletedCount} repair tickets`,
@@ -254,7 +296,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Ticket ID or all=true query parameter is required' }, { status: 400 });
     }
 
-    await db.collection('repair_tickets').deleteOne({ id });
+    await db.rawCollection('repair_tickets').deleteOne({ id });
     return NextResponse.json({ success: true, message: `Repair ticket ${id} deleted` });
   } catch (err: unknown) {
     console.error('Error deleting repair ticket in MongoDB:', err);

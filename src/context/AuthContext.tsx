@@ -17,30 +17,19 @@ export const ROLE_PASSWORDS: Record<UserRole, string> = {
 interface AuthContextType {
   user: UserProfile | null;
   role: UserRole | null;
+  companySlug: string;
+  companyName: string;
   isLoading: boolean;
   loginAsRole: (role: UserRole) => Promise<void>;
   loginAsUser: (profile: UserProfile) => Promise<void>;
-  loginWithEmail: (email: string, pass: string) => Promise<void>;
+  loginWithEmail: (email: string, pass: string, companySlug?: string) => Promise<void>;
   updateUserPassword: (newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function resolveUserRole(email: string): UserRole {
-  const lower = email.toLowerCase();
-  if (lower.includes('ceo')) return 'CEO';
-  if (lower.includes('admin') || lower.includes('mgr') || lower.includes('manager')) return 'ADMIN';
-  if (lower.includes('electrician') || lower.includes('elec')) {
-    if (lower.includes('senior') || lower.includes('chief') || lower.includes('lead')) return 'SENIOR_ELECTRICIAN';
-    return 'ELECTRICIAN';
-  }
-  if (lower.includes('senior')) return 'SENIOR_MECHANIC';
-  if (lower.includes('store')) return 'STORE_PERSON';
-  return 'MECHANIC';
-}
-
-function resolveUserTitle(role: UserRole): string {
+function resolveUserTitle(role: UserRole, companyName: string = 'Company'): string {
   switch (role) {
     case 'CEO':
       return 'Chief Executive Officer (Managing Director)';
@@ -58,37 +47,68 @@ function resolveUserTitle(role: UserRole): string {
     case 'MECHANIC':
       return 'Line Sewing Mechanic';
     default:
-      return (role as string) || 'Garment Factory Specialist';
+      return `${companyName} Specialist`;
   }
 }
 
-const AUTH_STORAGE_KEY = 'sahana_current_user';
+const AUTH_STORAGE_KEY = 'cmms_current_user';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Restore session from localStorage on mount and verify with server
   useEffect(() => {
-    // Restore session from localStorage on mount
-    try {
-      if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('textech_current_user');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed && parsed.role) {
-            parsed.role = parsed.role.toString().toUpperCase() as UserRole;
+    let isMounted = true;
+
+    async function initAuth() {
+      try {
+        if (typeof window !== 'undefined') {
+          // 1. Try local storage cache for instant UI rendering
+          const stored = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('sahana_current_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed && parsed.role) {
+              parsed.role = parsed.role.toString().toUpperCase() as UserRole;
+            }
+            if (isMounted) setUser(parsed);
           }
-          setUser(parsed);
+
+          // 2. Authoritatively verify with server session
+          try {
+            const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              if (meData?.authenticated && meData?.user) {
+                if (isMounted) {
+                  setUser(meData.user);
+                  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(meData.user));
+                  if (meData.company?.slug) {
+                    localStorage.setItem('cmms_active_company', meData.company.slug);
+                  }
+                }
+              }
+            }
+          } catch {}
         }
+      } catch (e) {
+        console.warn('Failed to restore auth session:', e);
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-    } catch (e) {
-      console.warn('Failed to restore auth session:', e);
-    } finally {
-      setIsLoading(false);
     }
+
+    initAuth();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const loginWithEmail = async (rawEmail: string, rawPass: string): Promise<void> => {
+  const loginWithEmail = async (
+    rawEmail: string,
+    rawPass: string,
+    targetCompanySlug?: string
+  ): Promise<void> => {
     setIsLoading(true);
     const email = (rawEmail || '').trim();
     const pass = (rawPass || '').trim();
@@ -102,34 +122,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Please enter your password');
     }
 
-    try {
-      const payload = JSON.stringify({ email, password: pass });
-      const headers = { 'Content-Type': 'application/json' };
+    // Determine target company slug
+    let effectiveSlug = targetCompanySlug;
+    if (!effectiveSlug && typeof window !== 'undefined') {
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      if (pathParts.length > 0 && pathParts[0] !== 'maintenance' && pathParts[0] !== 'dashboard' && pathParts[0] !== 'api') {
+        effectiveSlug = pathParts[0];
+      }
+    }
+    if (!effectiveSlug) {
+      effectiveSlug = email.toLowerCase().includes('texplus') ? 'texplus' : 'esstee';
+    }
 
-      // Try basePath endpoint directly first to prevent 307 redirect from stripping POST body
+    try {
+      const payload = JSON.stringify({
+        email,
+        password: pass,
+        companySlug: effectiveSlug,
+      });
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-company-slug': effectiveSlug,
+      };
+
+      // Call /api/auth/login directly (with /maintenance fallback)
       let res: Response | null = null;
       try {
+        res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers,
+          body: payload,
+          credentials: 'include',
+        });
+      } catch {
         res = await fetch('/maintenance/api/auth/login', {
           method: 'POST',
           headers,
           body: payload,
+          credentials: 'include',
         });
-      } catch (directErr) {
-        console.warn('Direct /maintenance/api/auth/login failed, attempting /api/auth/login:', directErr);
-      }
-
-      if (!res || !res.ok) {
-        // Fallback to /api/auth/login if direct /maintenance route was unavailable
-        try {
-          const fallbackRes = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers,
-            body: payload,
-          });
-          if (fallbackRes.ok || !res) {
-            res = fallbackRes;
-          }
-        } catch {}
       }
 
       if (!res) {
@@ -145,12 +177,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(data.user);
       if (typeof window !== 'undefined') {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
-        const tenant = (data.user.email || '').toLowerCase().includes('texplus') ||
-          (data.user.company || '').toLowerCase().includes('texplus')
-            ? 'texplus'
-            : 'sahana';
-        localStorage.setItem('cmms_active_tenant', tenant);
-        document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
+        localStorage.setItem('cmms_active_company', data.user.companySlug || effectiveSlug);
+        localStorage.setItem('cmms_active_tenant', data.user.companySlug || effectiveSlug);
         window.dispatchEvent(new Event('cmms_tenant_changed'));
       }
     } catch (err: unknown) {
@@ -165,30 +193,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(profile);
     if (typeof window !== 'undefined') {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(profile));
-      const tenant = (profile.email || '').toLowerCase().includes('texplus') ||
-        (profile.company || '').toLowerCase().includes('texplus')
-          ? 'texplus'
-          : 'sahana';
-      localStorage.setItem('cmms_active_tenant', tenant);
-      document.cookie = `cmms_tenant=${tenant}; path=/; max-age=2592000; SameSite=Lax`;
+      const slug = profile.companySlug || (profile.email.includes('texplus') ? 'texplus' : 'esstee');
+      localStorage.setItem('cmms_active_company', slug);
+      localStorage.setItem('cmms_active_tenant', slug);
       window.dispatchEvent(new Event('cmms_tenant_changed'));
     }
     setIsLoading(false);
   };
 
   const loginAsRole = async (targetRole: UserRole): Promise<void> => {
-    const roleTitle = resolveUserTitle(targetRole);
+    const slug = user?.companySlug || 'esstee';
+    const cName = user?.company || (slug === 'texplus' ? 'Texplus' : 'Esstee');
+    const roleTitle = resolveUserTitle(targetRole, cName);
     const roleProfile: UserProfile = {
       uid: `${targetRole.slice(0, 3)}-01`,
       name: `${targetRole.replace('_', ' ')} Staff`,
-      email: `${targetRole.toLowerCase()}@sahana.garments`,
+      email: `${targetRole.toLowerCase()}@${slug}.com`,
       role: targetRole,
       title: roleTitle,
+      company: cName,
+      companySlug: slug,
       status: 'ACTIVE',
     };
     setUser(roleProfile);
     if (typeof window !== 'undefined') {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(roleProfile));
+      localStorage.setItem('cmms_active_company', slug);
     }
     setIsLoading(false);
   };
@@ -207,19 +237,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name: user.name,
       role: user.role,
     });
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-company-slug': user.companySlug || 'esstee',
+    };
 
-    let res = await fetch('/maintenance/api/auth/set-password', {
+    let res = await fetch('/api/auth/set-password', {
       method: 'POST',
       headers,
       body: payload,
+      credentials: 'include',
     }).catch(() => null);
 
     if (!res || !res.ok) {
-      res = await fetch('/api/auth/set-password', {
+      res = await fetch('/maintenance/api/auth/set-password', {
         method: 'POST',
         headers,
         body: payload,
+        credentials: 'include',
       }).catch(() => null);
     }
 
@@ -234,13 +269,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async (): Promise<void> => {
+    const lastCompanySlug = user?.companySlug || 'esstee';
     setUser(null);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {}
+
     if (typeof window !== 'undefined') {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem('sahana_current_user');
       localStorage.removeItem('textech_current_user');
+      localStorage.removeItem('cmms_active_company');
       localStorage.removeItem('cmms_active_tenant');
-      document.cookie = 'cmms_tenant=; path=/; max-age=0; SameSite=Lax';
       window.dispatchEvent(new Event('cmms_tenant_changed'));
+      window.location.href = `/${lastCompanySlug}/login`;
     }
   };
 
@@ -249,6 +291,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         role: user?.role ? (user.role.toString().toUpperCase() as UserRole) : null,
+        companySlug: user?.companySlug || 'esstee',
+        companyName: user?.company || (user?.companySlug === 'texplus' ? 'Texplus' : 'Esstee'),
         isLoading,
         loginAsRole,
         loginAsUser,

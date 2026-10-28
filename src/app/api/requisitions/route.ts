@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/mongodb';
+import { getDatabase, TenantError } from '@/lib/mongodb';
 import { PartRequisition } from '@/types/cmms';
+import { sendTelegramAlert } from '@/lib/services/telegramService';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
@@ -9,11 +13,15 @@ export async function GET(req: Request) {
     const cleanReqs = reqs.map(({ _id, ...r }: any) => ({
       ...r,
       company: r.company || db.companyName,
+      companySlug: db.tenant,
     }));
     return NextResponse.json({ success: true, data: cleanReqs });
   } catch (err: unknown) {
+    if (err instanceof TenantError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     console.error('Error fetching requisitions from MongoDB:', err);
-    return NextResponse.json({ success: false, error: 'Database error', data: [] }, { status: 500 });
+    return NextResponse.json({ success: false, error: (err as any)?.message || 'Database error', data: [] }, { status: 500 });
   }
 }
 
@@ -26,20 +34,22 @@ export async function POST(req: Request) {
 
     const db = await getDatabase(req);
     (requisition as any).company = db.companyName;
+    (requisition as any).companySlug = db.tenant;
     await db.collection('part_requisitions').updateOne(
       { id: requisition.id },
       { $set: requisition },
       { upsert: true }
     );
 
-    return NextResponse.json({ success: true, message: `Requisition ${requisition.id} saved` });
+    return NextResponse.json({ success: true, message: `Requisition ${requisition.id} saved in ${db.companyName}` });
   } catch (err: unknown) {
+    if (err instanceof TenantError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     console.error('Error saving requisition in MongoDB:', err);
-    return NextResponse.json({ error: 'Failed to save requisition' }, { status: 500 });
+    return NextResponse.json({ error: (err as any)?.message || 'Failed to save requisition' }, { status: 500 });
   }
 }
-
-import { sendTelegramAlert } from '@/lib/services/telegramService';
 
 export async function PATCH(req: Request) {
   try {
@@ -51,14 +61,14 @@ export async function PATCH(req: Request) {
     const db = await getDatabase(req);
     await db.collection('part_requisitions').updateOne(
       { id },
-      { $set: updates }
+      { $set: { ...updates, company: db.companyName, companySlug: db.tenant } }
     );
 
     if (updates.status === 'REJECTED') {
       try {
         const reqDoc = await db.collection('part_requisitions').findOne({ id });
         const targetUnit = (reqDoc as any)?.targetUnit || (reqDoc as any)?.unit || 'UNIT - 1';
-        const tgRes = await sendTelegramAlert({
+        await sendTelegramAlert({
           category: 'REJECTED',
           ticketId: id,
           title: 'Store Indent Requisition Declined',
@@ -68,16 +78,19 @@ export async function PATCH(req: Request) {
           actionTaken: updates.reviewNotes || 'Requisition rejected by reviewer',
           assignedTo: (reqDoc as any)?.reviewedBy || 'Stores Reviewer',
           severity: 'WARNING',
+          timestamp: new Date(),
         });
-        console.log(`[API Requisitions] Rejection alert dispatched for ${id}:`, tgRes);
       } catch (tgErr) {
-        console.warn('Requisition telegram error:', tgErr);
+        console.warn('Telegram rejection alert warning:', tgErr);
       }
     }
 
-    return NextResponse.json({ success: true, message: `Requisition ${id} updated` });
+    return NextResponse.json({ success: true, message: `Requisition ${id} updated in ${db.companyName}` });
   } catch (err: unknown) {
+    if (err instanceof TenantError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     console.error('Error updating requisition in MongoDB:', err);
-    return NextResponse.json({ error: 'Failed to update requisition' }, { status: 500 });
+    return NextResponse.json({ error: (err as any)?.message || 'Failed to update requisition' }, { status: 500 });
   }
 }

@@ -36,22 +36,25 @@ const listeners = {
 };
 
 function getActiveTenant(): string {
-  if (typeof window === 'undefined') return 'sahana';
+  if (typeof window === 'undefined') return 'esstee';
   try {
-    const active = localStorage.getItem('cmms_active_tenant');
+    const active = localStorage.getItem('cmms_active_company') || localStorage.getItem('cmms_active_tenant');
     if (active) {
       const a = active.toLowerCase().trim();
-      return a === 'maintanence' ? 'sahana' : a;
+      if (a === 'maintanence' || a === 'sahana') return 'esstee';
+      return a;
     }
     const stored = localStorage.getItem('cmms_current_user') || localStorage.getItem('sahana_current_user');
     if (stored) {
       const u = JSON.parse(stored);
+      if (u?.companySlug) return u.companySlug.toLowerCase().trim();
       const email = (u?.email || '').toLowerCase();
       const company = (u?.company || '').toLowerCase();
       if (email.includes('texplus') || company.includes('texplus')) return 'texplus';
+      return 'esstee';
     }
   } catch {}
-  return 'sahana';
+  return 'esstee';
 }
 
 function getLocal<T>(key: string, defaultVal: T): T {
@@ -97,66 +100,28 @@ function notifyLocal<T>(channel: keyof typeof listeners, data: T) {
 }
 
 export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
-  const target = url.startsWith('/api') ? `/maintenance${url}` : url;
+  const target = url;
   const headers = new Headers(init?.headers);
 
   if (typeof window !== 'undefined') {
     try {
       const activeTenant = getActiveTenant();
       if (activeTenant) {
+        headers.set('x-company-slug', activeTenant);
         headers.set('x-tenant-id', activeTenant);
       }
     } catch {}
   }
 
-  return fetch(target, { ...init, headers });
+  return fetch(target, { credentials: 'include', ...init, headers });
 }
 
 /**
- * Initialize local storage state
+ * Initialize local storage state (Seed injection disabled per multi-tenant architecture)
  */
 export function initLocalSeedData(): void {
-  if (typeof window === 'undefined') return;
-  const isTexplus = getActiveTenant() === 'texplus';
-  if (isTexplus) {
-    // For Texplus (or other companies), do not auto-populate with Sahana seed machines or parts!
-    // Texplus starts clean so they can register their own plant assets.
-    return;
-  }
-
-  const cacheVersion = 'cmms_v13_varieties_hemming_rib_fl_ol_sahana';
-  if (localStorage.getItem('cmms_cache_ver') !== cacheVersion) {
-    localStorage.removeItem(STORAGE_KEYS.MACHINES);
-    localStorage.removeItem(STORAGE_KEYS.SEEDED);
-    localStorage.setItem('cmms_cache_ver', cacheVersion);
-  }
-  const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
-  if (!currentMachines || currentMachines.length < (plantAssetsSeed as any).length) {
-    setLocal(STORAGE_KEYS.MACHINES, plantAssetsSeed as unknown as Machine[]);
-  }
-
-  const sparesCacheVer = 'cmms_spares_v260_mapped_full';
-  if (localStorage.getItem('cmms_spares_cache_ver') !== sparesCacheVer) {
-    localStorage.removeItem(STORAGE_KEYS.PARTS);
-    localStorage.setItem('cmms_spares_cache_ver', sparesCacheVer);
-    setLocal(STORAGE_KEYS.PARTS, factorySparesSeed as unknown as SparePart[]);
-  }
-  const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
-  if (!currentParts || currentParts.length < (factorySparesSeed as any).length) {
-    setLocal(STORAGE_KEYS.PARTS, factorySparesSeed as unknown as SparePart[]);
-  }
-
-  // Auto-flush legacy/demo repair tickets and notifications from localStorage
-  const repairsWipeVer = 'cmms_repairs_wiped_v2';
-  if (localStorage.getItem('cmms_repairs_wipe_ver') !== repairsWipeVer) {
-    localStorage.removeItem(STORAGE_KEYS.REPAIRS);
-    localStorage.removeItem('sahana_repairs');
-    localStorage.removeItem('textech_repairs');
-    localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS);
-    localStorage.removeItem('sahana_notifications');
-    localStorage.removeItem('textech_notifications');
-    localStorage.setItem('cmms_repairs_wipe_ver', repairsWipeVer);
-  }
+  // Requirement 6: "Never create sample, seed, or demo data."
+  return;
 }
 
 /**

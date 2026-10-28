@@ -19,7 +19,8 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     if (!user) {
-      router.replace('/');
+      const activeSlug = typeof window !== 'undefined' ? localStorage.getItem('cmms_active_company') || 'esstee' : 'esstee';
+      router.replace(`/${activeSlug}/login`);
       return;
     }
 

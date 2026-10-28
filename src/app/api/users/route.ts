@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/mongodb';
+import { getDatabase, TenantError } from '@/lib/mongodb';
 import { UserProfile, UserRole } from '@/types/cmms';
+import { hashPassword } from '@/lib/auth';
 
-function getDefaultTitle(role: UserRole): string {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+function getDefaultTitle(role: UserRole, companyName: string): string {
   switch (role) {
     case 'CEO':
       return 'Chief Executive Officer (Managing Director)';
@@ -20,149 +24,78 @@ function getDefaultTitle(role: UserRole): string {
     case 'STORE_PERSON':
       return 'Tool Crib & Inventory Custodian';
     default:
-      return 'Factory Staff';
+      return `${companyName} Specialist`;
   }
 }
 
-const DEFAULT_USERS: Array<UserProfile & { password?: string }> = [
-  {
-    uid: 'ADM-01',
-    name: 'Plant Administrator',
-    email: 'admin@sahana.com',
-    role: 'ADMIN',
-    title: 'Plant Administrator & Asset Director',
-    phone: '+91 98401 22002',
-    department: 'Factory Operations',
-    employeeId: 'EMP-ADM-01',
-    unit: 'All Units',
-    status: 'ACTIVE',
-    defaultPassword: 'admin123',
-    createdAt: new Date().toISOString(),
-  },
-];
-
-// GET /api/users - Fetch all factory users from MongoDB
+// GET /api/users - Fetch all factory users for the authenticated company
 export async function GET(req: Request) {
   try {
     const db = await getDatabase(req);
     const collection = db.collection('users');
-    let users = await collection.find({}).toArray();
+    const users = await collection.find({}).toArray();
 
-    // If users collection is empty, seed only the Administrator for this tenant
-    if (users.length === 0) {
-      const defaultUser = db.tenant === 'texplus' ? {
-        uid: 'ADM-TEXPLUS',
-        name: 'Texplus Administrator',
-        email: 'admin@texplus.com',
-        role: 'ADMIN',
-        title: 'Plant Administrator & Asset Director',
-        phone: '+91 98401 22002',
-        department: 'Factory Operations',
-        employeeId: 'EMP-ADM-TP',
-        unit: 'All Units',
-        company: 'Texplus',
-        status: 'ACTIVE',
-        defaultPassword: 'admin123',
-        password: 'admin123',
-        createdAt: new Date().toISOString(),
-      } : DEFAULT_USERS[0];
-
-      await collection.insertOne(defaultUser as any);
-      users = await collection.find({}).toArray();
-    }
-
-    const fetchedUsers: UserProfile[] = users.map(({ _id, password, ...data }: any) => {
-      const rawRole = (data.role || 'MECHANIC').toString().trim();
-      const roleUpper = rawRole.toUpperCase();
-      let normalizedRole: UserRole = rawRole as UserRole;
-      if (roleUpper === 'STORE' || roleUpper === 'STORE PERSON' || roleUpper === 'STORE_KEEPER') {
-        normalizedRole = 'STORE_PERSON';
-      } else if (roleUpper === 'MECHANIC') {
-        normalizedRole = 'MECHANIC';
-      } else if (roleUpper === 'SENIOR_MECHANIC' || roleUpper === 'SR_MECHANIC' || roleUpper === 'SR MECHANIC') {
-        normalizedRole = 'SENIOR_MECHANIC';
-      } else if (roleUpper === 'ELECTRICIAN') {
-        normalizedRole = 'ELECTRICIAN';
-      } else if (roleUpper === 'SENIOR_ELECTRICIAN' || roleUpper === 'SR_ELECTRICIAN' || roleUpper === 'SR ELECTRICIAN') {
-        normalizedRole = 'SENIOR_ELECTRICIAN';
-      } else if (roleUpper === 'ADMIN') {
-        normalizedRole = 'ADMIN';
-      } else if (roleUpper === 'CEO') {
-        normalizedRole = 'CEO';
-      } else if (roleUpper === 'ASSET_MANAGER' || roleUpper === 'ASSET MANAGER') {
-        normalizedRole = 'ASSET_MANAGER';
-      }
-
+    const fetchedUsers: UserProfile[] = users.map(({ _id, password, passwordHash, ...data }: any) => {
+      const rawRole = (data.role || 'MECHANIC').toString().trim().toUpperCase() as UserRole;
       return {
         uid: data.uid || String(_id),
         name: data.name || 'Factory Staff',
         email: data.email || '',
-        role: normalizedRole,
-        title: data.title || getDefaultTitle(normalizedRole),
+        role: rawRole,
+        title: data.title || getDefaultTitle(rawRole, db.companyName),
         phone: data.phone || '',
         department: data.department || 'Floor Maintenance',
-        employeeId: data.employeeId || data.employee_id || `EMP-${(data.uid || '').slice(0, 4)}`,
+        employeeId: data.employeeId || '',
         unit: data.unit || 'All Units',
         zones: Array.isArray(data.zones) ? data.zones : (data.zone ? [data.zone] : []),
-        company: data.company || db.companyName,
+        company: db.companyName,
+        companySlug: db.tenant,
         status: data.status || 'ACTIVE',
-        defaultPassword: data.defaultPassword || data.default_password || password,
-        createdAt: data.createdAt || data.created_at,
-        updatedAt: data.updatedAt || data.updated_at,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      users: fetchedUsers,
-    });
+    return NextResponse.json({ success: true, users: fetchedUsers, count: fetchedUsers.length });
   } catch (err: unknown) {
+    if (err instanceof TenantError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     console.error('Error fetching users from MongoDB:', err);
-    return NextResponse.json({
-      success: true,
-      users: DEFAULT_USERS,
-    });
+    return NextResponse.json({ error: (err as any)?.message || 'Failed to fetch users' }, { status: 500 });
   }
 }
 
-// POST /api/users - Create new user in MongoDB
+// POST /api/users - Create a new user with bcrypt password hashing
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { name, email, role, title, password, phone, department, employeeId, unit, zones } = body;
 
-    if (!name || !email || !password || !role) {
+    if (!name || !email || !role) {
       return NextResponse.json(
-        { error: 'Name, email, password, and role are required' },
-        { status: 400 }
-      );
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: 'Password must be at least 6 characters long' },
+        { error: 'Name, email, and role are required fields' },
         { status: 400 }
       );
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = password.trim();
-    const cleanRole: UserRole = role;
-    const finalTitle = title?.trim() || getDefaultTitle(cleanRole);
-    const finalEmpId = employeeId?.trim() || `EMP-${Math.floor(100 + Math.random() * 900)}`;
-    const finalUnit = unit?.trim() || 'All Units';
-    const finalZones = Array.isArray(zones)
-      ? zones.filter((z) => typeof z === 'string' && z.trim().length > 0)
-      : [];
-    const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
+    const cleanRole = role.toString().trim().toUpperCase() as UserRole;
+    const cleanPass = password?.trim() || 'admin123';
+    const hashedPassword = await hashPassword(cleanPass);
 
     const db = await getDatabase(req);
     const collection = db.collection('users');
 
-    // Check if email already exists
+    const finalTitle = title?.trim() || getDefaultTitle(cleanRole, db.companyName);
+    const finalUnit = unit?.trim() || 'All Units';
+    const finalZones = Array.isArray(zones) ? zones : (zones ? [zones] : []);
+    const finalEmpId = employeeId?.trim() || `EMP-${cleanRole.slice(0, 3)}-${Date.now().toString().slice(-4)}`;
+    const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
+
+    // Check if email already exists in this company
     const existing = await collection.findOne({ email: cleanEmail });
     if (existing) {
-      // Update password and profile
       await collection.updateOne(
         { email: cleanEmail },
         {
@@ -170,21 +103,23 @@ export async function POST(req: Request) {
             name: name.trim(),
             role: cleanRole,
             title: finalTitle,
-            password: cleanPass,
-            defaultPassword: cleanPass,
+            passwordHash: hashedPassword,
             phone: phone?.trim() || '',
             department: department?.trim() || '',
             employeeId: finalEmpId,
             unit: finalUnit,
             zones: finalZones,
+            company: db.companyName,
+            companySlug: db.tenant,
             updatedAt: new Date().toISOString(),
           },
+          $unset: { password: '', defaultPassword: '' },
         }
       );
 
       return NextResponse.json({
         success: true,
-        message: `User ${cleanEmail} profile updated!`,
+        message: `User ${cleanEmail} profile and password updated in ${db.companyName}!`,
       });
     }
 
@@ -194,14 +129,14 @@ export async function POST(req: Request) {
       email: cleanEmail,
       role: cleanRole,
       title: finalTitle,
-      password: cleanPass,
-      defaultPassword: cleanPass,
+      passwordHash: hashedPassword,
       phone: phone?.trim() || '',
       department: department?.trim() || 'Floor Maintenance',
       employeeId: finalEmpId,
       unit: finalUnit,
       zones: finalZones,
       company: db.companyName,
+      companySlug: db.tenant,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -211,7 +146,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `User ${name} (${cleanEmail}) successfully created with role ${cleanRole} in ${finalUnit}!`,
+      message: `User ${name} (${cleanEmail}) successfully created in ${db.companyName}!`,
       user: {
         uid,
         name: newUserDoc.name,
@@ -224,76 +159,11 @@ export async function POST(req: Request) {
       },
     });
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (err instanceof TenantError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     console.error('Error creating user in MongoDB:', err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
-  }
-}
-
-// DELETE /api/users - Delete a non-admin factory member from MongoDB
-export async function DELETE(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const emailParam = searchParams.get('email')?.trim().toLowerCase();
-    const uidParam = searchParams.get('uid')?.trim();
-
-    let targetEmail = emailParam;
-    let targetUid = uidParam;
-
-    if (!targetEmail && !targetUid) {
-      try {
-        const body = await req.json();
-        targetEmail = body.email?.trim().toLowerCase();
-        targetUid = body.uid?.trim();
-      } catch {
-        // no body
-      }
-    }
-
-    if (!targetEmail && !targetUid) {
-      return NextResponse.json({ error: 'User email or UID is required to delete' }, { status: 400 });
-    }
-
-    // Verify Admin permission
-    const requesterRole = req.headers.get('x-user-role');
-    if (requesterRole && requesterRole !== 'ADMIN' && requesterRole !== 'ASSET_MANAGER') {
-      return NextResponse.json(
-        { error: 'Unauthorized: Only Administrators have access to delete personnel records' },
-        { status: 403 }
-      );
-    }
-
-    // Safeguard: Never delete the primary administrator
-    if (targetEmail === 'admin@sahana.com' || targetUid === 'ADM-01') {
-      return NextResponse.json({ error: 'Cannot delete the primary System Administrator account' }, { status: 403 });
-    }
-
-    const db = await getDatabase(req);
-    const collection = db.collection('users');
-
-    const filter: Record<string, any> = {};
-    if (targetEmail) filter.email = targetEmail;
-    if (targetUid) filter.uid = targetUid;
-
-    // Check if target user is an Admin
-    const existing = await collection.findOne(filter);
-    if (!existing) {
-      return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
-    }
-    if (existing.role === 'ADMIN' && (existing.email === 'admin@sahana.com' || existing.uid === 'ADM-01')) {
-      return NextResponse.json({ error: 'Cannot delete the primary System Administrator account' }, { status: 403 });
-    }
-
-    await collection.deleteOne({ _id: existing._id });
-
-    return NextResponse.json({
-      success: true,
-      message: `User ${existing.name || targetEmail} removed from database`,
-    });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('Error deleting user in MongoDB:', err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    return NextResponse.json({ error: (err as any)?.message || 'Failed to create user' }, { status: 500 });
   }
 }
 
@@ -307,14 +177,6 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'User UID or email is required to update' }, { status: 400 });
     }
 
-    const requesterRole = req.headers.get('x-user-role');
-    if (requesterRole && requesterRole !== 'ADMIN' && requesterRole !== 'ASSET_MANAGER') {
-      return NextResponse.json(
-        { error: 'Unauthorized: Only Administrators have permission to edit user profiles' },
-        { status: 403 }
-      );
-    }
-
     const db = await getDatabase(req);
     const collection = db.collection('users');
 
@@ -324,87 +186,94 @@ export async function PUT(req: Request) {
 
     const existing = await collection.findOne(filter);
     if (!existing) {
-      return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
-    }
-
-    const isPrimaryAdmin = existing.email === 'admin@sahana.com' || existing.uid === 'ADM-01';
-
-    // Prevent demoting primary admin
-    const updatedRole = role ? (role as UserRole) : (existing.role as UserRole);
-    if (isPrimaryAdmin && updatedRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'The primary Administrator account cannot be assigned a different role' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'User not found in company workspace' }, { status: 404 });
     }
 
     const updateDoc: Record<string, any> = {
       updatedAt: new Date().toISOString(),
+      company: db.companyName,
+      companySlug: db.tenant,
     };
 
     if (name !== undefined) updateDoc.name = name.trim();
-    if (role !== undefined) updateDoc.role = updatedRole;
+    if (role !== undefined) updateDoc.role = (role as string).toUpperCase();
     if (title !== undefined) updateDoc.title = title.trim();
     if (department !== undefined) updateDoc.department = department.trim();
     if (phone !== undefined) updateDoc.phone = phone.trim();
     if (employeeId !== undefined) updateDoc.employeeId = employeeId.trim();
     if (unit !== undefined) updateDoc.unit = unit.trim();
-    if (zones !== undefined) {
-      updateDoc.zones = Array.isArray(zones)
-        ? zones.filter((z) => typeof z === 'string' && z.trim().length > 0)
-        : [];
-    }
+    if (zones !== undefined) updateDoc.zones = Array.isArray(zones) ? zones : [zones];
     if (status !== undefined) updateDoc.status = status;
 
-    // Optional email change (prevent duplicate email)
-    if (email && email.trim().toLowerCase() !== existing.email) {
-      const cleanEmail = email.trim().toLowerCase();
-      if (isPrimaryAdmin) {
-        return NextResponse.json(
-          { error: 'Primary Administrator email cannot be changed' },
-          { status: 400 }
-        );
-      }
-      const duplicate = await collection.findOne({ email: cleanEmail, _id: { $ne: existing._id } });
-      if (duplicate) {
-        return NextResponse.json({ error: 'Email is already in use by another user' }, { status: 400 });
-      }
-      updateDoc.email = cleanEmail;
-    }
-
-    // Optional password update
     if (password && password.trim()) {
-      if (password.trim().length < 6) {
-        return NextResponse.json({ error: 'Password must be at least 6 characters long' }, { status: 400 });
-      }
-      updateDoc.password = password.trim();
-      updateDoc.defaultPassword = password.trim();
+      updateDoc.passwordHash = await hashPassword(password.trim());
     }
 
-    await collection.updateOne({ _id: existing._id }, { $set: updateDoc });
-
-    const updatedUser = await collection.findOne({ _id: existing._id });
+    await collection.updateOne(
+      { _id: existing._id },
+      { $set: updateDoc, $unset: { password: '', defaultPassword: '' } }
+    );
 
     return NextResponse.json({
       success: true,
-      message: `User ${updatedUser?.name || 'profile'} updated successfully!`,
-      user: {
-        uid: updatedUser?.uid,
-        name: updatedUser?.name,
-        email: updatedUser?.email,
-        role: updatedUser?.role,
-        title: updatedUser?.title,
-        department: updatedUser?.department,
-        phone: updatedUser?.phone,
-        employeeId: updatedUser?.employeeId,
-        unit: updatedUser?.unit,
-        status: updatedUser?.status,
-      },
+      message: `User ${updateDoc.name || existing.name} updated successfully in ${db.companyName}`,
     });
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (err instanceof TenantError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     console.error('Error updating user in MongoDB:', err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    return NextResponse.json({ error: (err as any)?.message || 'Failed to update user' }, { status: 500 });
   }
 }
 
+// DELETE /api/users - Delete a non-admin factory member
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    let targetEmail = searchParams.get('email')?.trim().toLowerCase();
+    let targetUid = searchParams.get('uid')?.trim();
+
+    if (!targetEmail && !targetUid) {
+      try {
+        const body = await req.json();
+        targetEmail = body.email?.trim().toLowerCase();
+        targetUid = body.uid?.trim();
+      } catch {}
+    }
+
+    if (!targetEmail && !targetUid) {
+      return NextResponse.json({ error: 'User email or UID is required to delete' }, { status: 400 });
+    }
+
+    const db = await getDatabase(req);
+    const collection = db.collection('users');
+
+    const filter: Record<string, any> = {};
+    if (targetEmail) filter.email = targetEmail;
+    if (targetUid) filter.uid = targetUid;
+
+    const existing = await collection.findOne(filter);
+    if (!existing) {
+      return NextResponse.json({ error: 'User not found in company database' }, { status: 404 });
+    }
+
+    // Never delete primary admin
+    if (existing.role === 'ADMIN' && (existing.email?.startsWith('admin@') || existing.uid?.includes('ADM-01'))) {
+      return NextResponse.json({ error: 'Cannot delete the primary System Administrator account' }, { status: 403 });
+    }
+
+    await collection.deleteOne({ _id: existing._id });
+
+    return NextResponse.json({
+      success: true,
+      message: `User ${existing.name || targetEmail} removed from ${db.companyName}`,
+    });
+  } catch (err: unknown) {
+    if (err instanceof TenantError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
+    console.error('Error deleting user in MongoDB:', err);
+    return NextResponse.json({ error: (err as any)?.message || 'Failed to delete user' }, { status: 500 });
+  }
+}

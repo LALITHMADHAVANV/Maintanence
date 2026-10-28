@@ -76,8 +76,9 @@ export function Navbar() {
   }, [user?.role, role]);
 
   const handleSignOut = async () => {
+    const slug = user?.companySlug || 'esstee';
     await logout();
-    window.location.href = '/maintenance';
+    window.location.href = `/${slug}/login`;
   };
 
   useEffect(() => {

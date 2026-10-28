@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  basePath: '/maintenance',
   allowedDevOrigins: [
     '192.168.31.176',
     '192.168.31.*',
@@ -9,31 +8,50 @@ const nextConfig: NextConfig = {
   ],
   async redirects() {
     return [
-      // Redirect root domain to /maintenance
+      // Legacy /maintenance paths gracefully redirected to native root paths
       {
-        source: '/',
-        destination: '/maintenance',
-        basePath: false,
+        source: '/maintenance/login',
+        destination: '/esstee/login',
         permanent: false,
       },
-      // Redirect un-prefixed /api calls to /maintenance/api
       {
-        source: '/api/:path*',
-        destination: '/maintenance/api/:path*',
-        basePath: false,
+        source: '/maintenance/:company/login',
+        destination: '/:company/login',
         permanent: false,
       },
-      // Redirect alternative spelling /maintanance to /maintenance
       {
-        source: '/maintanance',
-        destination: '/maintenance',
-        basePath: false,
+        source: '/maintenance/dashboard/:path*',
+        destination: '/dashboard/:path*',
+        permanent: false,
+      },
+      {
+        source: '/maintenance/dashboard',
+        destination: '/dashboard',
+        permanent: false,
+      },
+      {
+        source: '/maintenance/scan/:path*',
+        destination: '/scan/:path*',
+        permanent: false,
+      },
+      {
+        source: '/maintenance/api/:path*',
+        destination: '/api/:path*',
+        permanent: false,
+      },
+      {
+        source: '/maintenance',
+        destination: '/esstee/login',
         permanent: false,
       },
       {
         source: '/maintanance/:path*',
-        destination: '/maintenance/:path*',
-        basePath: false,
+        destination: '/:path*',
+        permanent: false,
+      },
+      {
+        source: '/maintanance',
+        destination: '/esstee/login',
         permanent: false,
       },
     ];
