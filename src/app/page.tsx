@@ -10,7 +10,7 @@ export default async function RootPage() {
   if (sessionToken) {
     const session = verifySessionToken(sessionToken);
     if (session && session.companySlug) {
-      redirect('/dashboard');
+      redirect(`/${session.companySlug}/dashboard`);
     }
   }
 

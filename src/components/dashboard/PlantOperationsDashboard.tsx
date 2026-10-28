@@ -671,21 +671,21 @@ export function PlantOperationsDashboard({
       {/* ================================================================= */}
       {/* 1. TOP HEADER & FILTER BAR                                       */}
       {/* ================================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-transparent py-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
             <Gauge className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">Plant Operations Dashboard</h1>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">Plant overview</h1>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live Sync
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Real-time equipment availability, ticket tracking, and shop floor performance.
+              Your equipment, maintenance, and team performance at a glance.
             </p>
           </div>
         </div>
@@ -715,7 +715,7 @@ export function PlantOperationsDashboard({
       {/* ================================================================= */}
       {/* 2. TOP METRIC CARDS ROW (6 COLUMNS)                              */}
       {/* ================================================================= */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-3.5">
+      <div className="overview-metrics grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-3.5">
         {/* Open Work Orders */}
         <div
           onClick={() => openDrillDown('open_tickets', 'Open Maintenance Tickets & Work Orders')}

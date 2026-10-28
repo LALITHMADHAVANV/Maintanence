@@ -56,6 +56,22 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      {
+        source: '/:company/dashboard',
+        destination: '/dashboard',
+      },
+      {
+        source: '/:company/dashboard/:path*',
+        destination: '/dashboard/:path*',
+      },
+      {
+        source: '/:company/scan/:path*',
+        destination: '/scan/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

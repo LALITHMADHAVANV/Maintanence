@@ -24,9 +24,26 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const userSlug = (user.companySlug || 'esstee').toLowerCase();
+    const segments = pathname.split('/').filter(Boolean);
+
+    // 1. If route is bare `/dashboard` or `/dashboard/...`, redirect to company-scoped route
+    if (segments.length > 0 && segments[0] === 'dashboard') {
+      router.replace(`/${userSlug}${pathname}`);
+      return;
+    }
+
+    // 2. If route is scoped to another company (e.g. /texplus/... while user is esstee), block and redirect
+    if (segments.length > 1 && segments[1] === 'dashboard' && segments[0] !== userSlug) {
+      showToast(`Cross-company access restricted. Redirected to your ${user.company || userSlug} workspace.`, 'warning');
+      router.replace(`/${userSlug}/dashboard`);
+      return;
+    }
+
+    // 3. Permission check
     if (!isAuthorized) {
       showToast('Access restricted: Your account credentials do not have permissions for this page.', 'warning');
-      router.replace('/dashboard');
+      router.replace(`/${userSlug}/dashboard`);
     }
   }, [user, userRole, isLoading, pathname, router, showToast, isAuthorized]);
 

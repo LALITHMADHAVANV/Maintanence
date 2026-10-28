@@ -167,8 +167,9 @@ export function Sidebar() {
 
   // Grouped Navigation Sections separated based on credentials
   const navSections: NavSection[] = useMemo(() => {
-    // 1. CEO / Executive Directorate
-    if (currentRole === 'CEO') {
+    const buildSections = (): NavSection[] => {
+      // 1. CEO / Executive Directorate
+      if (currentRole === 'CEO') {
       return [
         {
           items: [
@@ -495,7 +496,17 @@ export function Sidebar() {
         ],
       },
     ];
-  }, [currentRole, pendingTicketsCount, pendingPpmCount, activeInChargesCount, pendingCeoCount, pendingStoreCount, lowStockCount]);
+  };
+  const rawSections = buildSections();
+    const companySlug = user?.companySlug || 'esstee';
+    return rawSections.map((sec) => ({
+      ...sec,
+      items: sec.items.map((it) => ({
+        ...it,
+        href: it.href.startsWith('/dashboard') ? `/${companySlug}${it.href}` : it.href,
+      })),
+    }));
+  }, [currentRole, pendingTicketsCount, pendingPpmCount, activeInChargesCount, pendingCeoCount, pendingStoreCount, lowStockCount, user?.companySlug]);
 
   const userInitial = useMemo(() => {
     if (currentRole === 'ADMIN') return 'A';
@@ -519,20 +530,20 @@ export function Sidebar() {
   }, [currentRole]);
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-white text-slate-700 select-none border-r border-slate-200">
+    <div className="workspace-sidebar sidebar-expanded flex flex-col h-full select-none border-r">
       {/* ─── Top Brand Header (matching reference image) ─── */}
       <div className="p-4 border-b border-slate-100 flex flex-col gap-1">
         <div className="flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 group">
-            <span className="text-2xl font-black text-[#15803d] tracking-tight hover:opacity-90 transition font-sans">
-              Asset Maintenace System
+          <Link href={`/${user?.companySlug || 'esstee'}/dashboard`} className="flex items-center gap-2 group">
+            <span className="text-lg font-bold text-white tracking-tight hover:opacity-90 transition font-sans">
+              Maintenance.
             </span>
           </Link>
 
           <div className="flex items-center gap-1.5">
             {/* Top Notification Bell with unseen counter */}
             <Link
-              href="/dashboard/messages"
+              href={`/${user?.companySlug || 'esstee'}/dashboard/messages`}
               className="relative p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer flex items-center justify-center group"
               title={`${unattendedBreachCount} unseen alerts & notifications`}
             >
@@ -556,6 +567,7 @@ export function Sidebar() {
             {/* Mobile close button */}
             <button
               onClick={closeMobileNav}
+              aria-label="Close navigation"
               className="md:hidden p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
@@ -580,18 +592,20 @@ export function Sidebar() {
             )}
 
             {section.items.map((item) => {
-              // Active check: exact pathname match or sub-tab query match
+              const cleanPath = pathname.replace(/^\/[^/]+(?=\/dashboard)/, '');
+              const cleanItemHref = item.href.replace(/^\/[^/]+(?=\/dashboard)/, '');
               const isActive =
                 item.href.includes('?')
-                  ? `${pathname}?${item.href.split('?')[1]}` === item.href || pathname === item.href.split('?')[0]
-                  : pathname === item.href;
+                  ? `${pathname}?${item.href.split('?')[1]}` === item.href || cleanPath === cleanItemHref.split('?')[0]
+                  : cleanPath === cleanItemHref || pathname === item.href;
               const Icon = item.icon;
 
               return (
                 <Link
                   key={item.label + item.href}
                   href={item.href}
-                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition group cursor-pointer ${
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`sidebar-link flex items-center justify-between px-3 py-2.5 rounded-lg text-[13px] transition group cursor-pointer ${
                     isActive
                       ? 'bg-[#eef9f5] text-[#065f46] border border-[#a7f3d0] font-bold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium border border-transparent'
@@ -627,7 +641,7 @@ export function Sidebar() {
       </nav>
 
       {/* ─── Bottom User Profile Dock (matching reference image) ─── */}
-      <div className="p-3 border-t border-slate-100 bg-white">
+      <div className="sidebar-profile p-3 border-t border-slate-100">
         <div className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition">
           <div className="flex items-center gap-2.5 min-w-0">
             {/* Green circular avatar */}
@@ -672,7 +686,7 @@ export function Sidebar() {
   );
 
   const collapsedSidebarContent = (
-    <div className="flex flex-col h-full bg-white text-slate-700 select-none border-r border-slate-200 w-[72px] shrink-0 items-center py-3.5 px-2 justify-between">
+    <div className="workspace-sidebar flex flex-col h-full select-none border-r w-[72px] shrink-0 items-center py-3.5 px-2 justify-between">
       {/* ─── Top Brand & Navigation Controls ─── */}
       <div className="flex flex-col items-center gap-2.5 w-full">
         {/* Brand Text */}
@@ -791,7 +805,7 @@ export function Sidebar() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-1.5">
-            <span className="font-black text-lg tracking-tight text-[#15803d]">Noolezhai</span>
+            <span className="font-black text-lg tracking-tight text-[#15803d]">Maintenance.</span>
           </div>
         </div>
 

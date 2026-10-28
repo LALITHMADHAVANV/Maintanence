@@ -142,8 +142,9 @@ export function Navbar() {
 
   // Compute navigation tabs based on normalized currentRole
   const navTabs: NavTab[] = useMemo(() => {
-    // 1. CEO / Executive Directorate
-    if (currentRole === 'CEO') {
+    const buildTabs = (): NavTab[] => {
+      // 1. CEO / Executive Directorate
+      if (currentRole === 'CEO') {
       return [
         {
           label: 'Executive Overview',
@@ -407,6 +408,14 @@ export function Navbar() {
         badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
       },
     ];
+  };
+
+  const defaultTabs = buildTabs();
+  const companySlug = user?.companySlug || 'esstee';
+    return defaultTabs.map((tab) => ({
+      ...tab,
+      href: tab.href.startsWith('/dashboard') ? `/${companySlug}${tab.href}` : tab.href,
+    }));
   }, [
     currentRole,
     pendingTicketsCount,
@@ -416,6 +425,7 @@ export function Navbar() {
     pendingStoreCount,
     lowStockCount,
     unattendedBreachCount,
+    user?.companySlug,
   ]);
 
   if (!user) return null;
@@ -488,10 +498,12 @@ export function Navbar() {
   };
 
   const isTabActive = (tabHref: string) => {
-    if (tabHref === '/dashboard') {
-      return pathname === '/dashboard';
+    const cleanPath = pathname.replace(/^\/[^/]+(?=\/dashboard)/, '');
+    const cleanTab = tabHref.replace(/^\/[^/]+(?=\/dashboard)/, '');
+    if (cleanTab === '/dashboard') {
+      return cleanPath === '/dashboard';
     }
-    return pathname.startsWith(tabHref);
+    return cleanPath.startsWith(cleanTab);
   };
 
   return (

@@ -38,6 +38,8 @@ export function normalizeRole(role?: string | null): UserRole {
  */
 export function canAccessRoute(rawRole: string | null | undefined, pathname: string): boolean {
   const role = normalizeRole(rawRole);
+  // Strip any company prefix (e.g. /esstee/dashboard/inventory -> /dashboard/inventory)
+  const cleanPath = pathname.replace(/^\/[^/]+(?=\/dashboard)/, '');
 
   // Admin & Asset Manager have full unrestricted access to all pages
   if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
@@ -45,7 +47,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
   }
 
   // Root dashboard and notifications are accessible to all authenticated credentials
-  if (pathname === '/dashboard' || pathname === '/dashboard/messages') {
+  if (cleanPath === '/dashboard' || cleanPath === '/dashboard/messages') {
     return true;
   }
 
@@ -57,7 +59,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
       '/dashboard/asset-types',
       '/dashboard/history',
     ];
-    return ceoAllowed.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+    return ceoAllowed.some((r) => cleanPath === r || cleanPath.startsWith(`${r}/`));
   }
 
   // 2. STORE_PERSON permissions
@@ -70,7 +72,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
       '/dashboard/history',
       '/dashboard/messages',
     ];
-    return storeAllowed.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+    return storeAllowed.some((r) => cleanPath === r || cleanPath.startsWith(`${r}/`));
   }
 
   // 3. MECHANIC & ELECTRICIAN permissions (Floor Technicians)
@@ -82,7 +84,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
       '/dashboard/history',
       '/dashboard/messages',
     ];
-    return mechanicAllowed.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+    return mechanicAllowed.some((r) => cleanPath === r || cleanPath.startsWith(`${r}/`));
   }
 
   // 4. SENIOR_MECHANIC & SENIOR_ELECTRICIAN permissions (Supervisors)
@@ -94,7 +96,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
       '/dashboard/users',
       '/dashboard/active-tna',
     ];
-    return !restrictedForSupervisor.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+    return !restrictedForSupervisor.some((r) => cleanPath === r || cleanPath.startsWith(`${r}/`));
   }
 
   return false;

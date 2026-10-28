@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { RouteGuard } from '@/components/layout/RouteGuard';
 import { useNav } from '@/context/NavContext';
@@ -13,12 +14,15 @@ export default function DashboardLayout({
   const { isNavHidden } = useNav();
 
   return (
-    <div className="min-h-screen bg-slate-100/90 text-slate-800 flex flex-col md:flex-row antialiased selection:bg-indigo-500 selection:text-white">
+    <div className="workspace-shell min-h-screen bg-[#f5f7fa] text-slate-800 flex flex-col md:flex-row antialiased selection:bg-indigo-500 selection:text-white">
+      <a href="#main-content" className="skip-navigation">Skip to content</a>
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         <RouteGuard>
+          <WorkspaceHeader />
           <main
+            id="main-content"
             className={`flex-grow w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 transition-all duration-200 ${
               isNavHidden ? 'max-w-none' : 'max-w-7xl'
             }`}
