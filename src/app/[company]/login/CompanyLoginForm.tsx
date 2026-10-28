@@ -99,7 +99,11 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
         <div className="login-story-footer"><span>BUILT FOR THE FACTORY FLOOR</span><span>Asset & maintenance management</span></div>
       </section>
       <section className="login-form-side">
-        <div className="login-workspace"><Building2 size={15} /><span>{companyName} workspace</span></div>
+        <div className="login-workspace">
+          <Building2 size={15} />
+          <span>{companyName} workspace</span>
+          <a href="/login" className="text-teal-700 hover:text-teal-900 font-medium underline ml-2 text-[10px]">Switch</a>
+        </div>
         <div className="login-form-content">
           <div className="login-form-icon"><Lock size={22} /></div>
           <span className="login-section-label">LET?S GET TO WORK</span>

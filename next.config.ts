@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
       // Legacy /maintenance paths gracefully redirected to native root paths
       {
         source: '/maintenance/login',
-        destination: '/esstee/login',
+        destination: '/login',
         permanent: false,
       },
       {
@@ -41,7 +41,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/maintenance',
-        destination: '/esstee/login',
+        destination: '/login',
         permanent: false,
       },
       {
@@ -51,7 +51,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/maintanance',
-        destination: '/esstee/login',
+        destination: '/login',
         permanent: false,
       },
     ];

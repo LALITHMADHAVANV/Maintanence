@@ -14,6 +14,6 @@ export default async function RootPage() {
     }
   }
 
-  // Redirect unauthenticated root visitors to company-specific URL
-  redirect(`/${activeCompany}/login`);
+  // Redirect unauthenticated root visitors to pre-login page
+  redirect('/login');
 }
