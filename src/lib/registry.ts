@@ -1,3 +1,4 @@
+import { canonicalCompanySlug } from './companyIdentity';
 import { MongoClient, Collection, Db } from 'mongodb';
 
 export interface CompanyRecord {
@@ -17,11 +18,11 @@ const COMPANIES_COLLECTION = 'companies';
 // Default initial tenant seeds required by architecture specification
 const INITIAL_COMPANIES: Array<Omit<CompanyRecord, '_id' | 'createdAt' | 'updatedAt'>> = [
   {
-    slug: 'esstee',
-    name: 'Esstee',
+    slug: 'sahana',
+    name: 'Sahana',
     active: true,
-    databaseName: 'compliance_esstee',
-    description: 'Esstee Garments & Plant Maintenance Operations',
+    databaseName: 'compliance_sahana',
+    description: 'Sahana Garments & Plant Maintenance Operations',
   },
   {
     slug: 'texplus',
@@ -37,7 +38,7 @@ let memoryCache: { data: Map<string, CompanyRecord>; expiresAt: number } | null 
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds
 
 function normalizeSlug(raw?: string | null): string {
-  return (raw || '').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+  return canonicalCompanySlug(raw);
 }
 
 /**
@@ -53,13 +54,18 @@ export function getCompaniesCollection(client: MongoClient): Collection<CompanyR
 export async function ensureRegistryInitialized(client: MongoClient): Promise<void> {
   try {
     const col = getCompaniesCollection(client);
-    
+
     // Ensure unique index on slug
-    await col.createIndex({ slug: 1 }, { unique: true }).catch(() => {});
+    await col.createIndex({ slug: 1 }, { unique: true }).catch(() => { });
 
     // Ensure initial companies are registered
     const now = new Date().toISOString();
     for (const comp of INITIAL_COMPANIES) {
+      // Preserve the registered database: a branding change must not create an empty tenant.
+      if (comp.slug === 'sahana') {
+        const existing = await col.findOne({ slug: { $regex: /^(sahana|esstee)$/i } });
+        if (existing) continue;
+      }
       await col.updateOne(
         { slug: comp.slug },
         {
@@ -90,7 +96,14 @@ export async function getAllCompanies(client: MongoClient): Promise<CompanyRecor
 
   await ensureRegistryInitialized(client);
   const col = getCompaniesCollection(client);
-  const list = await col.find({}).toArray();
+  const records = await col.find({}).toArray();
+  const list = records.map(record => canonicalCompanySlug(record.slug) === 'sahana'
+    ? { ...record, slug: 'sahana', name: 'Sahana', description: 'Sahana Garments & Plant Maintenance Operations' }
+    : record);
+  const sahanaRecords = list.filter(record => record.slug === 'sahana');
+  if (new Set(sahanaRecords.map(record => record.databaseName)).size > 1) {
+    throw new Error('Multiple database mappings exist for Sahana. Resolve the company registry before signing in.');
+  }
 
   const cacheMap = new Map<string, CompanyRecord>();
   for (const c of list) {
@@ -98,7 +111,7 @@ export async function getAllCompanies(client: MongoClient): Promise<CompanyRecor
   }
   memoryCache = { data: cacheMap, expiresAt: now + CACHE_TTL_MS };
 
-  return list;
+  return Array.from(cacheMap.values());
 }
 
 /**
@@ -143,7 +156,7 @@ export async function validateActiveCompany(
 
 /**
  * Helper to compute the company's dedicated database name:
- * e.g. "esstee" -> "compliance_esstee", "texplus" -> "compliance_texplus"
+ * e.g. "Sahana" -> "compliance_sahana", "texplus" -> "compliance_texplus"
  */
 export function getDatabaseNameForSlug(slug: string): string {
   const clean = normalizeSlug(slug);

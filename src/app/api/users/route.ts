@@ -1,7 +1,9 @@
+import { reserveLoginIdentifiers } from '@/lib/loginIdentifiers';
 import { NextResponse } from 'next/server';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { UserProfile, UserRole } from '@/types/cmms';
 import { hashPassword } from '@/lib/auth';
+import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -69,6 +71,7 @@ export async function GET(req: Request) {
 // POST /api/users - Create a new user with bcrypt password hashing
 export async function POST(req: Request) {
   try {
+    const db = await getDatabase(req);
     const body = await req.json();
     const { name, email, role, title, password, phone, department, employeeId, unit, zones } = body;
 
@@ -81,20 +84,21 @@ export async function POST(req: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanRole = role.toString().trim().toUpperCase() as UserRole;
-    const cleanPass = password?.trim() || 'admin123';
+    if (typeof password !== 'string' || password.length < 8 || password.length > 1024) return NextResponse.json({ error: 'A password of at least 8 characters is required.' }, { status: 400 });
+    const cleanPass = password;
     const hashedPassword = await hashPassword(cleanPass);
 
-    const db = await getDatabase(req);
     const collection = db.collection('users');
 
     const finalTitle = title?.trim() || getDefaultTitle(cleanRole, db.companyName);
     const finalUnit = unit?.trim() || 'All Units';
     const finalZones = Array.isArray(zones) ? zones : (zones ? [zones] : []);
-    const finalEmpId = employeeId?.trim() || `EMP-${cleanRole.slice(0, 3)}-${Date.now().toString().slice(-4)}`;
-    const uid = `USR-${Date.now().toString(36).toUpperCase()}`;
+    const finalEmpId = employeeId?.trim() || `EMP-${randomUUID()}`;
+    const uid = `USR-${randomUUID()}`;
 
     // Check if email already exists in this company
     const existing = await collection.findOne({ email: cleanEmail });
+    await reserveLoginIdentifiers(db.tenant, existing ? existing.uid || String(existing._id) : uid, [cleanEmail, finalEmpId, ...(existing ? [] : [uid])]);
     if (existing) {
       await collection.updateOne(
         { email: cleanEmail },
@@ -170,6 +174,7 @@ export async function POST(req: Request) {
 // PUT /api/users - Update an existing user in MongoDB
 export async function PUT(req: Request) {
   try {
+    const db = await getDatabase(req);
     const body = await req.json();
     const { uid, email, name, role, title, department, phone, employeeId, unit, zones, status, password } = body;
 
@@ -177,7 +182,6 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'User UID or email is required to update' }, { status: 400 });
     }
 
-    const db = await getDatabase(req);
     const collection = db.collection('users');
 
     const filter: Record<string, any> = {};
@@ -189,6 +193,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'User not found in company workspace' }, { status: 404 });
     }
 
+    await reserveLoginIdentifiers(db.tenant, existing.uid || String(existing._id), [existing.email || '', employeeId ?? existing.employeeId ?? '']);
     const updateDoc: Record<string, any> = {
       updatedAt: new Date().toISOString(),
       company: db.companyName,
@@ -205,13 +210,14 @@ export async function PUT(req: Request) {
     if (zones !== undefined) updateDoc.zones = Array.isArray(zones) ? zones : [zones];
     if (status !== undefined) updateDoc.status = status;
 
-    if (password && password.trim()) {
-      updateDoc.passwordHash = await hashPassword(password.trim());
+    if (password !== undefined && password !== '') {
+      if (typeof password !== 'string' || password.length < 8 || password.length > 1024) return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
+      updateDoc.passwordHash = await hashPassword(password);
     }
 
     await collection.updateOne(
       { _id: existing._id },
-      { $set: updateDoc, $unset: { password: '', defaultPassword: '' } }
+      { $set: updateDoc, ...(updateDoc.passwordHash ? { $unset: { password: '', defaultPassword: '' } } : {}) }
     );
 
     return NextResponse.json({
@@ -230,6 +236,7 @@ export async function PUT(req: Request) {
 // DELETE /api/users - Delete a non-admin factory member
 export async function DELETE(req: Request) {
   try {
+    const db = await getDatabase(req);
     const { searchParams } = new URL(req.url);
     let targetEmail = searchParams.get('email')?.trim().toLowerCase();
     let targetUid = searchParams.get('uid')?.trim();
@@ -246,7 +253,6 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'User email or UID is required to delete' }, { status: 400 });
     }
 
-    const db = await getDatabase(req);
     const collection = db.collection('users');
 
     const filter: Record<string, any> = {};

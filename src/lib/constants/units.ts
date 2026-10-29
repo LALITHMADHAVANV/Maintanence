@@ -1,3 +1,5 @@
+
+import { tenantPreferences } from '@/lib/tenantPreferences';
 /**
  * Factory Units configuration and matching helpers for Sahana Garments CMMS
  */
@@ -123,7 +125,7 @@ export function getFactoryUnitsFromSettings(): DynamicFactoryUnit[] {
     ];
   }
   try {
-    const saved = localStorage.getItem('cmms_settings_factory_units');
+    const saved = tenantPreferences.getItem('cmms_settings_factory_units');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {

@@ -78,7 +78,7 @@ export interface DepartmentDefinition {
   accentBorder: string;
 }
 
-export const FACTORY_DEPARTMENTS: DepartmentDefinition[] = [
+const FACTORY_DEPARTMENTS: DepartmentDefinition[] = [
   {
     id: 'Cutting Department',
     name: 'Fabric Cutting Department',
@@ -171,7 +171,7 @@ export const FACTORY_DEPARTMENTS: DepartmentDefinition[] = [
   },
 ];
 
-export function getAssetDepartment(asset: Machine): FactoryDepartment {
+function getAssetDepartment(asset: Machine): FactoryDepartment {
   if (asset.department) return asset.department;
   const line = asset.currentLine || '';
   if (line.includes('Cutting')) return 'Cutting Department';
@@ -187,7 +187,7 @@ export function getAssetDepartment(asset: Machine): FactoryDepartment {
   return 'Sewing Floor';
 }
 
-export function getCategoryMeta(category?: AssetCategory, asset?: Machine) {
+function getCategoryMeta(category?: AssetCategory, asset?: Machine) {
   switch (category) {
     case 'FURNITURE':
     case 'TABLE':

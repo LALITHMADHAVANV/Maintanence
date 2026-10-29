@@ -275,7 +275,7 @@ async function run() {
     } catch (e) {}
   }
   if (!uri) {
-    uri = "mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0";
+    uri = '';
   }
 
   console.log('Connecting to MongoDB...');

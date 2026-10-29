@@ -71,10 +71,11 @@ export function Sidebar() {
   const [pendingStoreCount, setPendingStoreCount] = useState<number>(0);
   const [unattendedBreachCount, setUnattendedBreachCount] = useState<number>(0);
 
+  const companySlug = (user?.companySlug || 'sahana').toLowerCase();
+
   const handleSignOut = async () => {
-    const slug = user?.companySlug || 'esstee';
     await logout();
-    window.location.href = `/${slug}/login`;
+    window.location.href = `/${companySlug}/login`;
   };
 
   useEffect(() => {
@@ -153,12 +154,12 @@ export function Sidebar() {
         currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER'
           ? 'Administrator'
           : currentRole === 'CEO'
-          ? 'Executive Director'
-          : currentRole === 'STORE_PERSON'
-          ? 'Store In-Charge'
-          : currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN'
-          ? 'Supervisor'
-          : user?.name?.split(' ')[0] || 'Technician';
+            ? 'Executive Director'
+            : currentRole === 'STORE_PERSON'
+              ? 'Store In-Charge'
+              : currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN'
+                ? 'Supervisor'
+                : user?.name?.split(' ')[0] || 'Technician';
       return `Happy ${dayName}, ${displayName}!`;
     } catch {
       return 'Happy Day, Operations Team!';
@@ -170,150 +171,224 @@ export function Sidebar() {
     const buildSections = (): NavSection[] => {
       // 1. CEO / Executive Directorate
       if (currentRole === 'CEO') {
-      return [
-        {
-          items: [
-            {
-              label: 'Executive Overview',
-              href: '/dashboard',
-              icon: LayoutDashboard,
-            },
-            {
-              label: 'Executive Approvals',
-              href: '/dashboard/messages',
-              icon: Crown,
-              badge: pendingCeoCount > 0 ? pendingCeoCount : null,
-              badgeColor: 'bg-rose-500 text-white animate-pulse',
-            },
-            {
-              label: 'Notifications',
-              href: '/dashboard/messages',
-              icon: Bell,
-              badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
-              badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
-            },
-          ],
-        },
-        {
-          title: 'PLANT AUDIT',
-          items: [
-            {
-              label: 'Equipment Fleet',
-              href: '/dashboard/asset-types',
-              icon: Boxes,
-            },
-            {
-              label: 'Audit History',
-              href: '/dashboard/history',
-              icon: History,
-            },
-          ],
-        },
-      ];
-    }
+        return [
+          {
+            items: [
+              {
+                label: 'Executive Overview',
+                href: '/dashboard',
+                icon: LayoutDashboard,
+              },
+              {
+                label: 'Executive Approvals',
+                href: '/dashboard/messages',
+                icon: Crown,
+                badge: pendingCeoCount > 0 ? pendingCeoCount : null,
+                badgeColor: 'bg-rose-500 text-white animate-pulse',
+              },
+              {
+                label: 'Notifications',
+                href: '/dashboard/messages',
+                icon: Bell,
+                badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
+                badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
+              },
+            ],
+          },
+          {
+            title: 'PLANT AUDIT',
+            items: [
+              {
+                label: 'Equipment Fleet',
+                href: '/dashboard/asset-types',
+                icon: Boxes,
+              },
+              {
+                label: 'Audit History',
+                href: '/dashboard/history',
+                icon: History,
+              },
+            ],
+          },
+        ];
+      }
 
-    // 2. STORE_PERSON (Tool Crib & Central Stores)
-    if (currentRole === 'STORE_PERSON') {
-      return [
-        {
-          items: [
-            {
-              label: 'Store Overview',
-              href: '/dashboard',
-              icon: LayoutDashboard,
-            },
-            {
-              label: 'Mechanic Indents',
-              href: '/dashboard/store-inbox',
-              icon: PackageCheck,
-              badge: pendingStoreCount > 0 ? pendingStoreCount : null,
-              badgeColor: 'bg-rose-500 text-white animate-pulse',
-            },
-            {
-              label: 'Notifications',
-              href: '/dashboard/messages',
-              icon: Bell,
-              badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
-              badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
-            },
-          ],
-        },
-        {
-          title: 'INVENTORY & CRIB',
-          items: [
-            {
-              label: 'Stock Maintenance',
-              href: '/dashboard/inventory',
-              icon: Package,
-              badge: lowStockCount > 0 ? lowStockCount : null,
-              badgeColor: 'bg-amber-100 text-amber-800',
-            },
-            {
-              label: 'Equipment Ledger',
-              href: '/dashboard/asset-types',
-              icon: Boxes,
-            },
-            {
-              label: 'Dispatch History',
-              href: '/dashboard/history',
-              icon: History,
-            },
-          ],
-        },
-      ];
-    }
+      // 2. STORE_PERSON (Tool Crib & Central Stores)
+      if (currentRole === 'STORE_PERSON') {
+        return [
+          {
+            items: [
+              {
+                label: 'Store Overview',
+                href: '/dashboard',
+                icon: LayoutDashboard,
+              },
+              {
+                label: 'Mechanic Indents',
+                href: '/dashboard/store-inbox',
+                icon: PackageCheck,
+                badge: pendingStoreCount > 0 ? pendingStoreCount : null,
+                badgeColor: 'bg-rose-500 text-white animate-pulse',
+              },
+              {
+                label: 'Notifications',
+                href: '/dashboard/messages',
+                icon: Bell,
+                badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
+                badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
+              },
+            ],
+          },
+          {
+            title: 'INVENTORY & CRIB',
+            items: [
+              {
+                label: 'Stock Maintenance',
+                href: '/dashboard/inventory',
+                icon: Package,
+                badge: lowStockCount > 0 ? lowStockCount : null,
+                badgeColor: 'bg-amber-100 text-amber-800',
+              },
+              {
+                label: 'Equipment Ledger',
+                href: '/dashboard/asset-types',
+                icon: Boxes,
+              },
+              {
+                label: 'Dispatch History',
+                href: '/dashboard/history',
+                icon: History,
+              },
+            ],
+          },
+        ];
+      }
 
-    // 3. MECHANIC & ELECTRICIAN (Floor Technicians)
-    if (currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN') {
-      return [
-        {
-          items: [
-            {
-              label: 'My Floor Overview',
-              href: '/dashboard',
-              icon: LayoutDashboard,
-            },
-            {
-              label: 'Pending Tasks',
-              href: '/dashboard/calendar',
-              icon: Clock,
-              badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
-              badgeColor: 'bg-slate-100 text-slate-700',
-            },
-            {
-              label: 'Notifications',
-              href: '/dashboard/messages',
-              icon: Bell,
-              badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
-              badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
-            },
-          ],
-        },
-        {
-          title: 'FLOOR ACTIONS',
-          items: [
-            {
-              label: 'Part Indents',
-              href: '/dashboard/inventory',
-              icon: Package,
-            },
-            {
-              label: 'Task History',
-              href: '/dashboard/history',
-              icon: History,
-            },
-          ],
-        },
-      ];
-    }
+      // 3. MECHANIC & ELECTRICIAN (Floor Technicians)
+      if (currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN') {
+        return [
+          {
+            items: [
+              {
+                label: 'My Floor Overview',
+                href: '/dashboard',
+                icon: LayoutDashboard,
+              },
+              {
+                label: 'Pending Tasks',
+                href: '/dashboard/calendar',
+                icon: Clock,
+                badge: pendingTicketsCount > 0 ? pendingTicketsCount : null,
+                badgeColor: 'bg-slate-100 text-slate-700',
+              },
+              {
+                label: 'Notifications',
+                href: '/dashboard/messages',
+                icon: Bell,
+                badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
+                badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600',
+              },
+            ],
+          },
+          {
+            title: 'FLOOR ACTIONS',
+            items: [
+              {
+                label: 'Part Indents',
+                href: '/dashboard/inventory',
+                icon: Package,
+              },
+              {
+                label: 'Task History',
+                href: '/dashboard/history',
+                icon: History,
+              },
+            ],
+          },
+        ];
+      }
 
-    // 4. SENIOR_MECHANIC & SENIOR_ELECTRICIAN (Workshop & Floor Supervisors)
-    if (currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN') {
+      // 4. SENIOR_MECHANIC & SENIOR_ELECTRICIAN (Workshop & Floor Supervisors)
+      if (currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN') {
+        return [
+          {
+            items: [
+              {
+                label: 'Supervisor Desk',
+                href: '/dashboard',
+                icon: TrendingUp,
+              },
+              {
+                label: 'Team Overview',
+                href: '/dashboard/calendar',
+                icon: LayoutGrid,
+              },
+              {
+                label: 'Pending Actions',
+                href: '/dashboard/pending-actions',
+                icon: Clock,
+                badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
+                badgeColor: 'bg-emerald-500 text-white',
+              },
+              {
+                label: 'Process In-Charges',
+                href: '/dashboard/mechanic-roster',
+                icon: Activity,
+                badge: activeInChargesCount > 0 ? activeInChargesCount : null,
+                badgeColor: 'bg-slate-100 text-slate-700',
+              },
+              {
+                label: 'PPM Scheduler',
+                href: '/dashboard/ppm-scheduler',
+                icon: CalendarCheck,
+                badge: pendingPpmCount > 0 ? pendingPpmCount : null,
+                badgeColor: 'bg-amber-100 text-amber-800',
+              },
+              {
+                label: 'Notifications',
+                href: '/dashboard/messages',
+                icon: Bell,
+                badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
+                badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
+              },
+            ],
+          },
+          {
+            title: 'EQUIPMENT & SPARES',
+            items: [
+              {
+                label: 'Equipment Fleet',
+                href: '/dashboard/asset-types',
+                icon: Boxes,
+              },
+              {
+                label: 'Asset Log',
+                href: '/dashboard/asset-log',
+                icon: ClipboardList,
+              },
+              {
+                label: 'Stock Maintenance',
+                href: '/dashboard/inventory',
+                icon: Package,
+                badge: lowStockCount > 0 ? lowStockCount : null,
+                badgeColor: 'bg-amber-100 text-amber-800',
+              },
+              {
+                label: 'Work History',
+                href: '/dashboard/history',
+                icon: History,
+              },
+            ],
+          },
+        ];
+      }
+
+      // 5. ADMIN & ASSET_MANAGER (Full Plant Administration)
       return [
         {
           items: [
             {
-              label: 'Supervisor Desk',
+              label: 'Admin Dashboard',
               href: '/dashboard',
               icon: TrendingUp,
             },
@@ -353,17 +428,49 @@ export function Sidebar() {
           ],
         },
         {
-          title: 'EQUIPMENT & SPARES',
+          title: 'TNA',
           items: [
             {
-              label: 'Equipment Fleet',
+              label: 'Active TNAs',
+              href: '/dashboard/active-tna',
+              icon: Layers,
+            },
+            {
+              label: 'Completed TNAs',
+              href: '/dashboard/history',
+              icon: CheckCircle2,
+            },
+          ],
+        },
+        {
+          title: 'Asset Management',
+          items: [
+            {
+              label: 'Asset',
               href: '/dashboard/asset-types',
               icon: Boxes,
+            },
+            {
+              label: 'Asset Registration',
+              href: '/dashboard/machines',
+              icon: QrCode,
             },
             {
               label: 'Asset Log',
               href: '/dashboard/asset-log',
               icon: ClipboardList,
+            },
+          ],
+        },
+        {
+          title: 'STORE & SPARES',
+          items: [
+            {
+              label: 'Mechanic Indents',
+              href: '/dashboard/store-inbox',
+              icon: PackageCheck,
+              badge: pendingStoreCount > 0 ? pendingStoreCount : null,
+              badgeColor: 'bg-rose-500 text-white animate-pulse',
             },
             {
               label: 'Stock Maintenance',
@@ -372,133 +479,27 @@ export function Sidebar() {
               badge: lowStockCount > 0 ? lowStockCount : null,
               badgeColor: 'bg-amber-100 text-amber-800',
             },
+          ],
+        },
+        {
+          title: 'PEOPLE',
+          items: [
             {
-              label: 'Work History',
-              href: '/dashboard/history',
-              icon: History,
+              label: 'Department KPI',
+              href: '/dashboard/kpi',
+              icon: Award,
+            },
+            {
+              label: 'Settings',
+              href: '/dashboard/settings',
+              icon: Settings,
             },
           ],
         },
       ];
-    }
-
-    // 5. ADMIN & ASSET_MANAGER (Full Plant Administration)
-    return [
-      {
-        items: [
-          {
-            label: 'Admin Dashboard',
-            href: '/dashboard',
-            icon: TrendingUp,
-          },
-          {
-            label: 'Team Overview',
-            href: '/dashboard/calendar',
-            icon: LayoutGrid,
-          },
-          {
-            label: 'Pending Actions',
-            href: '/dashboard/pending-actions',
-            icon: Clock,
-            badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
-            badgeColor: 'bg-emerald-500 text-white',
-          },
-          {
-            label: 'Process In-Charges',
-            href: '/dashboard/mechanic-roster',
-            icon: Activity,
-            badge: activeInChargesCount > 0 ? activeInChargesCount : null,
-            badgeColor: 'bg-slate-100 text-slate-700',
-          },
-          {
-            label: 'PPM Scheduler',
-            href: '/dashboard/ppm-scheduler',
-            icon: CalendarCheck,
-            badge: pendingPpmCount > 0 ? pendingPpmCount : null,
-            badgeColor: 'bg-amber-100 text-amber-800',
-          },
-          {
-            label: 'Notifications',
-            href: '/dashboard/messages',
-            icon: Bell,
-            badge: unattendedBreachCount > 0 ? unattendedBreachCount : null,
-            badgeColor: unattendedBreachCount > 0 ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-100 text-slate-700',
-          },
-        ],
-      },
-      {
-        title: 'TNA',
-        items: [
-          {
-            label: 'Active TNAs',
-            href: '/dashboard/active-tna',
-            icon: Layers,
-          },
-          {
-            label: 'Completed TNAs',
-            href: '/dashboard/history',
-            icon: CheckCircle2,
-          },
-        ],
-      },
-      {
-        title: 'Asset Management',
-        items: [
-          {
-            label: 'Asset',
-            href: '/dashboard/asset-types',
-            icon: Boxes,
-          },
-          {
-            label: 'Asset Registration',
-            href: '/dashboard/machines',
-            icon: QrCode,
-          },
-          {
-            label: 'Asset Log',
-            href: '/dashboard/asset-log',
-            icon: ClipboardList,
-          },
-        ],
-      },
-      {
-        title: 'STORE & SPARES',
-        items: [
-          {
-            label: 'Mechanic Indents',
-            href: '/dashboard/store-inbox',
-            icon: PackageCheck,
-            badge: pendingStoreCount > 0 ? pendingStoreCount : null,
-            badgeColor: 'bg-rose-500 text-white animate-pulse',
-          },
-          {
-            label: 'Stock Maintenance',
-            href: '/dashboard/inventory',
-            icon: Package,
-            badge: lowStockCount > 0 ? lowStockCount : null,
-            badgeColor: 'bg-amber-100 text-amber-800',
-          },
-        ],
-      },
-      {
-        title: 'PEOPLE',
-        items: [
-          {
-            label: 'Department KPI',
-            href: '/dashboard/kpi',
-            icon: Award,
-          },
-          {
-            label: 'Settings',
-            href: '/dashboard/settings',
-            icon: Settings,
-          },
-        ],
-      },
-    ];
-  };
-  const rawSections = buildSections();
-    const companySlug = user?.companySlug || 'esstee';
+    };
+    const rawSections = buildSections();
+    const companySlug = user?.companySlug || 'sahana';
     return rawSections.map((sec) => ({
       ...sec,
       items: sec.items.map((it) => ({
@@ -534,16 +535,17 @@ export function Sidebar() {
       {/* ─── Top Brand Header (matching reference image) ─── */}
       <div className="p-4 border-b border-slate-100 flex flex-col gap-1">
         <div className="flex items-center justify-between">
-          <Link href={`/${user?.companySlug || 'esstee'}/dashboard`} className="flex items-center gap-2 group">
-            <span className="text-lg font-bold text-white tracking-tight hover:opacity-90 transition font-sans">
-              Maintenance.
+          <Link href={`/${user?.companySlug || 'sahana'}/dashboard`} className="flex items-center gap-2 group">
+            <span className="workspace-brand text-lg font-bold tracking-tight hover:opacity-90 transition font-sans">
+              <span className="workspace-brand-mark" aria-hidden="true">m.</span>
+              <span>maintain</span>
             </span>
           </Link>
 
           <div className="flex items-center gap-1.5">
             {/* Top Notification Bell with unseen counter */}
             <Link
-              href={`/${user?.companySlug || 'esstee'}/dashboard/messages`}
+              href={`/${user?.companySlug || 'sahana'}/dashboard/messages`}
               className="relative p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer flex items-center justify-center group"
               title={`${unattendedBreachCount} unseen alerts & notifications`}
             >
@@ -605,30 +607,27 @@ export function Sidebar() {
                   key={item.label + item.href}
                   href={item.href}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`sidebar-link flex items-center justify-between px-3 py-2.5 rounded-lg text-[13px] transition group cursor-pointer ${
-                    isActive
+                  className={`sidebar-link flex items-center justify-between px-3 py-2.5 rounded-lg text-[13px] transition group cursor-pointer ${isActive
                       ? 'bg-[#eef9f5] text-[#065f46] border border-[#a7f3d0] font-bold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium border border-transparent'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <Icon
-                      className={`w-4 h-4 shrink-0 transition ${
-                        isActive
+                      className={`w-4 h-4 shrink-0 transition ${isActive
                           ? 'text-[#059669]'
                           : 'text-slate-400 group-hover:text-slate-700'
-                      }`}
+                        }`}
                     />
                     <span className="truncate">{item.label}</span>
                   </div>
 
                   {item.badge !== null && item.badge !== undefined && (
                     <span
-                      className={`px-2 py-0.5 text-[10px] rounded-full font-semibold shrink-0 ${
-                        isActive
+                      className={`px-2 py-0.5 text-[10px] rounded-full font-semibold shrink-0 ${isActive
                           ? 'bg-[#10b981] text-white shadow-2xs'
                           : item.badgeColor || 'bg-slate-100 text-slate-600'
-                      }`}
+                        }`}
                     >
                       {item.badge}
                     </span>
@@ -663,7 +662,7 @@ export function Sidebar() {
             {/* Settings trigger */}
             <button
               type="button"
-              onClick={() => router.push('/dashboard/settings')}
+              onClick={() => router.push(`/${companySlug}/dashboard/settings`)}
               className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition cursor-pointer"
               title="System Settings"
             >
@@ -691,7 +690,7 @@ export function Sidebar() {
       <div className="flex flex-col items-center gap-2.5 w-full">
         {/* Brand Text */}
         <Link
-          href="/dashboard"
+          href={`/${companySlug}/dashboard`}
           className="text-center font-black text-xs text-[#15803d] tracking-tight hover:opacity-90 transition pt-1"
           title="Asset Maintenance System (Noolezhai)"
         >
@@ -700,7 +699,7 @@ export function Sidebar() {
 
         {/* Top Notification Bell with unseen counter */}
         <Link
-          href="/dashboard/messages"
+          href={`/${companySlug}/dashboard/messages`}
           className="relative p-2 text-slate-600 hover:text-rose-600 hover:bg-slate-50 rounded-xl transition cursor-pointer flex items-center justify-center group"
           title={`${unattendedBreachCount} unseen alerts & notifications`}
         >
@@ -739,11 +738,10 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition cursor-pointer ${
-                    isActive
+                  className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition cursor-pointer ${isActive
                       ? 'bg-[#e6f7f4] border border-[#a7f3d0] text-[#00897b] font-bold shadow-2xs ring-1 ring-[#00897b]/20'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/60 hover:border-slate-300'
-                  }`}
+                    }`}
                   title={item.label}
                 >
                   <Icon className="w-5 h-5" />
@@ -770,7 +768,7 @@ export function Sidebar() {
         {/* Sparkles / performance icon */}
         <button
           type="button"
-          onClick={() => router.push('/dashboard/kpi')}
+          onClick={() => router.push(`/${companySlug}/dashboard/kpi`)}
           className="p-1.5 text-slate-400 hover:text-amber-500 rounded-lg hover:bg-white transition cursor-pointer"
           title="Department KPI & Performance"
         >
@@ -838,9 +836,8 @@ export function Sidebar() {
 
       {/* Desktop Sticky Left Sidebar (Full w-64 or Collapsed w-[72px]) */}
       <aside
-        className={`hidden md:flex flex-col shrink-0 sticky top-0 h-screen bg-white z-30 transition-all duration-150 ${
-          isNavHidden ? 'w-[72px]' : 'w-64'
-        }`}
+        className={`hidden md:flex flex-col shrink-0 sticky top-0 h-screen bg-white z-30 transition-all duration-150 ${isNavHidden ? 'w-[72px]' : 'w-64'
+          }`}
       >
         {isNavHidden ? collapsedSidebarContent : sidebarContent}
       </aside>

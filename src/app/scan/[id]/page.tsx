@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Wrench,
@@ -35,6 +35,19 @@ import { formatAssetLocation } from '@/lib/formatters';
 import { matchesUnit } from '@/lib/constants/units';
 
 function MobileScanContent() {
+  const { user, isLoading } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const expected = (typeof window !== 'undefined' ? window.location.pathname : pathname).match(/^\/([^/]+)\/scan\//)?.[1]?.toLowerCase();
+  useEffect(() => {
+    if (!isLoading && !user) router.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
+  }, [isLoading, user, router]);
+  if (isLoading || !user) return <p className="p-8">Opening secure asset scanner...</p>;
+  if (expected && expected !== user.companySlug) return <div className="p-8"><h1>Different company workspace</h1><p>Sign in with an account belonging to this asset’s company.</p><Link href="/login">Go to sign in</Link></div>;
+  return <AuthenticatedScanContent />;
+}
+
+function AuthenticatedScanContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -109,32 +122,8 @@ function MobileScanContent() {
         setMachine(found);
         setTargetLine(found.currentLine);
         setTargetStation(found.stationNo);
-      } else if (searchParams && searchParams.get('brand')) {
-        // Fallback initialized directly from the machine/asset data fed into QR payload
-        const qCategory = (searchParams.get('category') as any) || 'MACHINE';
-        const fallbackMachine: Machine = {
-          id: machineId,
-          name: `${searchParams.get('brand') || ''} ${searchParams.get('model') || ''}`.trim() || machineId,
-          brand: searchParams.get('brand') || 'OEM',
-          model: searchParams.get('model') || 'Standard',
-          type: (searchParams.get('type') as any) || 'SNLS',
-          typeName: searchParams.get('typeName') || searchParams.get('type') || 'Plant Asset',
-          currentLine: (searchParams.get('area') || 'Line 01') as FloorLine,
-          stationNo: searchParams.get('station') || '',
-          motorType: 'SERVO',
-          purchaseDate: searchParams.get('date') || new Date().toISOString().slice(0, 10),
-          cost: searchParams.get('cost') ? parseFloat(searchParams.get('cost')!) : 75000,
-          status: 'ACTIVE',
-          category: qCategory,
-          unit: searchParams.get('unit') || 'Unit 01',
-          area: searchParams.get('area') || 'Sewing Floor',
-          department: (searchParams.get('area') || 'Sewing Floor') as any,
-          operator: 'Floor Operator',
-          totalDowntimeMinutes: 0,
-        };
-        setMachine(fallbackMachine);
-        setTargetLine(fallbackMachine.currentLine);
-        setTargetStation(fallbackMachine.stationNo);
+      } else {
+        setMachine(null);
       }
       setIsLoading(false);
     });

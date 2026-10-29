@@ -301,7 +301,7 @@ export interface UserProfile {
   unit?: string; // Plant Unit: "All Units" | "UNIT - 1" | "UNIT-2"
   zones?: string[]; // Assigned Factory Zones e.g. ["NETHAJI", "PEACOCK 1"]
   company?: string; // Assigned Company Name from login / user account
-  companySlug?: string; // Tenant slug (e.g. 'esstee', 'texplus')
+  companySlug?: string; // Tenant slug (e.g. 'Sahana', 'texplus')
   status?: 'ACTIVE' | 'INACTIVE';
   defaultPassword?: string;
   createdAt?: string;

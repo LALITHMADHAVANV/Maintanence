@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/mongodb';
+import { getDatabase, TenantError } from '@/lib/mongodb';
 import { RepairTicket } from '@/types/cmms';
 import { sendTelegramAlert } from '@/lib/services/telegramService';
 
@@ -17,6 +17,7 @@ export async function GET(req: Request) {
     }));
     return NextResponse.json({ success: true, data: cleanRepairs });
   } catch (err: unknown) {
+    if (err instanceof TenantError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
     console.error('Error fetching repairs from MongoDB:', err);
     return NextResponse.json({ success: false, error: 'Database error', data: [] }, { status: 500 });
   }
@@ -34,21 +35,12 @@ export async function POST(req: Request) {
     // 1. Authoritative Company Resolution:
     // Look up the machine in the database to guarantee the ticket is placed into the required company
     let machine: any = null;
-    let targetCompany = (ticket as any).company;
+    const authoritativeCompany = db.companyName;
 
     if (ticket.machineId) {
       machine = await db.rawCollection('machines').findOne({ id: ticket.machineId });
-      if (machine?.company) {
-        targetCompany = machine.company;
-      }
+      if (!machine) return NextResponse.json({ error: 'Asset not found in your company.' }, { status: 404 });
     }
-
-    if (!targetCompany) {
-      targetCompany = db.companyName;
-    }
-
-    const isTexplus = targetCompany.toLowerCase().includes('texplus');
-    const authoritativeCompany = isTexplus ? 'Texplus' : db.companyName;
 
     (ticket as any).company = authoritativeCompany;
     (ticket as any).companySlug = db.tenant;
@@ -78,6 +70,7 @@ export async function POST(req: Request) {
         const attender = ticket.attendedBy || (ticket as any).assignedTo || undefined;
 
         const tgRes = await sendTelegramAlert({
+          companySlug: db.tenant,
           category: 'BREAKDOWN',
           ticketId: ticket.id,
           title: ticket.faultCategory || 'Machine Breakdown',
@@ -103,6 +96,7 @@ export async function POST(req: Request) {
       company: authoritativeCompany,
     });
   } catch (err: unknown) {
+    if (err instanceof TenantError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
     console.error('Error saving repair ticket in MongoDB:', err);
     return NextResponse.json({ error: 'Failed to save repair ticket' }, { status: 500 });
   }
@@ -143,6 +137,7 @@ export async function PATCH(req: Request) {
         const attender = updates.attendedBy || ticket?.attendedBy || 'Technician';
 
         const tgRes = await sendTelegramAlert({
+          companySlug: db.tenant,
           category: 'STARTED',
           ticketId: id,
           title: 'Technician Started Work',
@@ -207,6 +202,7 @@ export async function PATCH(req: Request) {
         }
 
         const tgRes = await sendTelegramAlert({
+          companySlug: db.tenant,
           category: 'RESOLVED',
           ticketId: id,
           title: 'Breakdown Resolved & Restored',
@@ -245,6 +241,7 @@ export async function PATCH(req: Request) {
         const reason = updates.actionTaken || updates.rejectionReason || ticket?.actionTaken || 'False alarm / operator cleared';
 
         const tgRes = await sendTelegramAlert({
+          companySlug: db.tenant,
           category: 'REJECTED',
           ticketId: id,
           title: 'Issue Rejected / Cancelled',
@@ -266,6 +263,7 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ success: true, message: `Repair ticket ${id} updated` });
   } catch (err: unknown) {
+    if (err instanceof TenantError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
     console.error('Error updating repair ticket in MongoDB:', err);
     return NextResponse.json({ error: 'Failed to update repair ticket' }, { status: 500 });
   }
@@ -299,6 +297,7 @@ export async function DELETE(req: Request) {
     await db.rawCollection('repair_tickets').deleteOne({ id });
     return NextResponse.json({ success: true, message: `Repair ticket ${id} deleted` });
   } catch (err: unknown) {
+    if (err instanceof TenantError) return NextResponse.json({ error: err.message }, { status: err.statusCode });
     console.error('Error deleting repair ticket in MongoDB:', err);
     return NextResponse.json({ error: 'Failed to delete repair ticket' }, { status: 500 });
   }

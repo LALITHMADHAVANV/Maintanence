@@ -1,7 +1,8 @@
 @import "tailwindcss";
+@import "./plant-command.css";
 
 :root {
-  --background: #f1f5f9;
+  --background: #e5e9f0; /* Crisp light grey */
   --foreground: #0f172a;
 }
 
@@ -10,10 +11,13 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  background-color: #e5e9f0;
 }
 
-body {
-  background: var(--background);
+body,
+body.plant-command {
+  background: var(--background, #e5e9f0) !important;
+  background-color: var(--background, #e5e9f0) !important;
   color: var(--foreground);
   font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   min-height: 100vh;
@@ -217,7 +221,20 @@ body {
   --color-indigo-700: #096655;
   --color-indigo-800: #115246;
 }
-:root { --background: #f5f7fa; }
+:root { --background: #e5e9f0; }
+.workspace-shell,
+.plant-command .workspace-shell {
+  background-color: var(--background, #e5e9f0) !important;
+}
+
+/* Ensure widgets and cards are clearly elevated against light grey background */
+.workspace-shell main .bg-white,
+.workspace-shell .bg-white,
+.workspace-shell main [class*="bg-white/"] {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05) !important;
+}
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 3px solid #2caa95; outline-offset: 3px; }
 .workspace-shell main { padding-top: 28px; }
@@ -305,7 +322,15 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .sidebar-profile { background: #19343e; }
 .sidebar-profile .text-slate-800 { color: #e2edef; }
 .sidebar-profile > div:hover { background: #23434d; }
-.overview-metrics > div { border-radius: 12px; border-color: #e2e8ec; box-shadow: 0 2px 3px #1b394003; padding: 20px 16px; position: relative; overflow: hidden; }
+.overview-metrics > div {
+  border-radius: 16px !important;
+  border: 1px solid #cbd5e1 !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05) !important;
+  padding: 18px 16px !important;
+  position: relative;
+  overflow: hidden;
+}
 .overview-metrics > div::before { content: ''; position: absolute; left: 0; top: 20px; bottom: 20px; width: 3px; background: #a0b5c0; border-radius: 0 3px 3px 0; }
 .overview-metrics > div:nth-child(2)::before { background: #34a78c; }
 .overview-metrics > div:nth-child(3)::before { background: #e7ad4a; }

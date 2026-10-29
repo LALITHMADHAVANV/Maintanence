@@ -139,6 +139,7 @@ export function PlantOperationsDashboard({
   const router = useRouter();
   const { user, role } = useAuth();
   const { showToast } = useToast();
+  const companySlug = (user?.companySlug || 'sahana').toLowerCase();
   const [isLogBreakdownModalOpen, setIsLogBreakdownModalOpen] = useState(false);
 
   const handleQuickCompletePPM = async (ppmId: string, machineId: string) => {
@@ -678,7 +679,7 @@ export function PlantOperationsDashboard({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">Plant overview</h1>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">Keep the floor flowing.</h1>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live Sync
@@ -835,7 +836,7 @@ export function PlantOperationsDashboard({
         <LineAvailabilityWidget
           machines={machines}
           onSelectZoneLine={(zone, line) => {
-            router.push(`/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
+            router.push(`/${companySlug}/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
           }}
         />
 
@@ -1097,7 +1098,7 @@ export function PlantOperationsDashboard({
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-slate-500 font-semibold mr-0.5 hidden sm:inline">Type Details:</span>
               <button
-                onClick={() => router.push('/dashboard/asset-types?unit=UNIT%20-%201')}
+                onClick={() => router.push(`/${companySlug}/dashboard/asset-types?unit=UNIT%20-%201`)}
                 className="px-2 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
                 title="Redirect to Unit 1 Machine Types & Fleet Details"
               >
@@ -1105,7 +1106,7 @@ export function PlantOperationsDashboard({
                 <ArrowRight className="w-3 h-3" />
               </button>
               <button
-                onClick={() => router.push('/dashboard/asset-types?unit=UNIT-2')}
+                onClick={() => router.push(`/${companySlug}/dashboard/asset-types?unit=UNIT-2`)}
                 className="px-2 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
                 title="Redirect to Unit 2 Machine Types & Fleet Details"
               >
@@ -1113,7 +1114,7 @@ export function PlantOperationsDashboard({
                 <ArrowRight className="w-3 h-3" />
               </button>
               <button
-                onClick={() => router.push('/dashboard/asset-types')}
+                onClick={() => router.push(`/${companySlug}/dashboard/asset-types`)}
                 className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer ml-1"
                 title="View All Asset Master Registry"
               >

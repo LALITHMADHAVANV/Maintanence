@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { UserProfile, UserRole } from '@/types/cmms';
 
 export const ROLE_PASSWORDS: Record<UserRole, string> = {
@@ -22,7 +22,7 @@ interface AuthContextType {
   isLoading: boolean;
   loginAsRole: (role: UserRole) => Promise<void>;
   loginAsUser: (profile: UserProfile) => Promise<void>;
-  loginWithEmail: (email: string, pass: string, companySlug?: string) => Promise<void>;
+  loginWithEmail: (email: string, pass: string, companySlug?: string) => Promise<UserProfile>;
   updateUserPassword: (newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -57,44 +57,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restore session from localStorage on mount and verify with server
+  const authRevision = useRef(0);
+
+  // Only the server can restore an authenticated session.
   useEffect(() => {
     let isMounted = true;
 
+    const revision = authRevision.current;
+    const isCurrent = () => isMounted && revision === authRevision.current;
     async function initAuth() {
       try {
-        if (typeof window !== 'undefined') {
-          // 1. Try local storage cache for instant UI rendering
-          const stored = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('sahana_current_user');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed && parsed.role) {
-              parsed.role = parsed.role.toString().toUpperCase() as UserRole;
-            }
-            if (isMounted) setUser(parsed);
-          }
-
-          // 2. Authoritatively verify with server session
+        const response = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+        const data = response.ok ? await response.json() : null;
+        if (!isCurrent()) return;
+        if (data?.authenticated && data?.user?.companySlug) {
+          setUser(data.user);
           try {
-            const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-            if (meRes.ok) {
-              const meData = await meRes.json();
-              if (meData?.authenticated && meData?.user) {
-                if (isMounted) {
-                  setUser(meData.user);
-                  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(meData.user));
-                  if (meData.company?.slug) {
-                    localStorage.setItem('cmms_active_company', meData.company.slug);
-                  }
-                }
-              }
-            }
-          } catch {}
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
+            localStorage.setItem('cmms_active_company', data.user.companySlug);
+            localStorage.setItem('cmms_active_tenant', data.user.companySlug);
+          } catch { /* Storage may be disabled; the session cookie is authoritative. */ }
+        } else {
+          setUser(null);
+          try {
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+            localStorage.removeItem('sahana_current_user');
+          } catch { /* Storage may be disabled. */ }
         }
-      } catch (e) {
-        console.warn('Failed to restore auth session:', e);
+      } catch {
+        if (isCurrent()) setUser(null);
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isCurrent()) setIsLoading(false);
       }
     }
 
@@ -108,10 +101,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     rawEmail: string,
     rawPass: string,
     targetCompanySlug?: string
-  ): Promise<void> => {
+  ): Promise<UserProfile> => {
+    authRevision.current += 1;
     setIsLoading(true);
     const email = (rawEmail || '').trim();
-    const pass = (rawPass || '').trim();
+    const pass = rawPass || '';
 
     if (!email) {
       setIsLoading(false);
@@ -122,16 +116,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Please enter your password');
     }
 
-    // Determine target company slug
-    let effectiveSlug = targetCompanySlug;
-    if (!effectiveSlug && typeof window !== 'undefined') {
-      const pathParts = window.location.pathname.split('/').filter(Boolean);
-      if (pathParts.length > 0 && pathParts[0] !== 'maintenance' && pathParts[0] !== 'dashboard' && pathParts[0] !== 'api') {
-        effectiveSlug = pathParts[0];
-      }
-    }
-    if (!effectiveSlug) {
-      effectiveSlug = email.toLowerCase().includes('texplus') ? 'texplus' : 'esstee';
+    // Use only an explicit selection or a company-scoped login URL.
+    const pathMatch = typeof window !== 'undefined'
+      ? window.location.pathname.match(/^\/([a-z0-9_-]+)\/login\/?$/i)
+      : null;
+    const effectiveSlug = (targetCompanySlug || pathMatch?.[1] || '').trim().toLowerCase();
+    if (effectiveSlug && !/^[a-z0-9_-]+$/.test(effectiveSlug)) {
+      setIsLoading(false);
+      throw new Error('Please select your company workspace before signing in.');
     }
 
     try {
@@ -143,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'x-company-slug': effectiveSlug,
+        ...(effectiveSlug ? { 'x-company-slug': effectiveSlug } : {}),
       };
 
       // Call /api/auth/login directly (with /maintenance fallback)
@@ -174,13 +166,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(data.error || 'Invalid credentials. Please try again.');
       }
 
+      if (!data.user.companySlug || (effectiveSlug && data.user.companySlug !== effectiveSlug)) {
+        throw new Error('The returned workspace does not match your selection. Please sign in again.');
+      }
       setUser(data.user);
       if (typeof window !== 'undefined') {
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
-        localStorage.setItem('cmms_active_company', data.user.companySlug || effectiveSlug);
-        localStorage.setItem('cmms_active_tenant', data.user.companySlug || effectiveSlug);
+        try {
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user));
+          localStorage.setItem('cmms_active_company', data.user.companySlug || effectiveSlug);
+          localStorage.setItem('cmms_active_tenant', data.user.companySlug || effectiveSlug);
+        } catch { /* Continue with the authenticated session cookie. */ }
         window.dispatchEvent(new Event('cmms_tenant_changed'));
       }
+      return data.user;
     } catch (err: unknown) {
       setIsLoading(false);
       throw err;
@@ -193,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(profile);
     if (typeof window !== 'undefined') {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(profile));
-      const slug = profile.companySlug || (profile.email.includes('texplus') ? 'texplus' : 'esstee');
+      const slug = profile.companySlug || (profile.email.includes('texplus') ? 'texplus' : 'sahana');
       localStorage.setItem('cmms_active_company', slug);
       localStorage.setItem('cmms_active_tenant', slug);
       window.dispatchEvent(new Event('cmms_tenant_changed'));
@@ -202,8 +200,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginAsRole = async (targetRole: UserRole): Promise<void> => {
-    const slug = user?.companySlug || 'esstee';
-    const cName = user?.company || (slug === 'texplus' ? 'Texplus' : 'Esstee');
+    const slug = user?.companySlug || 'sahana';
+    const cName = user?.company || (slug === 'texplus' ? 'Texplus' : 'Sahana');
     const roleTitle = resolveUserTitle(targetRole, cName);
     const roleProfile: UserProfile = {
       uid: `${targetRole.slice(0, 3)}-01`,
@@ -227,8 +225,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) {
       throw new Error('No user is currently authenticated.');
     }
-    if (!newPassword || newPassword.length < 6) {
-      throw new Error('Password must be at least 6 characters long.');
+    if (!newPassword || newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters long.');
     }
 
     const payload = JSON.stringify({
@@ -239,7 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const headers = {
       'Content-Type': 'application/json',
-      'x-company-slug': user.companySlug || 'esstee',
+      'x-company-slug': user.companySlug || 'sahana',
     };
 
     let res = await fetch('/api/auth/set-password', {
@@ -269,11 +267,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async (): Promise<void> => {
-    const lastCompanySlug = user?.companySlug || 'esstee';
+    authRevision.current += 1;
     setUser(null);
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {}
+    } catch { }
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -282,7 +280,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('cmms_active_company');
       localStorage.removeItem('cmms_active_tenant');
       window.dispatchEvent(new Event('cmms_tenant_changed'));
-      window.location.href = `/${lastCompanySlug}/login`;
+      window.location.href = '/login';
     }
   };
 
@@ -291,8 +289,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         role: user?.role ? (user.role.toString().toUpperCase() as UserRole) : null,
-        companySlug: user?.companySlug || 'esstee',
-        companyName: user?.company || (user?.companySlug === 'texplus' ? 'Texplus' : 'Esstee'),
+        companySlug: user?.companySlug || 'sahana',
+        companyName: user?.company || (user?.companySlug === 'texplus' ? 'Texplus' : 'Sahana'),
         isLoading,
         loginAsRole,
         loginAsUser,

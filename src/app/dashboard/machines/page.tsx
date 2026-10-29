@@ -1,5 +1,7 @@
 'use client';
 
+import { assetScanUrl } from '@/lib/scanUrl';
+
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -49,7 +51,7 @@ import {
   getAssetCategoryForType,
   AssetSubtypeDef,
 } from '@/lib/machineCatalog';
-import { PDF_MACHINE_TYPES, PDF_MACHINE_MAKES } from '@/app/dashboard/asset-types/page';
+import { PDF_MACHINE_TYPES, PDF_MACHINE_MAKES } from '@/lib/constants/machineCatalog';
 
 export default function MachinesPage() {
   const { showToast } = useToast();
@@ -534,7 +536,7 @@ export default function MachinesPage() {
 
   // Encoded QR payload feeding all asset specifications into the QR code
   const qrData = useMemo(() => {
-    const base = `${origin}/maintenance/scan/${encodeURIComponent(mId || 'PENDING')}`;
+    const base = `${assetScanUrl(origin, mId || 'PENDING')}`;
     const activeBrand =
       isCustomBrand && customBrandInput.trim() ? customBrandInput.trim() : mBrand;
     const activeTypeName =
@@ -1218,7 +1220,7 @@ export default function MachinesPage() {
                         Company / Unit / ID
                       </div>
                       <div className="text-xs sm:text-sm print:text-[9pt] font-black uppercase tracking-wider text-slate-800 truncate flex items-center gap-1">
-                        <span>{mCompany.trim() || userCompany || 'Sahana'}</span>
+                        <span>{mCompany.trim() || userCompany || 'sahana'}</span>
                         <span className="text-slate-400">/</span>
                         <span>{mUnit.trim() || 'Unit'}</span>
                         <span className="text-slate-400">/</span>

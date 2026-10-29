@@ -36,12 +36,12 @@ const listeners = {
 };
 
 function getActiveTenant(): string {
-  if (typeof window === 'undefined') return 'esstee';
+  if (typeof window === 'undefined') return 'sahana';
   try {
     const active = localStorage.getItem('cmms_active_company') || localStorage.getItem('cmms_active_tenant');
     if (active) {
       const a = active.toLowerCase().trim();
-      if (a === 'maintanence' || a === 'sahana') return 'esstee';
+      if (a === 'maintanence' || a === 'sahana') return 'sahana';
       return a;
     }
     const stored = localStorage.getItem('cmms_current_user') || localStorage.getItem('sahana_current_user');
@@ -51,10 +51,10 @@ function getActiveTenant(): string {
       const email = (u?.email || '').toLowerCase();
       const company = (u?.company || '').toLowerCase();
       if (email.includes('texplus') || company.includes('texplus')) return 'texplus';
-      return 'esstee';
+      return 'sahana';
     }
-  } catch {}
-  return 'esstee';
+  } catch { }
+  return 'sahana';
 }
 
 function getLocal<T>(key: string, defaultVal: T): T {
@@ -110,7 +110,7 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
         headers.set('x-company-slug', activeTenant);
         headers.set('x-tenant-id', activeTenant);
       }
-    } catch {}
+    } catch { }
   }
 
   return fetch(target, { credentials: 'include', ...init, headers });
@@ -263,19 +263,19 @@ export async function relocateMachine(
   const updatedMachines = currentMachines.map((m) =>
     m.id === machineId
       ? {
-          ...m,
-          currentLine: targetLine,
-          area: targetLine,
-          department: targetLine.includes('Line') ? 'Sewing Floor' : (targetLine as any),
-          stationNo: newStation,
-          status: newStatus,
-          previousLine: oldLine,
-          previousStation: oldStation,
-          lastMovedAt: movedAt,
-          lastMovedReason: reason,
-          lastMovedBy: mechanicName,
-          relocationHistory: [moveRecord, ...(m.relocationHistory || [])],
-        }
+        ...m,
+        currentLine: targetLine,
+        area: targetLine,
+        department: targetLine.includes('Line') ? 'Sewing Floor' : (targetLine as any),
+        stationNo: newStation,
+        status: newStatus,
+        previousLine: oldLine,
+        previousStation: oldStation,
+        lastMovedAt: movedAt,
+        lastMovedReason: reason,
+        lastMovedBy: mechanicName,
+        relocationHistory: [moveRecord, ...(m.relocationHistory || [])],
+      }
       : m
   );
   setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
@@ -703,12 +703,12 @@ export async function stopRepairTicket(ticketId: string, notes?: string): Promis
   const updatedRepairs = currentRepairs.map((t) =>
     t.id === ticketId
       ? {
-          ...t,
-          status: 'ASSIGNED' as const,
-          startedAt: null,
-          downtimeMinutes: newDowntime,
-          actionTaken: newActionTaken,
-        }
+        ...t,
+        status: 'ASSIGNED' as const,
+        startedAt: null,
+        downtimeMinutes: newDowntime,
+        actionTaken: newActionTaken,
+      }
       : t
   );
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
@@ -753,13 +753,13 @@ export async function rejectRepairTicket(
   const updatedRepairs = currentRepairs.map((t) =>
     t.id === ticketId
       ? {
-          ...t,
-          status: 'REJECTED' as const,
-          resolvedAt: nowIso,
-          completedAt: nowIso,
-          actionTaken: rejectionNote,
-          attendedBy: rejectedBy,
-        }
+        ...t,
+        status: 'REJECTED' as const,
+        resolvedAt: nowIso,
+        completedAt: nowIso,
+        actionTaken: rejectionNote,
+        attendedBy: rejectedBy,
+      }
       : t
   );
 
@@ -1066,11 +1066,11 @@ export async function assignRepairTicket(
   const updatedRepairs = currentRepairs.map((r) =>
     r.id === ticketId
       ? {
-          ...r,
-          attendedBy: mechanicName,
-          assignedBy: assignedBy || r.assignedBy || 'Senior Mechanic',
-          status: (r.status === 'COMPLETED' ? 'COMPLETED' : 'ASSIGNED') as RepairTicket['status'],
-        }
+        ...r,
+        attendedBy: mechanicName,
+        assignedBy: assignedBy || r.assignedBy || 'Senior Mechanic',
+        status: (r.status === 'COMPLETED' ? 'COMPLETED' : 'ASSIGNED') as RepairTicket['status'],
+      }
       : r
   );
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
@@ -1261,11 +1261,11 @@ export async function startPPMTask(
   const updatedSchedules = currentSchedules.map((s) =>
     s.id === scheduleId
       ? {
-          ...s,
-          startedAt: s.startedAt || now,
-          assignedTo: s.assignedTo || mechanicName,
-          status: 'IN_PROGRESS' as const,
-        }
+        ...s,
+        startedAt: s.startedAt || now,
+        assignedTo: s.assignedTo || mechanicName,
+        status: 'IN_PROGRESS' as const,
+      }
       : s
   );
   setLocal(STORAGE_KEYS.PPM, updatedSchedules);
@@ -1294,10 +1294,10 @@ export async function stopPPMTask(scheduleId: string): Promise<void> {
   const updatedSchedules = currentSchedules.map((s) =>
     s.id === scheduleId
       ? {
-          ...s,
-          startedAt: undefined,
-          status: 'SCHEDULED' as const,
-        }
+        ...s,
+        startedAt: undefined,
+        status: 'SCHEDULED' as const,
+      }
       : s
   );
   setLocal(STORAGE_KEYS.PPM, updatedSchedules);
@@ -1347,15 +1347,15 @@ export async function completePPMTask(
   const updatedSchedules = currentSchedules.map((s) =>
     s.id === scheduleId
       ? {
-          ...s,
-          lastServiced: today.toISOString().slice(0, 10),
-          nextDue: nextDueDate.toISOString().slice(0, 10),
-          status: 'COMPLETED' as const,
-          completedAt: today.toISOString(),
-          completionProofImage: proofImage,
-          actualDurationMinutes: finalDuration,
-          technicianNotes: notes,
-        }
+        ...s,
+        lastServiced: today.toISOString().slice(0, 10),
+        nextDue: nextDueDate.toISOString().slice(0, 10),
+        status: 'COMPLETED' as const,
+        completedAt: today.toISOString(),
+        completionProofImage: proofImage,
+        actualDurationMinutes: finalDuration,
+        technicianNotes: notes,
+      }
       : s
   );
   setLocal(STORAGE_KEYS.PPM, updatedSchedules);
@@ -1487,8 +1487,8 @@ export async function createRequisition(
     (reqData.type === 'CRITICAL_CEO'
       ? 'PENDING_CEO_APPROVAL'
       : reqData.type === 'URGENT_NEED'
-      ? 'PENDING_MANAGER_APPROVAL'
-      : 'PENDING_REVIEW');
+        ? 'PENDING_MANAGER_APPROVAL'
+        : 'PENDING_REVIEW');
 
   const newReq: PartRequisition = {
     ...reqData,
@@ -1578,12 +1578,12 @@ export async function fulfillMonthlyIndent(
   const updatedReqs = currentReqs.map((r) =>
     r.id === id
       ? {
-          ...r,
-          status: newStatus as RequisitionStatus,
-          assignedStorePerson: storePersonName,
-          fulfilledAt: new Date().toISOString(),
-          storeNotes,
-        }
+        ...r,
+        status: newStatus as RequisitionStatus,
+        assignedStorePerson: storePersonName,
+        fulfilledAt: new Date().toISOString(),
+        storeNotes,
+      }
       : r
   );
 
@@ -1653,12 +1653,12 @@ export async function fulfillMechanicIndent(
   const updatedReqs = currentReqs.map((r) =>
     r.id === id
       ? {
-          ...r,
-          status: 'FULFILLED' as RequisitionStatus,
-          assignedStorePerson: storePersonName,
-          fulfilledAt: new Date().toISOString(),
-          storeNotes,
-        }
+        ...r,
+        status: 'FULFILLED' as RequisitionStatus,
+        assignedStorePerson: storePersonName,
+        fulfilledAt: new Date().toISOString(),
+        storeNotes,
+      }
       : r
   );
 

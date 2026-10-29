@@ -378,7 +378,7 @@ async function main() {
   console.log(`✓ Saved ${spares.length} spare parts to ${outPath}`);
 
   // 2. Connect to MongoDB and seed collection
-  const mongoUri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0';
+  const mongoUri = '';
   console.log('Connecting to MongoDB...');
   const client = new MongoClient(mongoUri);
 

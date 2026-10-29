@@ -1,5 +1,7 @@
 'use client';
 
+import { assetScanUrl } from '@/lib/scanUrl';
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
@@ -123,7 +125,7 @@ export interface AssetHistoryRecord {
   locationHistory?: LocationHistoryEntry[];
 }
 
-export const getAssetPpmCost = (asset: AssetHistoryRecord): number => {
+const getAssetPpmCost = (asset: AssetHistoryRecord): number => {
   if (typeof asset.totalPpmCost === 'number') return asset.totalPpmCost;
   const fromLogs = asset.serviceLogs
     .filter((l) => l.faultCategory.toLowerCase().includes('ppm') || l.faultCategory.toLowerCase().includes('lubrication') || l.faultCategory.toLowerCase().includes('routine'))
@@ -131,7 +133,7 @@ export const getAssetPpmCost = (asset: AssetHistoryRecord): number => {
   return fromLogs > 0 ? fromLogs : 0;
 };
 
-export const getAssetRepairCost = (asset: AssetHistoryRecord): number => {
+const getAssetRepairCost = (asset: AssetHistoryRecord): number => {
   if (typeof asset.totalRepairCost === 'number') return asset.totalRepairCost;
   const fromLogs = asset.serviceLogs
     .filter((l) => !l.faultCategory.toLowerCase().includes('ppm') && !l.faultCategory.toLowerCase().includes('routine'))
@@ -140,7 +142,7 @@ export const getAssetRepairCost = (asset: AssetHistoryRecord): number => {
   return asset.totalRepairCost || 0;
 };
 
-export const getAssetLocationHistory = (asset: AssetHistoryRecord): LocationHistoryEntry[] => {
+const getAssetLocationHistory = (asset: AssetHistoryRecord): LocationHistoryEntry[] => {
   if (asset.locationHistory && asset.locationHistory.length > 0) {
     return asset.locationHistory;
   }
@@ -2592,7 +2594,7 @@ export default function HistoryPage() {
             <div className="bg-slate-50/80 p-4 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center text-center space-y-3">
               <div className="p-3 bg-white rounded-2xl border-2 border-slate-900 shadow-xs">
                 <QRCodeSVG
-                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/maintenance/scan/${encodeURIComponent(selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
+                  value={`${assetScanUrl(typeof window !== 'undefined' ? window.location.origin : '', selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
                   size={160}
                   level="H"
                   bgColor="#ffffff"
@@ -2618,7 +2620,7 @@ export default function HistoryPage() {
                 type="button"
                 onClick={() => {
                   if (typeof window !== 'undefined') {
-                    const url = `${window.location.origin}/maintenance/scan/${encodeURIComponent(selectedQrAsset.assetId)}`;
+                    const url = `${assetScanUrl(window.location.origin, selectedQrAsset.assetId)}`;
                     navigator.clipboard?.writeText(url);
                     showToast('Asset QR URL copied to clipboard!', 'success');
                   }
@@ -2651,7 +2653,7 @@ export default function HistoryPage() {
         <div id="single-qr-print-portal" className="hidden print:flex flex-col items-center justify-center p-6 bg-white">
           <div className="p-4 bg-white rounded-2xl border-2 border-black flex flex-col items-center text-center">
             <QRCodeSVG
-              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/maintenance/scan/${encodeURIComponent(selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
+              value={`${assetScanUrl(typeof window !== 'undefined' ? window.location.origin : '', selectedQrAsset.assetId)}?brand=${encodeURIComponent(selectedQrAsset.brand)}&model=${encodeURIComponent(selectedQrAsset.model)}&unit=${encodeURIComponent(selectedQrAsset.unit)}`}
               size={180}
               level="H"
               bgColor="#ffffff"

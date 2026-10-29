@@ -4,6 +4,7 @@
  */
 
 export interface TelegramAlertPayload {
+  companySlug?: string;
   unit?: string;
   category?: 'BREAKDOWN' | 'SLA_BREACH' | 'LOW_STOCK' | 'PPM_OVERDUE' | 'DISPATCH' | 'TEST' | 'RESOLVED' | 'PPM' | 'STARTED' | 'REJECTED';
   title: string;
@@ -225,36 +226,19 @@ export async function sendTelegramAlert(
   payload: TelegramAlertPayload,
   customBotToken?: string
 ): Promise<{ success: boolean; error?: string; messageId?: number }> {
-  const botToken =
-    customBotToken ||
-    process.env.TELEGRAM_BOT_TOKEN ||
-    '8815692743:AAFS9kLVloX6lSGNupM80pUmeLtdoMzuhDQ';
-
-  if (!botToken) {
-    return {
-      success: false,
-      error: 'TELEGRAM_BOT_TOKEN is not configured in .env.local or settings',
-    };
-  }
-
-  // Resolve chat IDs
-  const targetChatIds: (string | number)[] = [];
-  if (payload.targetChatId) {
-    targetChatIds.push(payload.targetChatId);
-  } else {
-    const unitUpper = (payload.unit || '').toUpperCase();
-    if (unitUpper.includes('UNIT-2') || unitUpper.includes('UNIT 2')) {
-      targetChatIds.push(process.env.TELEGRAM_CHAT_ID_UNIT2 || '-5371815915');
-    } else {
-      targetChatIds.push(process.env.TELEGRAM_CHAT_ID_UNIT1 || '-5302045233');
-    }
-
-    // Also send a copy to Admin direct chat so administrators/supervisors receive it directly
-    const adminChat = process.env.TELEGRAM_ADMIN_CHAT_ID || '8853985508';
-    if (adminChat && !targetChatIds.map(String).includes(String(adminChat))) {
-      targetChatIds.push(adminChat);
-    }
-  }
+  if (!payload.companySlug) return { success: false, error: 'Company configuration is required.' };
+  const { getCompanyDatabase } = await import('@/lib/mongodb');
+  const { db } = await getCompanyDatabase(payload.companySlug);
+  const config = await db.collection('settings').findOne({ key: 'telegram' });
+  const prefix = payload.companySlug.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  const botToken = customBotToken || config?.botToken || process.env[`${prefix}_TELEGRAM_BOT_TOKEN`];
+  if (!botToken) return { success: false, error: 'Configure Telegram for this company in Settings.' };
+  const unit = (payload.unit || '').replace(/[^0-9]/g, '');
+  const group = unit === '2' ? config?.unit2ChatId || process.env[`${prefix}_TELEGRAM_CHAT_ID_UNIT2`]
+    : config?.unit1ChatId || process.env[`${prefix}_TELEGRAM_CHAT_ID_UNIT1`];
+  const admin = config?.adminChatId || process.env[`${prefix}_TELEGRAM_ADMIN_CHAT_ID`];
+  const targetChatIds = payload.targetChatId ? [payload.targetChatId] : [...new Set([group, admin].filter(Boolean))];
+  if (!targetChatIds.length) return { success: false, error: 'No Telegram destination configured for this company.' };
 
   const messageText = buildTelegramMessage(payload);
   let lastError = '';

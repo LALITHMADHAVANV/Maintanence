@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getMongoClient, getCompanyDatabase, normalizeCompanySlug, TenantNotFoundError, TenantInactiveError } from '@/lib/mongodb';
-import { validateActiveCompany } from '@/lib/registry';
+import { getAllCompanies } from '@/lib/registry';
+import { findLoginAccount } from '@/lib/loginAccount';
 import { verifyPassword, hashPassword, createSessionToken, sanitizeUserProfile, SESSION_COOKIE_NAME, ACTIVE_COMPANY_COOKIE } from '@/lib/auth';
 import { UserRole } from '@/types/cmms';
 
@@ -38,105 +39,32 @@ export async function POST(req: Request) {
       } catch {}
     }
 
-    const cleanInput = (identifier || '').trim();
-    const cleanPass = (pass || '').trim();
-
-    if (!cleanInput || !cleanPass) {
-      return NextResponse.json(
-        { error: 'Email / Employee ID and password are required' },
-        { status: 400 }
-      );
+    if (typeof identifier !== 'string' || typeof pass !== 'string' || typeof requestedCompany !== 'string') {
+      return NextResponse.json({ error: 'Invalid sign-in request.' }, { status: 400 });
+    }
+    const cleanInput = identifier.trim();
+    const cleanPass = pass;
+    if (!cleanInput || !cleanPass || cleanInput.length > 254 || cleanPass.length > 1024) {
+      return NextResponse.json({ error: 'Enter your username or email and password.' }, { status: 400 });
     }
 
-    // Infer company slug from email domain or alias if still empty
-    const cleanLower = cleanInput.toLowerCase();
-    if (!requestedCompany) {
-      if (cleanLower.includes('texplus')) requestedCompany = 'texplus';
-      else if (cleanLower.includes('esstee') || cleanLower.includes('sahana')) requestedCompany = 'esstee';
-      else requestedCompany = 'esstee';
-    }
-
-    const companySlug = normalizeCompanySlug(requestedCompany);
-
-    // 1. Validate company against Central Client Registry
     const client = await getMongoClient();
-    const { valid, company, error: registryError } = await validateActiveCompany(client, companySlug);
-
-    if (!valid || !company) {
-      if (registryError && registryError.includes('inactive')) {
-        return NextResponse.json(
-          { error: `Workspace "${companySlug}" is currently inactive or suspended.`, code: 'WORKSPACE_INACTIVE' },
-          { status: 403 }
-        );
-      }
-      return NextResponse.json(
-        { error: `Workspace "${companySlug}" not found in company registry.`, code: 'WORKSPACE_NOT_FOUND' },
-        { status: 404 }
-      );
+    const companies = (await getAllCompanies(client)).filter(c => c.active);
+    const requestedSlug = requestedCompany ? normalizeCompanySlug(requestedCompany) : '';
+    const candidates = requestedSlug ? companies.filter(c => c.slug === requestedSlug) : companies;
+    const match = await findLoginAccount(cleanInput, candidates, async (company, query) => {
+      const { db } = await getCompanyDatabase(company.slug);
+      return db.collection('users').find(query).limit(2).toArray();
+    });
+    if (!match) {
+      return NextResponse.json({ error: 'Unable to sign in. Use your unique work email or username and check your password. Contact your administrator if needed.' }, { status: 401 });
     }
-
-    // 2. Access ONLY the validated company's dedicated database
+    const { company, user: dbUser } = match;
+    if (String(dbUser.status || 'ACTIVE').toUpperCase() === 'INACTIVE') {
+      return NextResponse.json({ error: 'Unable to sign in. Contact your administrator.' }, { status: 401 });
+    }
     const { db } = await getCompanyDatabase(company.slug);
     const usersCol = db.collection('users');
-
-    // Prepare search queries
-    const escapedInput = cleanInput.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const localPart = cleanLower.includes('@') ? cleanLower.split('@')[0] : cleanLower;
-    const escapedLocal = localPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // Look for user in company's users collection
-    const query = {
-      $or: [
-        { email: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-        { email: { $regex: new RegExp(`^${escapedLocal}@${company.slug}(\\.com)?$`, 'i') } },
-        { email: { $regex: new RegExp(`^${escapedLocal}@.*$`, 'i') } },
-        { employeeId: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-        { uid: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-        { name: { $regex: new RegExp(`^${escapedInput}$`, 'i') } },
-      ],
-    };
-
-    let dbUser = await usersCol.findOne(query);
-
-    // Special quick alias for admin/supervisors if logging in with 'admin' or role name
-    if (!dbUser) {
-      if (cleanLower === 'admin' || cleanLower === 'administrator') {
-        dbUser = await usersCol.findOne({
-          $or: [
-            { role: 'ADMIN' },
-            { email: { $regex: /^admin@/i } },
-          ],
-        });
-      } else if (cleanLower === 'ceo' || cleanLower === 'md') {
-        dbUser = await usersCol.findOne({
-          $or: [
-            { role: 'CEO' },
-            { email: { $regex: /^ceo@/i } },
-          ],
-        });
-      } else if (cleanLower === 'mechanic' || cleanLower === 'mech') {
-        dbUser = await usersCol.findOne({
-          $or: [
-            { role: 'MECHANIC' },
-            { email: { $regex: /^mechanic@/i } },
-          ],
-        });
-      }
-    }
-
-    if (!dbUser) {
-      return NextResponse.json(
-        { error: `No staff account found for "${cleanInput}" in workspace "${company.name}".` },
-        { status: 404 }
-      );
-    }
-
-    if (dbUser.status && dbUser.status === 'INACTIVE') {
-      return NextResponse.json(
-        { error: 'Your account is deactivated. Please contact your system administrator.' },
-        { status: 403 }
-      );
-    }
 
     // 3. Verify Password using Bcrypt
     const storedHashOrPlain = dbUser.passwordHash || dbUser.password || dbUser.defaultPassword || '';
@@ -144,7 +72,7 @@ export async function POST(req: Request) {
 
     if (!isPasswordValid) {
       return NextResponse.json(
-        { error: 'Invalid password. Please check your credentials.' },
+        { error: 'Unable to sign in. Check your username and password.' },
         { status: 401 }
       );
     }
@@ -155,7 +83,7 @@ export async function POST(req: Request) {
         const freshHash = await hashPassword(cleanPass);
         await usersCol.updateOne(
           { _id: dbUser._id },
-          { $set: { passwordHash: freshHash, updatedAt: new Date().toISOString() }, $unset: { password: '' } }
+          { $set: { passwordHash: freshHash, updatedAt: new Date().toISOString() }, $unset: { password: '', defaultPassword: '' } }
         );
       } catch (upgradeErr) {
         console.warn('Password hash upgrade warning:', upgradeErr);
@@ -226,7 +154,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 403 });
     }
     return NextResponse.json(
-      { error: (err as any)?.message || 'Authentication service error' },
+      { error: 'Sign-in is temporarily unavailable. Please try again.' },
       { status: 500 }
     );
   }

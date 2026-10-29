@@ -2,7 +2,7 @@ const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const uri = process.env.MONGODB_URI || 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/?appName=Cluster0';
+const uri = process.env.MONGODB_URI || '';
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'cmms-super-secure-multi-tenant-jwt-secret-2026';
 
 let passedTests = 0;
@@ -36,12 +36,12 @@ async function runVerification() {
     const masterDb = client.db('compliance_master');
     const companies = await masterDb.collection('companies').find({}).toArray();
 
-    const essteeReg = companies.find(c => c.slug === 'esstee');
+    const SahanaReg = companies.find(c => c.slug === 'sahana');
     const texplusReg = companies.find(c => c.slug === 'texplus');
 
-    assert(Boolean(essteeReg), 'Registry has "esstee" registered');
-    assert(essteeReg.active === true, 'Esstee status is active');
-    assert(essteeReg.databaseName === 'compliance_esstee', 'Esstee databaseName is "compliance_esstee"');
+    assert(Boolean(SahanaReg), 'Registry has "Sahana" registered');
+    assert(SahanaReg.active === true, 'Sahana status is active');
+    assert(SahanaReg.databaseName === 'compliance_sahana', 'Sahana databaseName is "compliance_sahana"');
 
     assert(Boolean(texplusReg), 'Registry has "texplus" registered');
     assert(texplusReg.active === true, 'Texplus status is active');
@@ -52,41 +52,41 @@ async function runVerification() {
     assert(!unknownCompany, 'Unknown company "unknown_corp" does not exist in registry');
 
     console.log('\n--- SECTION 2: Physical Database Separation & Existing Data ---');
-    const essteeDb = client.db('compliance_esstee');
+    const SahanaDb = client.db('compliance_sahana');
     const texplusDb = client.db('compliance_texplus');
 
-    const essteeMachines = await essteeDb.collection('machines').countDocuments();
+    const SahanaMachines = await SahanaDb.collection('machines').countDocuments();
     const texplusMachines = await texplusDb.collection('machines').countDocuments();
-    console.log(`  compliance_esstee machine count: ${essteeMachines}`);
+    console.log(`  compliance_sahana machine count: ${SahanaMachines}`);
     console.log(`  compliance_texplus machine count: ${texplusMachines}`);
 
-    assert(essteeMachines > 0, 'compliance_esstee has machines populated');
+    assert(SahanaMachines > 0, 'compliance_sahana has machines populated');
     assert(texplusMachines > 0, 'compliance_texplus has machines populated');
 
     // Verify zero cross-tenant leakage in machines
-    const texplusLeakInEsstee = await essteeDb.collection('machines').countDocuments({ company: { $regex: 'texplus', $options: 'i' } });
-    const essteeLeakInTexplus = await texplusDb.collection('machines').countDocuments({ company: { $regex: 'esstee', $options: 'i' } });
-    assert(texplusLeakInEsstee === 0, `Zero Texplus machines leaked into Esstee DB (count: ${texplusLeakInEsstee})`);
-    assert(essteeLeakInTexplus === 0, `Zero Esstee machines leaked into Texplus DB (count: ${essteeLeakInTexplus})`);
+    const texplusLeakInSahana = await SahanaDb.collection('machines').countDocuments({ company: { $regex: 'texplus', $options: 'i' } });
+    const SahanaLeakInTexplus = await texplusDb.collection('machines').countDocuments({ company: { $regex: 'Sahana', $options: 'i' } });
+    assert(texplusLeakInSahana === 0, `Zero Texplus machines leaked into Sahana DB (count: ${texplusLeakInSahana})`);
+    assert(SahanaLeakInTexplus === 0, `Zero Sahana machines leaked into Texplus DB (count: ${SahanaLeakInTexplus})`);
 
     // Verify zero cross-tenant leakage in repair tickets
-    const texplusTicketsInEsstee = await essteeDb.collection('repair_tickets').countDocuments({ company: { $regex: 'texplus', $options: 'i' } });
-    const essteeTicketsInTexplus = await texplusDb.collection('repair_tickets').countDocuments({ company: { $regex: 'esstee', $options: 'i' } });
-    assert(texplusTicketsInEsstee === 0, `Zero Texplus repair tickets leaked into Esstee DB (count: ${texplusTicketsInEsstee})`);
-    assert(essteeTicketsInTexplus === 0, `Zero Esstee repair tickets leaked into Texplus DB (count: ${essteeTicketsInTexplus})`);
+    const texplusTicketsInSahana = await SahanaDb.collection('repair_tickets').countDocuments({ company: { $regex: 'texplus', $options: 'i' } });
+    const SahanaTicketsInTexplus = await texplusDb.collection('repair_tickets').countDocuments({ company: { $regex: 'Sahana', $options: 'i' } });
+    assert(texplusTicketsInSahana === 0, `Zero Texplus repair tickets leaked into Sahana DB (count: ${texplusTicketsInSahana})`);
+    assert(SahanaTicketsInTexplus === 0, `Zero Sahana repair tickets leaked into Texplus DB (count: ${SahanaTicketsInTexplus})`);
 
     console.log('\n--- SECTION 3: Authentication, Password Hashing & JWT Sessions ---');
-    // Check Esstee User and Password Hashing
-    const essteeUser = await essteeDb.collection('users').findOne({ email: 'admin@esstee.com' });
-    assert(Boolean(essteeUser), 'Esstee admin user exists in compliance_esstee.users');
-    assert(Boolean(essteeUser.passwordHash), 'Esstee admin has passwordHash field');
-    assert(/^\$2[aby]\$\d{2}\$/.test(essteeUser.passwordHash), 'Esstee passwordHash is a valid bcrypt hash');
-    assert(!essteeUser.password, 'Esstee admin has NO plaintext password stored');
+    // Check Sahana User and Password Hashing
+    const SahanaUser = await SahanaDb.collection('users').findOne({ email: 'admin@sahana.com' });
+    assert(Boolean(SahanaUser), 'Sahana admin user exists in compliance_sahana.users');
+    assert(Boolean(SahanaUser.passwordHash), 'Sahana admin has passwordHash field');
+    assert(/^\$2[aby]\$\d{2}\$/.test(SahanaUser.passwordHash), 'Sahana passwordHash is a valid bcrypt hash');
+    assert(!SahanaUser.password, 'Sahana admin has NO plaintext password stored');
 
-    const essteePassValid = await bcrypt.compare('admin123', essteeUser.passwordHash);
-    const essteePassInvalid = await bcrypt.compare('wrongpassword', essteeUser.passwordHash);
-    assert(essteePassValid === true, 'Bcrypt correctly validates valid password ("admin123")');
-    assert(essteePassInvalid === false, 'Bcrypt correctly rejects invalid password ("wrongpassword")');
+    const SahanaPassValid = await bcrypt.compare('admin123', SahanaUser.passwordHash);
+    const SahanaPassInvalid = await bcrypt.compare('wrongpassword', SahanaUser.passwordHash);
+    assert(SahanaPassValid === true, 'Bcrypt correctly validates valid password ("admin123")');
+    assert(SahanaPassInvalid === false, 'Bcrypt correctly rejects invalid password ("wrongpassword")');
 
     // Check Texplus User and Password Hashing
     const texplusUser = await texplusDb.collection('users').findOne({ email: 'admin@texplus.com' });
@@ -101,13 +101,13 @@ async function runVerification() {
     assert(texplusPassInvalid === false, 'Texplus admin rejects invalid password ("wrongpassword")');
 
     // JWT Token generation and verification
-    const essteeToken = jwt.sign(
-      { uid: essteeUser.uid, email: essteeUser.email, role: essteeUser.role, companySlug: 'esstee', companyName: 'Esstee' },
+    const SahanaToken = jwt.sign(
+      { uid: SahanaUser.uid, email: SahanaUser.email, role: SahanaUser.role, companySlug: 'sahana', companyName: 'Sahana' },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
-    const decodedEsstee = jwt.verify(essteeToken, JWT_SECRET);
-    assert(decodedEsstee.companySlug === 'esstee', 'JWT session correctly identifies Esstee tenant');
+    const decodedSahana = jwt.verify(SahanaToken, JWT_SECRET);
+    assert(decodedSahana.companySlug === 'sahana', 'JWT session correctly identifies Sahana tenant');
 
     const texplusToken = jwt.sign(
       { uid: texplusUser.uid, email: texplusUser.email, role: texplusUser.role, companySlug: 'texplus', companyName: 'Texplus' },
@@ -118,28 +118,28 @@ async function runVerification() {
     assert(decodedTexplus.companySlug === 'texplus', 'JWT session correctly identifies Texplus tenant');
 
     console.log('\n--- SECTION 4: CRUD Data Isolation (Machines & Repair Tickets) ---');
-    const testMachineEssteeId = `TEST-ESSTEE-${Date.now()}`;
+    const testMachineSahanaId = `TEST-SAHANA-${Date.now()}`;
     const testMachineTexplusId = `TEST-TEXPLUS-${Date.now()}`;
 
-    // 1. Create machine in Esstee
-    await essteeDb.collection('machines').insertOne({
-      id: testMachineEssteeId,
-      name: 'Esstee Isolation Test Machine',
+    // 1. Create machine in Sahana
+    await SahanaDb.collection('machines').insertOne({
+      id: testMachineSahanaId,
+      name: 'Sahana Isolation Test Machine',
       model: 'ISO-E-100',
       brand: 'Yamato',
-      company: 'Esstee',
-      companySlug: 'esstee',
+      company: 'Sahana',
+      companySlug: 'sahana',
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
     });
 
-    // Verify it exists in Esstee
-    const foundInEsstee = await essteeDb.collection('machines').findOne({ id: testMachineEssteeId });
-    assert(Boolean(foundInEsstee), `Test machine created in compliance_esstee (${testMachineEssteeId})`);
+    // Verify it exists in Sahana
+    const foundInSahana = await SahanaDb.collection('machines').findOne({ id: testMachineSahanaId });
+    assert(Boolean(foundInSahana), `Test machine created in compliance_sahana (${testMachineSahanaId})`);
 
     // Verify it DOES NOT exist in Texplus
-    const foundEssteeInTexplus = await texplusDb.collection('machines').findOne({ id: testMachineEssteeId });
-    assert(foundEssteeInTexplus === null, 'Esstee machine is completely INVISIBLE in Texplus database');
+    const foundSahanaInTexplus = await texplusDb.collection('machines').findOne({ id: testMachineSahanaId });
+    assert(foundSahanaInTexplus === null, 'Sahana machine is completely INVISIBLE in Texplus database');
 
     // 2. Create machine in Texplus
     await texplusDb.collection('machines').insertOne({
@@ -157,21 +157,21 @@ async function runVerification() {
     const foundInTexplus = await texplusDb.collection('machines').findOne({ id: testMachineTexplusId });
     assert(Boolean(foundInTexplus), `Test machine created in compliance_texplus (${testMachineTexplusId})`);
 
-    // Verify it DOES NOT exist in Esstee
-    const foundTexplusInEsstee = await essteeDb.collection('machines').findOne({ id: testMachineTexplusId });
-    assert(foundTexplusInEsstee === null, 'Texplus machine is completely INVISIBLE in Esstee database');
+    // Verify it DOES NOT exist in Sahana
+    const foundTexplusInSahana = await SahanaDb.collection('machines').findOne({ id: testMachineTexplusId });
+    assert(foundTexplusInSahana === null, 'Texplus machine is completely INVISIBLE in Sahana database');
 
     // 3. Test Repair Tickets Isolation
-    const testTicketEssteeId = `WO-TEST-E-${Date.now()}`;
+    const testTicketSahanaId = `WO-TEST-E-${Date.now()}`;
     const testTicketTexplusId = `WO-TEST-T-${Date.now()}`;
 
-    await essteeDb.collection('repair_tickets').insertOne({
-      id: testTicketEssteeId,
-      machineId: testMachineEssteeId,
+    await SahanaDb.collection('repair_tickets').insertOne({
+      id: testTicketSahanaId,
+      machineId: testMachineSahanaId,
       faultCategory: 'Mechanical Issue',
       status: 'PENDING',
-      company: 'Esstee',
-      companySlug: 'esstee',
+      company: 'Sahana',
+      companySlug: 'sahana',
       reportedAt: new Date().toISOString(),
     });
 
@@ -185,15 +185,15 @@ async function runVerification() {
       reportedAt: new Date().toISOString(),
     });
 
-    const essteeTicketInTexplus = await texplusDb.collection('repair_tickets').findOne({ id: testTicketEssteeId });
-    const texplusTicketInEsstee = await essteeDb.collection('repair_tickets').findOne({ id: testTicketTexplusId });
+    const SahanaTicketInTexplus = await texplusDb.collection('repair_tickets').findOne({ id: testTicketSahanaId });
+    const texplusTicketInSahana = await SahanaDb.collection('repair_tickets').findOne({ id: testTicketTexplusId });
 
-    assert(essteeTicketInTexplus === null, 'Esstee repair ticket is completely INVISIBLE in Texplus database');
-    assert(texplusTicketInEsstee === null, 'Texplus repair ticket is completely INVISIBLE in Esstee database');
+    assert(SahanaTicketInTexplus === null, 'Sahana repair ticket is completely INVISIBLE in Texplus database');
+    assert(texplusTicketInSahana === null, 'Texplus repair ticket is completely INVISIBLE in Sahana database');
 
     console.log('\n--- SECTION 5: Cross-Tenant API Attack Defense Verification ---');
     // Simulate server-side cross-tenant defense logic:
-    // If a user with Esstee token sends x-company-slug: 'texplus'
+    // If a user with Sahana token sends x-company-slug: 'texplus'
     function simulateServerTenantResolution(sessionToken, clientSuppliedSlug) {
       const decoded = sessionToken ? jwt.verify(sessionToken, JWT_SECRET) : null;
       if (decoded && decoded.companySlug) {
@@ -208,44 +208,44 @@ async function runVerification() {
       return clientSuppliedSlug;
     }
 
-    // Normal access: Esstee token accesses Esstee
-    const normalEssteeAccess = simulateServerTenantResolution(essteeToken, 'esstee');
-    assert(normalEssteeAccess === 'esstee', 'Legitimate Esstee user allowed access to Esstee');
+    // Normal access: Sahana token accesses Sahana
+    const normalSahanaAccess = simulateServerTenantResolution(SahanaToken, 'Sahana');
+    assert(normalSahanaAccess === 'sahana', 'Legitimate Sahana user allowed access to Sahana');
 
     // Normal access: Texplus token accesses Texplus
     const normalTexplusAccess = simulateServerTenantResolution(texplusToken, 'texplus');
     assert(normalTexplusAccess === 'texplus', 'Legitimate Texplus user allowed access to Texplus');
 
-    // Attack 1: Esstee user tries to access Texplus
+    // Attack 1: Sahana user tries to access Texplus
     let attack1Blocked = false;
     let attack1Code = '';
     try {
-      simulateServerTenantResolution(essteeToken, 'texplus');
+      simulateServerTenantResolution(SahanaToken, 'texplus');
     } catch (err) {
       attack1Blocked = true;
       attack1Code = err.code;
     }
-    assert(attack1Blocked === true, 'Server BLOCKED Esstee user trying to access Texplus data');
+    assert(attack1Blocked === true, 'Server BLOCKED Sahana user trying to access Texplus data');
     assert(attack1Code === 'CROSS_TENANT_ACCESS_FORBIDDEN', 'Attack correctly rejected with CROSS_TENANT_ACCESS_FORBIDDEN (403)');
 
-    // Attack 2: Texplus user tries to access Esstee
+    // Attack 2: Texplus user tries to access Sahana
     let attack2Blocked = false;
     let attack2Code = '';
     try {
-      simulateServerTenantResolution(texplusToken, 'esstee');
+      simulateServerTenantResolution(texplusToken, 'Sahana');
     } catch (err) {
       attack2Blocked = true;
       attack2Code = err.code;
     }
-    assert(attack2Blocked === true, 'Server BLOCKED Texplus user trying to access Esstee data');
+    assert(attack2Blocked === true, 'Server BLOCKED Texplus user trying to access Sahana data');
     assert(attack2Code === 'CROSS_TENANT_ACCESS_FORBIDDEN', 'Attack correctly rejected with CROSS_TENANT_ACCESS_FORBIDDEN (403)');
 
     // -------------------------------------------------------------
     // Clean up test records
     // -------------------------------------------------------------
-    await essteeDb.collection('machines').deleteOne({ id: testMachineEssteeId });
+    await SahanaDb.collection('machines').deleteOne({ id: testMachineSahanaId });
     await texplusDb.collection('machines').deleteOne({ id: testMachineTexplusId });
-    await essteeDb.collection('repair_tickets').deleteOne({ id: testTicketEssteeId });
+    await SahanaDb.collection('repair_tickets').deleteOne({ id: testTicketSahanaId });
     await texplusDb.collection('repair_tickets').deleteOne({ id: testTicketTexplusId });
     console.log('\nCleaned up ephemeral test records.');
 

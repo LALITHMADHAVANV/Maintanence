@@ -667,7 +667,7 @@ function calculateAge(dateStr: string): string {
 }
 
 // Helper to determine asset subcategory title
-export function getAssetSubCategory(item: AssetItem): string {
+function getAssetSubCategory(item: AssetItem): string {
   if (item.category === 'MACHINE') {
     if (item.machineSubtype === 'OVERLOCK') return 'Overlock Machine';
     if (item.machineSubtype === 'FLATLOCK') return 'Flatlock Machine';
@@ -709,14 +709,14 @@ export function getAssetSubCategory(item: AssetItem): string {
 }
 
 // Helper to determine location department/line
-export function getAssetLocation(item: AssetItem): string {
+function getAssetLocation(item: AssetItem): string {
   if (!item.relocation) return 'Main Facility';
   const parts = item.relocation.split('•');
   return parts[0].trim();
 }
 
 // Helper to detect if asset has been relocated
-export function isItemRelocated(item: AssetItem, liveMachines: Machine[] = []): boolean {
+function isItemRelocated(item: AssetItem, liveMachines: Machine[] = []): boolean {
   const m = liveMachines.find((mach) => mach.id.toLowerCase() === item.id.toLowerCase());
   if (m) {
     if (m.relocationHistory && m.relocationHistory.length > 0) return true;

@@ -49,19 +49,19 @@ export default function DashboardPage() {
   // ─── Immediate local reactive subscriptions ─────────────────────────
   useEffect(() => {
     const unsubMachines = subscribeMachines((data) => {
-      if (data && data.length > 0) setMachines(data);
+      if (Array.isArray(data)) setMachines(data);
     });
     const unsubRepairs = subscribeRepairs((data) => {
-      if (data && data.length > 0) setRepairs(data);
+      if (Array.isArray(data)) setRepairs(data);
     });
     const unsubPpm = subscribePPMSchedules((data) => {
-      if (data && data.length > 0) setPpmSchedules(data);
+      if (Array.isArray(data)) setPpmSchedules(data);
     });
     const unsubParts = subscribeParts((data) => {
-      if (data && data.length > 0) setParts(data);
+      if (Array.isArray(data)) setParts(data);
     });
     const unsubReqs = subscribeRequisitions((data) => {
-      if (data && data.length > 0) setRequisitions(data);
+      if (Array.isArray(data)) setRequisitions(data);
     });
 
     return () => {

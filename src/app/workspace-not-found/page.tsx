@@ -10,9 +10,9 @@ function WorkspaceNotFoundContent() {
   const slug = searchParams.get('slug') || searchParams.get('company') || '';
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(239,68,68,0.15),rgba(15,23,42,1))]">
+    <div className="workspace-unavailable min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(239,68,68,0.15),rgba(15,23,42,1))]">
       <div className="w-full max-w-lg bg-slate-800/90 backdrop-blur-xl border border-slate-700/80 rounded-3xl p-8 sm:p-10 shadow-2xl text-center space-y-6">
-        
+
         {/* Warning Icon Badge */}
         <div className="mx-auto w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shadow-inner">
           <ShieldAlert className="w-9 h-9" />
@@ -52,7 +52,7 @@ function WorkspaceNotFoundContent() {
           </div>
 
           <Link
-            href="/esstee/login"
+            href="/sahana/login"
             className="flex items-center justify-between p-3.5 bg-slate-700/40 hover:bg-slate-700/80 border border-slate-600/50 hover:border-indigo-500/60 rounded-2xl transition duration-150 group text-left"
           >
             <div className="flex items-center gap-3">
@@ -61,10 +61,10 @@ function WorkspaceNotFoundContent() {
               </div>
               <div>
                 <div className="text-sm font-bold text-white group-hover:text-indigo-300 transition">
-                  Esstee
+                  Sahana
                 </div>
                 <div className="text-xs text-slate-400">
-                  /esstee/login &bull; Garments &amp; Plant Maintenance
+                  /sahana/login &bull; Garments &amp; Plant Maintenance
                 </div>
               </div>
             </div>
@@ -103,7 +103,7 @@ function WorkspaceNotFoundContent() {
 
 export default function WorkspaceNotFoundPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-900" />}>
+    <Suspense fallback={<div className="workspace-unavailable min-h-screen bg-slate-900" />}>
       <WorkspaceNotFoundContent />
     </Suspense>
   );

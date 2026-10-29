@@ -11,7 +11,7 @@
  */
 
 const { MongoClient } = require('mongodb');
-const uri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/?appName=Cluster0';
+const uri = '';
 
 const COLLECTIONS = ['machines', 'users', 'spare_parts', 'repair_tickets', 'ppm_schedules', 'part_requisitions', 'asset_logs'];
 

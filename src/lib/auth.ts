@@ -1,8 +1,13 @@
+import { canonicalCompanySlug } from './companyIdentity';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserProfile, UserRole } from '@/types/cmms';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'cmms-super-secure-multi-tenant-jwt-secret-2026';
+function sessionSecret(): string {
+  const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) throw new Error('Configure a session secret of at least 32 characters.');
+  return secret;
+}
 const TOKEN_EXPIRY = '30d';
 
 export const SESSION_COOKIE_NAME = 'cmms_session_token';
@@ -46,7 +51,7 @@ export async function verifyPassword(plainText: string, storedHashOrPlain: strin
  * Signs a cryptographic session token
  */
 export function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+  return jwt.sign(payload, sessionSecret(), { expiresIn: TOKEN_EXPIRY });
 }
 
 /**
@@ -55,8 +60,9 @@ export function createSessionToken(payload: Omit<SessionPayload, 'iat' | 'exp'>)
 export function verifySessionToken(token?: string | null): SessionPayload | null {
   if (!token) return null;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as SessionPayload;
-    return decoded;
+    const decoded = jwt.verify(token, sessionSecret()) as SessionPayload;
+    const companySlug = canonicalCompanySlug(decoded.companySlug);
+    return { ...decoded, companySlug, companyName: companySlug === 'sahana' ? 'Sahana' : decoded.companyName };
   } catch {
     return null;
   }

@@ -1,9 +1,8 @@
-import { MongoClient, Db, Collection, Document } from 'mongodb';
+import { canonicalCompanySlug } from './companyIdentity';
+import { MongoClient, Db, Collection, Document, ObjectId } from 'mongodb';
 import { validateActiveCompany, getCompanyBySlug, CompanyRecord, ensureRegistryInitialized } from './registry';
 import { verifySessionToken, extractSessionToken, SessionPayload } from './auth';
 
-const defaultCloudUri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/?appName=Cluster0';
-const localUri = 'mongodb://127.0.0.1:27017';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -68,75 +67,25 @@ function isValidMongoUri(uri?: string | null): boolean {
   return true;
 }
 
-function getPrimaryUri(): string {
-  const envUri = (process.env.MONGODB_URI || '').trim();
-  if (isValidMongoUri(envUri)) {
-    return envUri;
-  }
-  return defaultCloudUri;
-}
-
 async function connectClient(): Promise<MongoClient> {
-  const primaryUri = getPrimaryUri();
-  const options = { serverSelectionTimeoutMS: 9000, connectTimeoutMS: 9000 };
-  try {
-    const client = new MongoClient(primaryUri, options);
-    await client.connect();
-    // Warm-up registry
-    await ensureRegistryInitialized(client);
-    return client;
-  } catch (err: unknown) {
-    if (primaryUri !== defaultCloudUri && isValidMongoUri(defaultCloudUri)) {
-      console.warn(`Primary MongoDB URI failed, attempting default cloud cluster...`);
-      try {
-        const cloudClient = new MongoClient(defaultCloudUri, options);
-        await cloudClient.connect();
-        await ensureRegistryInitialized(cloudClient);
-        return cloudClient;
-      } catch (cloudErr) {
-        console.warn('Default cloud fallback failed:', (cloudErr as any)?.message || cloudErr);
-      }
-    }
-    if (primaryUri !== localUri) {
-      console.warn(`Falling back to local MongoDB at ${localUri}...`);
-      try {
-        const fallbackClient = new MongoClient(localUri, options);
-        await fallbackClient.connect();
-        await ensureRegistryInitialized(fallbackClient);
-        return fallbackClient;
-      } catch (fallbackErr) {
-        console.warn('Local MongoDB fallback also failed:', (fallbackErr as any)?.message || fallbackErr);
-        throw err;
-      }
-    }
-    throw err;
-  }
+  const uri = (process.env.MONGODB_URI || '').trim();
+  if (!isValidMongoUri(uri)) throw new Error('MONGODB_URI must be configured.');
+  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 9000, connectTimeoutMS: 9000 });
+  await client.connect();
+  await ensureRegistryInitialized(client);
+  return client;
 }
-
-let clientPromise: Promise<MongoClient>;
-
-if (process.env.NODE_ENV === 'development') {
-  if (!global._mongoClientPromise) {
-    global._mongoClientPromise = connectClient();
-  }
-  clientPromise = global._mongoClientPromise;
-} else {
-  clientPromise = connectClient();
-}
-
-export default clientPromise;
 
 /**
  * Returns the singleton MongoClient instance
  */
 export async function getMongoClient(): Promise<MongoClient> {
+  if (!global._mongoClientPromise) global._mongoClientPromise = connectClient();
   try {
-    return await clientPromise;
-  } catch {
-    const fresh = await connectClient();
-    global._mongoClientPromise = Promise.resolve(fresh);
-    clientPromise = global._mongoClientPromise;
-    return fresh;
+    return await global._mongoClientPromise;
+  } catch (error) {
+    global._mongoClientPromise = undefined;
+    throw error;
   }
 }
 
@@ -144,8 +93,7 @@ export async function getMongoClient(): Promise<MongoClient> {
  * Normalizes input slug to standard clean format
  */
 export function normalizeCompanySlug(raw?: string | null): string {
-  if (!raw) return '';
-  return String(raw).toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+  return canonicalCompanySlug(raw);
 }
 
 /**
@@ -155,7 +103,7 @@ export function normalizeCompanySlug(raw?: string | null): string {
 export async function getCompanyDatabase(companySlug: string): Promise<{ db: Db; company: CompanyRecord }> {
   const client = await getMongoClient();
   const cleanSlug = normalizeCompanySlug(companySlug);
-  
+
   if (!cleanSlug) {
     throw new TenantError('Company slug is required', 400);
   }
@@ -188,7 +136,7 @@ export class TenantDb {
     public readonly _db: Db,
     public readonly company: CompanyRecord,
     public readonly sessionUser?: SessionPayload | null
-  ) {}
+  ) { }
 
   get databaseName(): string {
     return this.company.databaseName;
@@ -277,15 +225,17 @@ export async function resolveTenantFromRequest(req: Request): Promise<{
   company: CompanyRecord;
   sessionUser: SessionPayload | null;
 }> {
-  const client = await getMongoClient();
 
   // 1. Check for cryptographically signed session token
   const token = extractSessionToken(req);
   const sessionUser = token ? verifySessionToken(token) : null;
+  if (!sessionUser?.uid || !sessionUser.companySlug) {
+    throw new TenantError('Please sign in to continue.', 401, 'AUTH_REQUIRED');
+  }
 
   // 2. Extract any client-supplied company slug from header, cookie, or URL query
   let clientSuppliedSlug = '';
-  
+
   // Headers
   const headerSlug = req.headers.get('x-company-slug') || req.headers.get('x-company') || req.headers.get('x-tenant-id');
   if (headerSlug) clientSuppliedSlug = normalizeCompanySlug(headerSlug);
@@ -305,7 +255,7 @@ export async function resolveTenantFromRequest(req: Request): Promise<{
       const url = new URL(req.url);
       const q = url.searchParams.get('company') || url.searchParams.get('tenant') || url.searchParams.get('companySlug');
       if (q) clientSuppliedSlug = normalizeCompanySlug(q);
-    } catch {}
+    } catch { }
   }
 
   // 3. If user is authenticated, their session token is authoritative
@@ -319,19 +269,27 @@ export async function resolveTenantFromRequest(req: Request): Promise<{
     }
 
     const { db, company } = await getCompanyDatabase(authSlug);
+    const account = await db.collection('users').findOne(ObjectId.isValid(sessionUser.uid)
+      ? { $or: [{ uid: sessionUser.uid }, { _id: new ObjectId(sessionUser.uid) }] }
+      : { uid: sessionUser.uid });
+    if (!account || String(account.status || 'ACTIVE').toUpperCase() === 'INACTIVE') {
+      throw new TenantError('Your session is no longer valid.', 401, 'AUTH_REQUIRED');
+    }
+    sessionUser.role = account.role;
+    sessionUser.email = account.email;
+    const path = new URL(req.url).pathname;
+    if (req.method !== 'GET' && /\/api\/users$/.test(path) && !['ADMIN', 'ASSET_MANAGER'].includes(String(account.role).toUpperCase())) {
+      throw new TenantError('Administrator access required.', 403, 'FORBIDDEN');
+    }
     return { db, company, sessionUser };
   }
 
-  // 4. For unauthenticated requests (e.g. login, registry checks, public lookup):
-  // Resolve client-supplied slug or fallback to default
-  const targetSlug = clientSuppliedSlug || 'esstee';
-  const { db, company } = await getCompanyDatabase(targetSlug);
-  return { db, company, sessionUser: null };
+  throw new TenantError('Please sign in to continue.', 401, 'AUTH_REQUIRED');
 }
 
 /**
  * Universal getDatabase helper compatible with legacy routes and modern requests.
- * Automatically selects the appropriate dedicated database (e.g. compliance_esstee, compliance_texplus).
+ * Automatically selects the appropriate dedicated database (e.g. compliance_sahana, compliance_texplus).
  */
 export async function getDatabase(target?: string | Request): Promise<TenantDb> {
   if (target && typeof target === 'object' && 'headers' in target) {
@@ -339,12 +297,12 @@ export async function getDatabase(target?: string | Request): Promise<TenantDb> 
     return new TenantDb(db, company, sessionUser);
   }
 
-  let slug = 'esstee';
+  let slug = 'sahana';
   if (typeof target === 'string' && target.trim()) {
     const lower = target.toLowerCase().trim();
     if (lower.includes('texplus')) slug = 'texplus';
-    else if (lower.includes('esstee') || lower.includes('sahana')) slug = 'esstee';
-    else slug = normalizeCompanySlug(lower) || 'esstee';
+    else if (lower.includes('sahana') || lower.includes('esstee')) slug = 'sahana';
+    else slug = normalizeCompanySlug(lower) || 'sahana';
   }
 
   const { db, company } = await getCompanyDatabase(slug);
@@ -353,15 +311,15 @@ export async function getDatabase(target?: string | Request): Promise<TenantDb> 
 
 // Keep legacy alias for backward compatibility
 export const extractTenant = (target?: string | Request | null): string => {
-  if (!target) return 'esstee';
+  if (!target) return 'sahana';
   if (typeof target === 'object' && 'headers' in target) {
     const h = (target as Request).headers.get('x-company-slug') || (target as Request).headers.get('x-tenant-id');
     if (h) return normalizeCompanySlug(h);
-    return 'esstee';
+    return 'sahana';
   }
   const s = String(target).toLowerCase();
   if (s.includes('texplus')) return 'texplus';
-  return 'esstee';
+  return 'sahana';
 };
 export const extractTenantDb = extractTenant;
 export const colName = (c: string) => cleanColName(c);

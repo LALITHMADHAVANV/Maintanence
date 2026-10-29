@@ -69,6 +69,7 @@ export async function PATCH(req: Request) {
         const reqDoc = await db.collection('part_requisitions').findOne({ id });
         const targetUnit = (reqDoc as any)?.targetUnit || (reqDoc as any)?.unit || 'UNIT - 1';
         await sendTelegramAlert({
+          companySlug: db.tenant,
           category: 'REJECTED',
           ticketId: id,
           title: 'Store Indent Requisition Declined',

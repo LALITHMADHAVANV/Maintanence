@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   Wrench,
   Lock,
@@ -23,7 +22,6 @@ interface CompanyLoginFormProps {
 }
 
 export function CompanyLoginForm({ companySlug, companyName, description }: CompanyLoginFormProps) {
-  const router = useRouter();
   const { loginWithEmail } = useAuth();
   const { showToast } = useToast();
 
@@ -33,12 +31,12 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
   const [isLoading, setIsLoading] = useState(false);
 
   const isTexplus = companySlug === 'texplus';
-  const defaultAdminUser = isTexplus ? 'admin@texplus.com' : 'admin@esstee.com';
+  const defaultAdminUser = isTexplus ? 'admin@texplus.com' : 'admin@sahana.com';
 
   const handleFormLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanInput = (emailOrId || '').trim();
-    const cleanPass = (password || '').trim();
+    const cleanPass = password || '';
 
     if (!cleanInput) {
       showToast('Please enter your Employee ID or Email', 'warning');
@@ -53,7 +51,7 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
     try {
       await loginWithEmail(cleanInput, cleanPass, companySlug);
       showToast(`Welcome back to ${companyName} Plant Maintenance!`, 'success');
-      router.push(`/${companySlug}/dashboard`);
+      window.location.assign(`/${companySlug}/dashboard`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(msg, 'error');
@@ -69,7 +67,7 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
     try {
       await loginWithEmail(defaultAdminUser, 'admin123', companySlug);
       showToast(`Signed in as ${companyName} Administrator`, 'success');
-      router.push(`/${companySlug}/dashboard`);
+      window.location.assign(`/${companySlug}/dashboard`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(msg, 'error');

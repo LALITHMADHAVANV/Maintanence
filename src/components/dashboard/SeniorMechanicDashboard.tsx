@@ -85,6 +85,7 @@ export function SeniorMechanicDashboard({
   const router = useRouter();
   const { user, role } = useAuth();
   const { showToast } = useToast();
+  const companySlug = (user?.companySlug || 'sahana').toLowerCase();
 
   const isElectrician = role === 'SENIOR_ELECTRICIAN';
   const tradeFilter = isElectrician ? 'ELECTRICIAN' : 'MECHANIC';
@@ -435,7 +436,7 @@ export function SeniorMechanicDashboard({
           </button>
 
           <button
-            onClick={() => router.push('/dashboard/asset-log')}
+            onClick={() => router.push(`/${companySlug}/dashboard/asset-log`)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-xs cursor-pointer"
             title="Open Asset Log: Toggle Active/Idle and 8 Zones x 8 Lines Availability Report"
           >
@@ -444,7 +445,7 @@ export function SeniorMechanicDashboard({
           </button>
 
           <button
-            onClick={() => router.push('/dashboard/calendar')}
+            onClick={() => router.push(`/${companySlug}/dashboard/calendar`)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
           >
             <CalendarCheck className="w-3.5 h-3.5 text-indigo-600" />
@@ -452,7 +453,7 @@ export function SeniorMechanicDashboard({
           </button>
 
           <button
-            onClick={() => router.push('/dashboard/inventory')}
+            onClick={() => router.push(`/${companySlug}/dashboard/inventory`)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
           >
             <Boxes className="w-3.5 h-3.5 text-amber-600" />
@@ -739,7 +740,7 @@ export function SeniorMechanicDashboard({
       <LineAvailabilityWidget
         machines={machines}
         onSelectZoneLine={(zone, line) => {
-          router.push(`/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
+          router.push(`/${companySlug}/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
         }}
       />
 
@@ -1132,7 +1133,7 @@ export function SeniorMechanicDashboard({
 
             <div className="mt-3 pt-3 border-t border-slate-100 shrink-0">
               <button
-                onClick={() => router.push('/dashboard/mechanic-roster')}
+                onClick={() => router.push(`/${companySlug}/dashboard/mechanic-roster`)}
                 className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
               >
                 <span>View Full Mechanics Master Roster</span>
@@ -1156,7 +1157,7 @@ export function SeniorMechanicDashboard({
               <p className="text-xs text-slate-500">Upcoming routine inspections for floor assets ({ppmSchedules.length} schedules)</p>
             </div>
             <button
-              onClick={() => router.push('/dashboard/calendar')}
+              onClick={() => router.push(`/${companySlug}/dashboard/calendar`)}
               className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
             >
               <span>Calendar</span>
@@ -1231,7 +1232,7 @@ export function SeniorMechanicDashboard({
               <p className="text-xs text-slate-500">Status of spare requests submitted by team ({requisitions.length} requests)</p>
             </div>
             <button
-              onClick={() => router.push('/dashboard/inventory')}
+              onClick={() => router.push(`/${companySlug}/dashboard/inventory`)}
               className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
             >
               <span>+ Indent Parts</span>

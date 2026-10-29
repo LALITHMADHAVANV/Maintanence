@@ -19,22 +19,23 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     if (!user) {
-      const activeSlug = typeof window !== 'undefined' ? localStorage.getItem('cmms_active_company') || 'esstee' : 'esstee';
-      router.replace(`/${activeSlug}/login`);
+      const scopedSlug = pathname.match(/^\/([a-z0-9_-]+)\/dashboard(?:\/|$)/i)?.[1];
+      router.replace(scopedSlug ? `/${scopedSlug}/login` : '/login');
       return;
     }
 
-    const userSlug = (user.companySlug || 'esstee').toLowerCase();
-    const segments = pathname.split('/').filter(Boolean);
+    const userSlug = (user.companySlug || 'sahana').toLowerCase();
+    const browserPath = typeof window !== 'undefined' ? window.location.pathname : pathname;
+    const browserSegments = browserPath.split('/').filter(Boolean);
 
-    // 1. If route is bare `/dashboard` or `/dashboard/...`, redirect to company-scoped route
-    if (segments.length > 0 && segments[0] === 'dashboard') {
-      router.replace(`/${userSlug}${pathname}`);
+    // 1. If actual browser URL is bare `/dashboard` or `/dashboard/...`, redirect to company-scoped route
+    if (browserSegments.length > 0 && browserSegments[0] === 'dashboard') {
+      router.replace(`/${userSlug}${browserPath}${window.location.search}${window.location.hash}`);
       return;
     }
 
-    // 2. If route is scoped to another company (e.g. /texplus/... while user is esstee), block and redirect
-    if (segments.length > 1 && segments[1] === 'dashboard' && segments[0] !== userSlug) {
+    // 2. If actual browser URL is scoped to another company (e.g. /texplus/... while user is sahana), block and redirect
+    if (browserSegments.length > 1 && browserSegments[1] === 'dashboard' && browserSegments[0] !== userSlug) {
       showToast(`Cross-company access restricted. Redirected to your ${user.company || userSlug} workspace.`, 'warning');
       router.replace(`/${userSlug}/dashboard`);
       return;
@@ -66,6 +67,12 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  const browserUrl = typeof window !== 'undefined' ? window.location.pathname : pathname;
+  const requestedSlug = browserUrl.match(/^\/([a-z0-9_-]+)\/dashboard(?:\/|$)/i)?.[1];
+  if (requestedSlug && requestedSlug !== user.companySlug) {
+    return <p className="p-6 text-sm text-slate-500">Opening your company workspace...</p>;
   }
 
   // Prevent flash of forbidden pages for unauthorized roles

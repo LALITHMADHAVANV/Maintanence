@@ -57,7 +57,7 @@ console.log('Sample Asset K9840693:', {
 async function syncDb() {
   const uri =
     process.env.MONGODB_URI ||
-    'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0';
+    '';
   const client = new MongoClient(uri);
   try {
     await client.connect();

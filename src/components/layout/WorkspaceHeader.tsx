@@ -6,7 +6,9 @@ import { Bell, ChevronRight, Factory } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const titles: Record<string, string> = {
-  dashboard: 'Overview', 'asset-types': 'Equipment fleet', machines: 'Equipment',
+  'assign-task': 'Assign a task', 'active-tna': 'Active task tracking',
+  allowance: 'Allowances', users: 'User access', 'store-inbox': 'Store requests',
+  dashboard: 'Plant overview', 'asset-types': 'Equipment fleet', machines: 'Equipment',
   calendar: 'Team overview', 'pending-actions': 'Pending actions', inventory: 'Spare parts',
   'ppm-scheduler': 'Preventive maintenance', 'mechanic-roster': 'Maintenance team',
   history: 'Work history', 'asset-log': 'Asset log', messages: 'Notifications',
@@ -16,8 +18,8 @@ const titles: Record<string, string> = {
 export function WorkspaceHeader() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const companySlug = user?.companySlug || 'esstee';
-  const companyName = user?.company || (companySlug === 'texplus' ? 'Texplus' : 'Esstee');
+  const companySlug = user?.companySlug || 'sahana';
+  const companyName = user?.company || (companySlug === 'texplus' ? 'Texplus' : 'Sahana');
 
   const section = pathname.split('/').filter(Boolean).pop() || 'dashboard';
   const title = titles[section] || section.replace(/-/g, ' ');

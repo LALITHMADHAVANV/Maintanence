@@ -1,5 +1,7 @@
 'use client';
 
+import { tenantPreferences } from '@/lib/tenantPreferences';
+
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
@@ -201,27 +203,27 @@ function SettingsContent() {
 
   const [telegramBotToken, setTelegramBotToken] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('cmms_telegram_bot_token') || '';
+      return '';
     }
     return '';
   });
   const [telegramUnit1ChatId, setTelegramUnit1ChatId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('cmms_telegram_unit1_chat') || '-5302045233';
+      return tenantPreferences.getItem('cmms_telegram_unit1_chat') || '';
     }
-    return '-5302045233';
+    return '';
   });
   const [telegramAdminChatId, setTelegramAdminChatId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('cmms_telegram_admin_chat') || '8853985508';
+      return tenantPreferences.getItem('cmms_telegram_admin_chat') || '';
     }
-    return '8853985508';
+    return '';
   });
   const [telegramUnit2ChatId, setTelegramUnit2ChatId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('cmms_telegram_unit2_chat') || '-5371815915';
+      return tenantPreferences.getItem('cmms_telegram_unit2_chat') || '';
     }
-    return '-5371815915';
+    return '';
   });
   const [isTestingTelegram, setIsTestingTelegram] = useState(false);
   const [isTokenVisible, setIsTokenVisible] = useState(false);
@@ -271,19 +273,19 @@ function SettingsContent() {
 
     if (!targetChat) {
       if (testTargetChannel === 'UNIT2') {
-        targetChat = telegramUnit2ChatId.trim() || '-5371815915';
+        targetChat = telegramUnit2ChatId.trim() || '';
         targetName = 'Unit 2 Maintenance Group';
       } else if (testTargetChannel === 'ADMIN') {
-        targetChat = telegramAdminChatId.trim() || '8853985508';
+        targetChat = telegramAdminChatId.trim() || '';
         targetName = 'Admin Personal Direct';
       } else {
-        targetChat = telegramUnit1ChatId.trim() || '-5302045233';
+        targetChat = telegramUnit1ChatId.trim() || '';
         targetName = 'Unit 1 Maintenance Group';
       }
     } else {
-      if (targetChat === telegramUnit2ChatId.trim() || targetChat === '-5371815915') {
+      if (targetChat === telegramUnit2ChatId.trim()) {
         targetName = 'Unit 2 Maintenance Group';
-      } else if (targetChat === telegramAdminChatId.trim() || targetChat === '8853985508') {
+      } else if (targetChat === telegramAdminChatId.trim()) {
         targetName = 'Admin Personal Direct';
       } else {
         targetName = 'Unit 1 Maintenance Group';
@@ -351,27 +353,30 @@ function SettingsContent() {
     }
   };
 
-  const handleSaveTelegramConfig = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('cmms_telegram_bot_token', telegramBotToken.trim());
-      localStorage.setItem('cmms_telegram_unit1_chat', telegramUnit1ChatId.trim());
-      localStorage.setItem('cmms_telegram_admin_chat', telegramAdminChatId.trim());
-      localStorage.setItem('cmms_telegram_unit2_chat', telegramUnit2ChatId.trim());
-    }
-    showToast('Telegram configuration saved!', 'success');
+  const handleSaveTelegramConfig = async () => {
+    try {
+      const response = await fetch('/api/telegram', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'SAVE', botToken: telegramBotToken.trim(), unit1ChatId: telegramUnit1ChatId.trim(), unit2ChatId: telegramUnit2ChatId.trim(), adminChatId: telegramAdminChatId.trim() }),
+      });
+      if (!response.ok) throw new Error('Unable to save Telegram settings.');
+      tenantPreferences.removeItem('cmms_telegram_bot_token');
+      setTelegramBotToken('');
+      showToast('Telegram configuration saved for your company.', 'success');
+    } catch { showToast('Unable to save Telegram configuration.', 'error'); }
   };
 
   const handleResetTelegramDefaults = () => {
-    if (serverTelegramConfig?.botToken) {
-      setTelegramBotToken(serverTelegramConfig.botToken);
-      setTelegramUnit1ChatId(serverTelegramConfig.unit1ChatId || '-5302045233');
-      setTelegramUnit2ChatId(serverTelegramConfig.unit2ChatId || '-5371815915');
-      setTelegramAdminChatId(serverTelegramConfig.adminChatId || '8853985508');
+    if (serverTelegramConfig) {
+      setTelegramBotToken('');
+      setTelegramUnit1ChatId(serverTelegramConfig.unit1ChatId || '');
+      setTelegramUnit2ChatId(serverTelegramConfig.unit2ChatId || '');
+      setTelegramAdminChatId(serverTelegramConfig.adminChatId || '');
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('cmms_telegram_bot_token');
-        localStorage.removeItem('cmms_telegram_unit1_chat');
-        localStorage.removeItem('cmms_telegram_unit2_chat');
-        localStorage.removeItem('cmms_telegram_admin_chat');
+        tenantPreferences.removeItem('cmms_telegram_bot_token');
+        tenantPreferences.removeItem('cmms_telegram_unit1_chat');
+        tenantPreferences.removeItem('cmms_telegram_unit2_chat');
+        tenantPreferences.removeItem('cmms_telegram_admin_chat');
       }
       showToast('Reset to server default configuration (@Assetmbot)', 'info');
     }
@@ -381,13 +386,13 @@ function SettingsContent() {
   const [departments, setDepartments] = useState<DepartmentItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const hasCleared = localStorage.getItem('cmms_settings_dept_wiped_v2');
+        const hasCleared = tenantPreferences.getItem('cmms_settings_dept_wiped_v2');
         if (!hasCleared) {
-          localStorage.removeItem('cmms_settings_departments');
-          localStorage.setItem('cmms_settings_dept_wiped_v2', 'true');
+          tenantPreferences.removeItem('cmms_settings_departments');
+          tenantPreferences.setItem('cmms_settings_dept_wiped_v2', 'true');
           return [];
         }
-        const saved = localStorage.getItem('cmms_settings_departments');
+        const saved = tenantPreferences.getItem('cmms_settings_departments');
         if (saved) return JSON.parse(saved);
       } catch {
         // ignore
@@ -399,7 +404,7 @@ function SettingsContent() {
   const saveDepartments = (items: DepartmentItem[]) => {
     setDepartments(items);
     try {
-      localStorage.setItem('cmms_settings_departments', JSON.stringify(items));
+      tenantPreferences.setItem('cmms_settings_departments', JSON.stringify(items));
     } catch {
       // ignore
     }
@@ -421,7 +426,7 @@ function SettingsContent() {
   const [factoryUnits, setFactoryUnits] = useState<FactoryUnitItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('cmms_settings_factory_units');
+        const saved = tenantPreferences.getItem('cmms_settings_factory_units');
         if (saved) return JSON.parse(saved);
       } catch {
         // ignore
@@ -433,7 +438,7 @@ function SettingsContent() {
   const saveFactoryUnits = (items: FactoryUnitItem[]) => {
     setFactoryUnits(items);
     try {
-      localStorage.setItem('cmms_settings_factory_units', JSON.stringify(items));
+      tenantPreferences.setItem('cmms_settings_factory_units', JSON.stringify(items));
       window.dispatchEvent(new Event('cmms_settings_factory_units_changed'));
     } catch {
       // ignore
@@ -981,8 +986,8 @@ function SettingsContent() {
       showToast('Please fill in all mandatory fields', 'error');
       return;
     }
-    if (newPassword.length < 6) {
-      showToast('Password must be at least 6 characters long', 'error');
+    if (newPassword.length < 8) {
+      showToast('Password must be at least 8 characters long', 'error');
       return;
     }
 
@@ -1086,8 +1091,8 @@ function SettingsContent() {
       };
 
       if (editPassword.trim()) {
-        if (editPassword.trim().length < 6) {
-          showToast('New password must be at least 6 characters', 'error');
+        if (editPassword.trim().length < 8) {
+          showToast('New password must be at least 8 characters', 'error');
           setIsUpdatingUser(false);
           return;
         }
@@ -1150,8 +1155,8 @@ function SettingsContent() {
   const handleConfirmResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!passwordModalUser) return;
-    if (modalNewPassword.trim().length < 6) {
-      showToast('Password must be at least 6 characters', 'error');
+    if (modalNewPassword.trim().length < 8) {
+      showToast('Password must be at least 8 characters', 'error');
       return;
     }
 

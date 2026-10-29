@@ -6,7 +6,7 @@
  */
 
 const { MongoClient } = require('mongodb');
-const uri = 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/maintanence?appName=Cluster0';
+const uri = '';
 
 const rawData = [
   { brand: 'Brother', line: 'Line 02', type: 'SNLS', rawType: 'singer', model: 'S-7180A-813P', mcNo: 'M4DL87262', unit: 'TEXPLUS', status: 'ACTIVE', zone: 'PHENIX' },

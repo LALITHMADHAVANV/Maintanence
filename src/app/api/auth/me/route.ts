@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { extractSessionToken, verifySessionToken, sanitizeUserProfile, SESSION_COOKIE_NAME } from '@/lib/auth';
-import { getCompanyDatabase } from '@/lib/mongodb';
+import { extractSessionToken, verifySessionToken, sanitizeUserProfile } from '@/lib/auth';
+import { ObjectId } from 'mongodb';
+import { getDatabase, TenantError } from '@/lib/mongodb';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,18 +17,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ authenticated: false, user: null }, { status: 401 });
     }
 
-    const { db, company } = await getCompanyDatabase(session.companySlug);
-    const user = await db.collection('users').findOne({
-      $or: [
-        { email: session.email },
-        { uid: session.uid },
-      ],
-    });
-
-    if (!user || user.status === 'INACTIVE') {
-      return NextResponse.json({ authenticated: false, user: null }, { status: 401 });
-    }
-
+    const db = await getDatabase(req);
+    const company = db.company;
+    const user = await db.collection('users').findOne(ObjectId.isValid(session.uid)
+      ? { $or: [{ uid: session.uid }, { _id: new ObjectId(session.uid) }] }
+      : { uid: session.uid });
+    if (!user) return NextResponse.json({ authenticated: false, user: null }, { status: 401 });
     const profile = sanitizeUserProfile(user, company.slug, company.name);
 
     return NextResponse.json({
@@ -39,6 +34,7 @@ export async function GET(req: Request) {
       },
     });
   } catch (err: unknown) {
+    if (err instanceof TenantError) return NextResponse.json({ authenticated: false, user: null }, { status: err.statusCode });
     return NextResponse.json(
       { authenticated: false, error: (err as any)?.message || 'Session validation error' },
       { status: 500 }

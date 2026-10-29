@@ -1,5 +1,7 @@
 'use client';
 
+import { assetScanUrl } from '@/lib/scanUrl';
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -235,7 +237,7 @@ export function BulkQrPrintModal({
   const handleCopyUrls = () => {
     if (typeof window === 'undefined') return;
     const urls = itemsToPrint
-      .map((item) => `${origin}/maintenance/scan/${encodeURIComponent(item.id)}`)
+      .map((item) => `${assetScanUrl(origin, item.id)}`)
       .join('\n');
     navigator.clipboard?.writeText(urls);
     setCopied(true);
@@ -244,7 +246,7 @@ export function BulkQrPrintModal({
 
   // Render individual sticker based on selected format
   const renderSticker = (asset: BulkQrAsset, idx: number, isPrintPortal: boolean = false) => {
-    const qrValue = `${origin}/maintenance/scan/${encodeURIComponent(asset.id)}?brand=${encodeURIComponent(asset.brand || '')}&model=${encodeURIComponent(asset.model || '')}&unit=${encodeURIComponent(asset.unit || '')}&company=${encodeURIComponent(asset.company || effectiveCompanyName)}`;
+    const qrValue = `${assetScanUrl(origin, asset.id)}?brand=${encodeURIComponent(asset.brand || '')}&model=${encodeURIComponent(asset.model || '')}&unit=${encodeURIComponent(asset.unit || '')}&company=${encodeURIComponent(asset.company || effectiveCompanyName)}`;
     const displayId = asset.mcNo && asset.mcNo !== '-' ? asset.mcNo : asset.id;
     const lineLabel = asset.currentLine || asset.location || asset.unit || '';
 

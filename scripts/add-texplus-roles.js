@@ -1,7 +1,7 @@
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
 
-const uri = process.env.MONGODB_URI || 'mongodb+srv://lalithmadhavan2005_db_user:5Er1LsAVvAnwrWG2@cluster0.ucek7vf.mongodb.net/?appName=Cluster0';
+const uri = process.env.MONGODB_URI || '';
 
 async function addRoles() {
   const client = new MongoClient(uri);
@@ -89,38 +89,38 @@ async function addRoles() {
     console.log('Upserted:', u.email, u.role);
   }
 
-  // Also in Esstee, make sure senior mechanic and electrician are added
-  const essteeDb = client.db('compliance_esstee');
-  const essteeExtras = [
+  // Also in Sahana, make sure senior mechanic and electrician are added
+  const SahanaDb = client.db('compliance_sahana');
+  const SahanaExtras = [
     {
-      uid: 'SRM-ESSTEE-01',
-      name: 'Esstee Senior Mechanic',
-      email: 'senior@esstee.com',
+      uid: 'SRM-SAHANA-01',
+      name: 'Sahana Senior Mechanic',
+      email: 'senior@sahana.com',
       role: 'SENIOR_MECHANIC',
       title: 'Senior Sewing Master Mechanic',
       phone: '+91 98401 22004',
       department: 'Maintenance Workshop',
       employeeId: 'EMP-SRM-01',
       unit: 'All Units',
-      company: 'Esstee',
-      companySlug: 'esstee',
+      company: 'Sahana',
+      companySlug: 'sahana',
       status: 'ACTIVE',
       passwordHash: await bcrypt.hash('senior123', 10),
       createdAt: now,
       updatedAt: now,
     },
     {
-      uid: 'ELE-ESSTEE-01',
-      name: 'Esstee Industrial Electrician',
-      email: 'electrician@esstee.com',
+      uid: 'ELE-SAHANA-01',
+      name: 'Sahana Industrial Electrician',
+      email: 'electrician@sahana.com',
       role: 'ELECTRICIAN',
       title: 'Industrial Plant Electrician',
       phone: '+91 98401 22006',
       department: 'Electrical Maintenance',
       employeeId: 'EMP-ELE-01',
       unit: 'All Units',
-      company: 'Esstee',
-      companySlug: 'esstee',
+      company: 'Sahana',
+      companySlug: 'sahana',
       status: 'ACTIVE',
       passwordHash: await bcrypt.hash('electrician123', 10),
       createdAt: now,
@@ -128,13 +128,13 @@ async function addRoles() {
     },
   ];
 
-  for (const u of essteeExtras) {
-    await essteeDb.collection('users').updateOne(
+  for (const u of SahanaExtras) {
+    await SahanaDb.collection('users').updateOne(
       { email: u.email },
       { $set: u },
       { upsert: true }
     );
-    console.log('Upserted Esstee:', u.email, u.role);
+    console.log('Upserted Sahana:', u.email, u.role);
   }
 
   await client.close();

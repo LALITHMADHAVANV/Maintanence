@@ -30,7 +30,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-100 text-slate-800">
+      <body className="plant-command min-h-full flex flex-col bg-slate-100 text-slate-800">
         <AuthProvider>
           <NavProvider>
             <ToastProvider>{children}</ToastProvider>

@@ -14,7 +14,7 @@ export default function DashboardLayout({
   const { isNavHidden } = useNav();
 
   return (
-    <div className="workspace-shell min-h-screen bg-[#f5f7fa] text-slate-800 flex flex-col md:flex-row antialiased selection:bg-indigo-500 selection:text-white">
+    <div className="workspace-shell min-h-screen bg-[#e5e9f0] text-slate-800 flex flex-col md:flex-row antialiased selection:bg-indigo-500 selection:text-white">
       <a href="#main-content" className="skip-navigation">Skip to content</a>
       <Sidebar />
 
