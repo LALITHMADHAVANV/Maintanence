@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Camera, X, QrCode, AlertCircle, ArrowRight } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
+import { parseAssetScan } from '@/lib/scanUrl';
 
 interface CameraScannerModalProps {
   isOpen: boolean;
@@ -15,6 +17,7 @@ interface CameraScannerModalProps {
 export function CameraScannerModal({ isOpen, onClose, onScanSuccess }: CameraScannerModalProps) {
   const router = useRouter();
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [manualId, setManualId] = useState('');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
@@ -49,26 +52,21 @@ export function CameraScannerModal({ isOpen, onClose, onScanSuccess }: CameraSca
         scanner.render(
           (decodedText) => {
             // Check if decoded text is a full URL or direct machine ID
-            let targetId = decodedText;
+            let target;
             try {
-              if (decodedText.includes('/scan/')) {
-                const parts = decodedText.split('/scan/');
-                targetId = parts[1].split('?')[0];
-              } else if (decodedText.includes('id=')) {
-                const url = new URL(decodedText);
-                targetId = url.searchParams.get('id') || decodedText;
-              }
-            } catch {
-              targetId = decodedText;
+              target = parseAssetScan(decodedText, user?.companySlug);
+            } catch (error) {
+              showToast(error instanceof Error ? error.message : 'Invalid asset QR code.', 'error');
+              return;
             }
 
-            showToast(`Tag scanned: ${targetId}`, 'success');
+            showToast(`Tag scanned: ${target.id}`, 'success');
             scanner.clear().catch(() => {});
             onClose();
             if (onScanSuccess) {
-              onScanSuccess(targetId);
+              onScanSuccess(target.id);
             } else {
-              router.push(`/scan/${encodeURIComponent(targetId)}`);
+              router.push(target.href);
             }
           },
           (errorMessage) => {
@@ -88,7 +86,7 @@ export function CameraScannerModal({ isOpen, onClose, onScanSuccess }: CameraSca
         scannerRef.current = null;
       }
     };
-  }, [isOpen, onClose, onScanSuccess, router, showToast]);
+  }, [isOpen, onClose, onScanSuccess, router, showToast, user?.companySlug]);
 
   if (!isOpen) return null;
 
@@ -96,11 +94,18 @@ export function CameraScannerModal({ isOpen, onClose, onScanSuccess }: CameraSca
     e.preventDefault();
     const cleanId = manualId.trim();
     if (!cleanId) return;
+    let target;
+    try {
+      target = parseAssetScan(cleanId, user?.companySlug);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Invalid asset QR code.', 'error');
+      return;
+    }
     onClose();
     if (onScanSuccess) {
-      onScanSuccess(cleanId);
+      onScanSuccess(target.id);
     } else {
-      router.push(`/scan/${encodeURIComponent(cleanId)}`);
+      router.push(target.href);
     }
   };
 

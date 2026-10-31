@@ -23,7 +23,7 @@ import {
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
 import {
-  subscribeMachines,
+  apiFetch,
   createBreakdownTicket,
   relocateMachine,
   subscribeRepairs,
@@ -38,7 +38,8 @@ import { canonicalCompanySlug } from '@/lib/companyIdentity';
 function MobileScanContent() {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
-  const expected = (typeof window !== 'undefined' ? window.location.pathname : pathname).match(/^\/([^/]+)\/scan\//)?.[1]?.toLowerCase();
+  const searchParams = useSearchParams();
+  const expected = (typeof window !== 'undefined' ? window.location.pathname : pathname).match(/^\/([^/]+)\/scan\//)?.[1]?.toLowerCase() || searchParams.get('company');
   if (isLoading) return <p className="p-8">Opening asset scanner...</p>;
   if (user && expected && canonicalCompanySlug(expected) !== canonicalCompanySlug(user.companySlug)) return <div className="p-8"><h1>Different company workspace</h1><p>Sign in with an account belonging to this asset’s company.</p><Link href="/login">Go to sign in</Link></div>;
   return <ScanContent companySlug={canonicalCompanySlug(expected || user?.companySlug)} />;
@@ -47,8 +48,7 @@ function MobileScanContent() {
 function ScanContent({ companySlug }: { companySlug: string }) {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const machineId = typeof params?.id === 'string' ? decodeURIComponent(params.id) : '';
+  const machineId = typeof params?.id === 'string' ? params.id : '';
 
   const { showToast } = useToast();
   const { user, role } = useAuth();
@@ -128,47 +128,48 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   }, [availableMechanics]);
 
   useEffect(() => {
-    if (!user) {
-      const controller = new AbortController();
-      setIsLoading(true);
-      setMachine(null);
-      setLoadError('');
-      fetch(`/api/public/scan?company=${encodeURIComponent(companySlug)}&id=${encodeURIComponent(machineId)}`, { signal: controller.signal, cache: 'no-store' })
-        .then(async (res) => {
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Unable to load asset.');
-          setMachine(data.data);
-        })
-        .catch((error) => {
-          if (!controller.signal.aborted) setLoadError(error.message);
-        })
-        .finally(() => { if (!controller.signal.aborted) setIsLoading(false); });
+    const controller = new AbortController();
+    setIsLoading(true);
+    setMachine(null);
+    setLoadError('');
+    if (!companySlug) {
+      setLoadError('This QR code is missing its company. Sign in to your company workspace and scan again.');
+      setIsLoading(false);
       return () => controller.abort();
     }
-    const unsub = subscribeMachines((machines) => {
-      const found = machines.find((m) => m.id.toLowerCase() === machineId.toLowerCase());
-      if (found) {
-        setMachine(found);
-        setTargetLine(found.currentLine);
-        setTargetStation(found.stationNo);
-      } else {
-        setMachine(null);
-      }
-      setIsLoading(false);
-    });
+    const url = user
+      ? `/api/machines?id=${encodeURIComponent(machineId)}`
+      : `/api/public/scan?company=${encodeURIComponent(companySlug)}&id=${encodeURIComponent(machineId)}`;
+    const load = user ? apiFetch : fetch;
+    load(url, { signal: controller.signal, cache: 'no-store' })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 404) return;
+          throw new Error(data.error || 'Unable to load asset. Please try again.');
+        }
+        if (!data.data) throw new Error('The server returned no asset details. Please try again.');
+        if (controller.signal.aborted) return;
+        setMachine(data.data);
+        setTargetLine(data.data.currentLine);
+        setTargetStation(data.data.stationNo);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setLoadError(error.message || 'Unable to load asset. Please try again.');
+      })
+      .finally(() => { if (!controller.signal.aborted) setIsLoading(false); });
+    return () => controller.abort();
+  }, [machineId, user, companySlug]);
 
-    const unsubRepairs = subscribeRepairs((repairs) => {
-      const matching = repairs.filter(
+  useEffect(() => {
+    setAssetHistoryCount(0);
+    if (!user) return;
+    return subscribeRepairs((repairs) => {
+      setAssetHistoryCount(repairs.filter(
         (r) => r.machineId?.toLowerCase() === machineId.toLowerCase()
-      );
-      setAssetHistoryCount(matching.length);
+      ).length);
     });
-
-    return () => {
-      unsub();
-      unsubRepairs();
-    };
-  }, [machineId, searchParams, user, companySlug]);
+  }, [machineId, user]);
 
   const handleBreakdownSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,7 +271,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
           <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-200">
             <AlertTriangle className="w-6 h-6" />
           </div>
-          <h2 className="text-lg font-bold text-slate-900">Unrecognized Asset Tag</h2>
+          <h2 className="text-lg font-bold text-slate-900">{loadError ? 'Unable to Load Asset' : 'Unregistered QR'}</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
             {loadError || <>Machine tag <code className="bg-slate-100 px-2 py-1 rounded text-amber-700 font-mono border border-slate-200">{machineId}</code> was not found in the factory registry.</>}
           </p>

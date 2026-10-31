@@ -12,8 +12,9 @@ export async function GET(req: Request) {
     const specificId = url.searchParams.get('id');
 
     if (specificId) {
+      const escapedId = specificId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const single = await db.collection<Machine>('machines').findOne({
-        id: { $regex: new RegExp(`^${specificId}$`, 'i') },
+        id: { $regex: new RegExp(`^${escapedId}$`, 'i') },
       });
       if (single) {
         const { _id, ...clean } = single as any;
