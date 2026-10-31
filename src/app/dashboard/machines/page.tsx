@@ -629,7 +629,7 @@ export default function MachinesPage() {
             <QrCode className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex flex-wrap items-center gap-2 mb-0.5">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">
                 Asset Registration &amp; QR Tagging
               </h1>
@@ -665,7 +665,7 @@ export default function MachinesPage() {
       {/* Main Grid: Form (Left) & QR Tag Preview (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left 7 Columns: Asset Input Form */}
-        <div className="lg:col-span-7 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5 no-print">
+        <div className="min-w-0 lg:col-span-7 bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-5 no-print">
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
             <Tag className="w-4 h-4 text-indigo-600" />
             <span>Asset Specifications</span>
@@ -1179,9 +1179,9 @@ export default function MachinesPage() {
         </div>
 
         {/* Right 5 Columns: Printable QR Sticker Preview */}
-        <div className="lg:col-span-5 space-y-4 print:w-full print:max-w-none print:m-0">
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 print:border-none print:shadow-none print:p-0">
-            <div className="flex items-center justify-between no-print">
+        <div className="min-w-0 lg:col-span-5 space-y-4 print:w-full print:max-w-none print:m-0">
+          <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-4 print:border-none print:shadow-none print:p-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 no-print">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                 <QrCode className="w-4 h-4 text-indigo-600" />
                 <span>Asset ID Card Preview</span>

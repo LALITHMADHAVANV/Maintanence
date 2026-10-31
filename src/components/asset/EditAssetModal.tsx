@@ -202,22 +202,22 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 overflow-hidden"
+        className="bg-white rounded-2xl max-w-2xl w-full max-h-[92dvh] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 overflow-hidden"
         role="dialog"
         aria-modal="true"
       >
         {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="px-4 sm:px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
               <Pencil className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-bold text-slate-900 tracking-tight">
                   Edit Asset Details
                 </h2>
-                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                <span className="max-w-full break-all font-mono text-xs font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
                   {asset.id}
                 </span>
               </div>
@@ -229,7 +229,7 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+            className="shrink-0 p-2.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition cursor-pointer"
             aria-label="Close"
           >
             <X className="w-5 h-5" />

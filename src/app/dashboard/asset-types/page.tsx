@@ -548,7 +548,7 @@ function AssetsPageContent() {
                 <Boxes className="w-6 h-6" />
               </div>
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex flex-wrap items-center gap-2 mb-0.5">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">
                 Asset Master Registry
               </h1>
@@ -1132,7 +1132,7 @@ function AssetsPageContent() {
           </div>
 
           {/* Table Footer Summary */}
-          <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500 font-semibold">
+          <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 font-semibold">
             <span>
               Showing {filteredItems.length} of {allItems.length} total plant assets
             </span>

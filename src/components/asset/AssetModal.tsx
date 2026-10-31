@@ -836,9 +836,9 @@ export function AssetModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden my-auto">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92dvh] flex flex-col overflow-hidden my-auto">
         {/* Header with Category Badge & Asset Title */}
-        <div className="bg-slate-50 p-4 sm:p-5 text-slate-800 flex items-center justify-between border-b border-slate-200 shrink-0">
+        <div className="bg-slate-50 p-4 sm:p-5 text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div
               className={`w-10 h-10 rounded-2xl flex items-center justify-center border shrink-0 ${catStyle.badge}`}
@@ -847,7 +847,7 @@ export function AssetModal({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono font-extrabold text-sm sm:text-base text-slate-900">
+                <span className="max-w-full break-all font-mono font-extrabold text-sm sm:text-base text-slate-900">
                   {currentAsset.id}
                 </span>
                 <span
@@ -873,7 +873,7 @@ export function AssetModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => setIsEditModalOpen(true)}
@@ -1183,7 +1183,7 @@ export function AssetModal({
         </div>
 
         {/* Modal Navigation Tabs (Details / Report / Relocate) */}
-        <div className="px-5 pt-3 bg-white border-b border-slate-100 flex items-center gap-2 shrink-0">
+        <div className="px-4 sm:px-5 pt-3 bg-white border-b border-slate-100 flex items-center gap-2 shrink-0 overflow-x-auto [&>button]:shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('DETAILS')}

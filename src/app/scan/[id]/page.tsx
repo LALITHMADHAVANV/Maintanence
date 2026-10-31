@@ -33,21 +33,18 @@ import { useAuth } from '@/context/AuthContext';
 import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
 import { formatAssetLocation } from '@/lib/formatters';
 import { matchesUnit } from '@/lib/constants/units';
+import { canonicalCompanySlug } from '@/lib/companyIdentity';
 
 function MobileScanContent() {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
   const expected = (typeof window !== 'undefined' ? window.location.pathname : pathname).match(/^\/([^/]+)\/scan\//)?.[1]?.toLowerCase();
-  useEffect(() => {
-    if (!isLoading && !user) router.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
-  }, [isLoading, user, router]);
-  if (isLoading || !user) return <p className="p-8">Opening secure asset scanner...</p>;
-  if (expected && expected !== user.companySlug) return <div className="p-8"><h1>Different company workspace</h1><p>Sign in with an account belonging to this asset’s company.</p><Link href="/login">Go to sign in</Link></div>;
-  return <AuthenticatedScanContent />;
+  if (isLoading) return <p className="p-8">Opening asset scanner...</p>;
+  if (user && expected && canonicalCompanySlug(expected) !== canonicalCompanySlug(user.companySlug)) return <div className="p-8"><h1>Different company workspace</h1><p>Sign in with an account belonging to this asset’s company.</p><Link href="/login">Go to sign in</Link></div>;
+  return <ScanContent companySlug={canonicalCompanySlug(expected || user?.companySlug)} />;
 }
 
-function AuthenticatedScanContent() {
+function ScanContent({ companySlug }: { companySlug: string }) {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -70,6 +67,20 @@ function AuthenticatedScanContent() {
   const [selectedMechanic, setSelectedMechanic] = useState('');
   const [registeredTechs, setRegisteredTechs] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const draftKey = `scan-breakdown:${companySlug}:${machineId}`;
+  const loginUrl = `/login?next=${encodeURIComponent(`/${companySlug}/scan/${encodeURIComponent(machineId)}`)}`;
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(draftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (typeof draft.faultType === 'string') setFaultType(draft.faultType);
+      if (typeof draft.faultNotes === 'string') setFaultNotes(draft.faultNotes);
+      if (draft.urgency === 'CRITICAL' || draft.urgency === 'WARNING') setUrgency(draft.urgency);
+    } catch { /* A new report can still be entered if browser storage is unavailable. */ }
+  }, [draftKey]);
 
   // Relocate Form
   const [targetLine, setTargetLine] = useState<FloorLine>('Line 01');
@@ -78,6 +89,7 @@ function AuthenticatedScanContent() {
 
   // Fetch registered mechanics / technicians
   useEffect(() => {
+    if (!user) return;
     fetch('/api/users')
       .then((r) => r.json())
       .then((data) => {
@@ -89,7 +101,7 @@ function AuthenticatedScanContent() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   // Show all registered technicians across all units (prioritizing machine's unit first)
   const availableMechanics = useMemo(() => {
@@ -116,6 +128,23 @@ function AuthenticatedScanContent() {
   }, [availableMechanics]);
 
   useEffect(() => {
+    if (!user) {
+      const controller = new AbortController();
+      setIsLoading(true);
+      setMachine(null);
+      setLoadError('');
+      fetch(`/api/public/scan?company=${encodeURIComponent(companySlug)}&id=${encodeURIComponent(machineId)}`, { signal: controller.signal, cache: 'no-store' })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Unable to load asset.');
+          setMachine(data.data);
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted) setLoadError(error.message);
+        })
+        .finally(() => { if (!controller.signal.aborted) setIsLoading(false); });
+      return () => controller.abort();
+    }
     const unsub = subscribeMachines((machines) => {
       const found = machines.find((m) => m.id.toLowerCase() === machineId.toLowerCase());
       if (found) {
@@ -139,11 +168,20 @@ function AuthenticatedScanContent() {
       unsub();
       unsubRepairs();
     };
-  }, [machineId, searchParams]);
+  }, [machineId, searchParams, user, companySlug]);
 
   const handleBreakdownSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!machine) return;
+    if (!user) {
+      try {
+        sessionStorage.setItem(draftKey, JSON.stringify({ faultType, faultNotes, urgency }));
+      } catch {
+        showToast('Your browser could not save the form. Please sign in and enter the report again.', 'warning');
+      }
+      router.push(loginUrl);
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -168,6 +206,7 @@ function AuthenticatedScanContent() {
       );
       setFaultNotes('');
       setSelectedMechanic('');
+      try { sessionStorage.removeItem(draftKey); } catch { /* Report is already saved. */ }
       if (role === 'CEO') {
         router.push('/dashboard/messages');
       } else if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
@@ -185,6 +224,7 @@ function AuthenticatedScanContent() {
 
   const handleRelocateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) { router.push(loginUrl); return; }
     if (!machine) return;
     setIsSubmitting(true);
 
@@ -232,7 +272,7 @@ function AuthenticatedScanContent() {
           </div>
           <h2 className="text-lg font-bold text-slate-900">Unrecognized Asset Tag</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Machine tag <code className="bg-slate-100 px-2 py-1 rounded text-amber-700 font-mono border border-slate-200">{machineId}</code> was not found in the factory registry.
+            {loadError || <>Machine tag <code className="bg-slate-100 px-2 py-1 rounded text-amber-700 font-mono border border-slate-200">{machineId}</code> was not found in the factory registry.</>}
           </p>
           <Link
             href={role === 'CEO' ? '/dashboard' : '/dashboard/machines'}
@@ -251,17 +291,17 @@ function AuthenticatedScanContent() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col p-4 sm:p-6 antialiased selection:bg-indigo-500 selection:text-white">
       {/* Mobile Top Header with Prominent History Button */}
-      <div className="max-w-lg w-full mx-auto flex items-center justify-between py-3 border-b border-slate-200 mb-4 gap-2">
+      <div className="max-w-lg w-full mx-auto flex flex-wrap items-center justify-between py-3 border-b border-slate-200 mb-4 gap-2">
         <Link
-          href={role === 'CEO' ? '/dashboard' : '/dashboard/machines'}
+          href={!user ? loginUrl : role === 'CEO' ? '/dashboard' : '/dashboard/machines'}
           className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition font-semibold"
         >
           <ArrowLeft className="w-4 h-4 text-slate-500" />
-          <span>{role === 'CEO' ? 'Executive Dashboard' : 'Maintenance Dashboard'}</span>
+          <span>{!user ? 'Sign in' : role === 'CEO' ? 'Executive Dashboard' : 'Maintenance Dashboard'}</span>
         </Link>
 
         {/* Top Actions: Edit Button + History Button + Live Status */}
-        <div className="flex items-center gap-2">
+        {user && <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setIsEditModalOpen(true)}
@@ -291,7 +331,7 @@ function AuthenticatedScanContent() {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
             <span>Live Floor Terminal</span>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Main Card */}
@@ -330,7 +370,7 @@ function AuthenticatedScanContent() {
               >
                 {machine.status}
               </span>
-              <button
+              {user && <><button
                 type="button"
                 onClick={() => setIsEditModalOpen(true)}
                 className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
@@ -345,7 +385,7 @@ function AuthenticatedScanContent() {
               >
                 <History className="w-3 h-3" />
                 <span>Timeline ({assetHistoryCount})</span>
-              </button>
+              </button></>}
             </div>
           </div>
 
@@ -398,7 +438,7 @@ function AuthenticatedScanContent() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('relocate')}
+            onClick={() => user ? setActiveTab('relocate') : router.push(loginUrl)}
             className={`flex-1 py-3.5 text-center border-b-2 transition flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === 'relocate'
                 ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60 font-extrabold'
@@ -412,6 +452,7 @@ function AuthenticatedScanContent() {
 
         {/* Form Body */}
         <div className="p-6">
+          {!user && <p className="mb-4 text-xs text-slate-600">Enter the breakdown details below. Continue to sign in, choose a technician, and submit your report.</p>}
           {activeTab === 'report' ? (
             <form onSubmit={handleBreakdownSubmit} className="space-y-4">
               <div>
@@ -507,7 +548,7 @@ function AuthenticatedScanContent() {
               </div>
 
               {/* Mechanic Selection Dropdown across All Units */}
-              <div>
+              {user && <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
@@ -539,7 +580,7 @@ function AuthenticatedScanContent() {
                 <p className="text-[11px] text-slate-400 mt-1">
                   Issue will automatically appear on this technician&apos;s workbench and login dashboard.
                 </p>
-              </div>
+              </div>}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
@@ -600,7 +641,7 @@ function AuthenticatedScanContent() {
                 className="w-full py-3 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/25 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Radio className="w-4 h-4" />
-                <span>Broadcast Breakdown to Mechanic Queue</span>
+                <span>{user ? 'Broadcast Breakdown to Mechanic Queue' : 'Continue to Login to Register Breakdown'}</span>
               </button>
             </form>
           ) : (
@@ -664,7 +705,7 @@ function AuthenticatedScanContent() {
       </div>
 
       {/* Asset Maintenance & Relocation History Modal */}
-      <AssetHistoryModal
+      {user && <><AssetHistoryModal
         machine={machine}
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
@@ -678,7 +719,7 @@ function AuthenticatedScanContent() {
         onSave={(updated) => {
           setMachine(updated);
         }}
-      />
+      /></>}
     </div>
   );
 }
