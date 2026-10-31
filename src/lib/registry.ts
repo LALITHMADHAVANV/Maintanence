@@ -61,11 +61,6 @@ export async function ensureRegistryInitialized(client: MongoClient): Promise<vo
     // Ensure initial companies are registered
     const now = new Date().toISOString();
     for (const comp of INITIAL_COMPANIES) {
-      // Preserve the registered database: a branding change must not create an empty tenant.
-      if (comp.slug === 'sahana') {
-        const existing = await col.findOne({ slug: { $regex: /^(sahana|esstee)$/i } });
-        if (existing) continue;
-      }
       await col.updateOne(
         { slug: comp.slug },
         {
@@ -97,16 +92,14 @@ export async function getAllCompanies(client: MongoClient): Promise<CompanyRecor
   await ensureRegistryInitialized(client);
   const col = getCompaniesCollection(client);
   const records = await col.find({}).toArray();
-  const list = records.map(record => canonicalCompanySlug(record.slug) === 'sahana'
-    ? { ...record, slug: 'sahana', name: 'Sahana', description: 'Sahana Garments & Plant Maintenance Operations' }
-    : record);
-  const sahanaRecords = list.filter(record => record.slug === 'sahana');
-  if (new Set(sahanaRecords.map(record => record.databaseName)).size > 1) {
-    throw new Error('Multiple database mappings exist for Sahana. Resolve the company registry before signing in.');
-  }
+  const list = records.map(record => ({ ...record, slug: normalizeSlug(record.slug) }));
 
   const cacheMap = new Map<string, CompanyRecord>();
   for (const c of list) {
+    const existing = cacheMap.get(c.slug);
+    if (existing && existing.databaseName !== c.databaseName) {
+      throw new Error(`Multiple database mappings exist for ${c.slug}. Resolve the company registry before signing in.`);
+    }
     cacheMap.set(c.slug.toLowerCase(), c);
   }
   memoryCache = { data: cacheMap, expiresAt: now + CACHE_TTL_MS };

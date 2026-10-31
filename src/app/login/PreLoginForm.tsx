@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Wrench, User, Lock, Eye, EyeOff, ArrowRight, Loader2, Shield } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
-export function PreLoginForm() {
+export function PreLoginForm({ companySlug }: { companySlug?: string }) {
   const { loginWithEmail } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -16,7 +16,7 @@ export function PreLoginForm() {
     setError('');
     setPending(true);
     try {
-      const user = await loginWithEmail(identifier, password);
+      const user = await loginWithEmail(identifier, password, companySlug);
       const next = new URLSearchParams(window.location.search).get('next');
       const prefix = `/${encodeURIComponent(user.companySlug!)}/`;
       const safeNext = next?.startsWith(prefix) && !next.includes('\\') && !/[\r\n]/.test(next);

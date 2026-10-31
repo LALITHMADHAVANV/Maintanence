@@ -69,7 +69,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState('');
   const draftKey = `scan-breakdown:${companySlug}:${machineId}`;
-  const loginUrl = `/login?next=${encodeURIComponent(`/${companySlug}/scan/${encodeURIComponent(machineId)}`)}`;
+  const loginUrl = `/${companySlug}/login?next=${encodeURIComponent(`/${companySlug}/scan/${encodeURIComponent(machineId)}`)}`;
 
   useEffect(() => {
     try {
