@@ -50,6 +50,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import {
   SparePart,
+  RepairTicket,
   PartRequisition,
   RequisitionType,
   RequisitionUrgency,
@@ -57,6 +58,7 @@ import {
 } from '@/types/cmms';
 import {
   subscribeParts,
+  subscribeRepairs,
   adjustPartStock,
   restockPart,
   subscribeRequisitions,
@@ -86,6 +88,16 @@ export default function InventoryPage() {
 
   const [parts, setParts] = useState<SparePart[]>([]);
   const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
+  const [repairs, setRepairs] = useState<RepairTicket[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeRepairs((data) => {
+      if (Array.isArray(data)) setRepairs(data);
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
 
   // Mechanic Custody details state
   const [selectedMechanic, setSelectedMechanic] = useState<MechanicDuty | null>(null);
@@ -182,16 +194,85 @@ export default function InventoryPage() {
 
   // For Senior Electrician, ONLY show junior electricians
   const visibleMechanics = useMemo(() => {
-    if (currentRole === 'SENIOR_ELECTRICIAN') {
-      return activeStaffRoster.filter(
-        (m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior')
+    let baseList = [...activeStaffRoster];
+
+    // Ensure any mechanic who performed machine repairs is included in the staff roster
+    (repairs || []).forEach((r) => {
+      const name = (r.attendedBy || '').trim();
+      if (!name) return;
+      const alreadyInList = baseList.some(
+        (m) => m.name.toLowerCase() === name.toLowerCase() || m.id.toLowerCase() === name.toLowerCase()
       );
+      if (!alreadyInList) {
+        baseList.push(
+          userToMechanicDuty({
+            name,
+            role: 'Line Sewing Mechanic',
+            employeeId: `MEC-${name.slice(0, 4).toUpperCase()}`,
+            department: r.line || 'Sewing Floor',
+          })
+        );
+      }
+    });
+
+    if (currentRole === 'SENIOR_ELECTRICIAN') {
+      baseList = baseList.filter((m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior'));
+    } else if (currentRole === 'SENIOR_MECHANIC') {
+      baseList = baseList.filter((m) => m.trade === 'MECHANIC');
     }
-    if (currentRole === 'SENIOR_MECHANIC') {
-      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC');
-    }
-    return activeStaffRoster;
-  }, [currentRole, activeStaffRoster]);
+
+    return baseList.map((m) => {
+      const mechNameClean = (m.name || '').trim().toLowerCase();
+      const mechIdClean = (m.id || '').trim().toLowerCase();
+
+      const matchedRepairs = repairs.filter((r) => {
+        const att = (r.attendedBy || '').trim().toLowerCase();
+        return att === mechNameClean || att === mechIdClean || att.includes(mechNameClean) || mechNameClean.includes(att);
+      });
+
+      const partsDrawn: any[] = [];
+      matchedRepairs.forEach((r) => {
+        (r.partsUsed || []).forEach((pu) => {
+          const dStr = r.completedAt || r.resolvedAt || r.startedAt || r.reportedAt || '';
+          let formattedDate = 'Recent';
+          if (dStr) {
+            try {
+              const d = new Date(dStr);
+              formattedDate = `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            } catch {}
+          }
+
+          partsDrawn.push({
+            partId: pu.partId,
+            sku: pu.sku,
+            partName: pu.name,
+            quantity: pu.quantity,
+            unit: 'pcs',
+            drawnAt: formattedDate,
+            forMachineId: r.machineId || 'Floor Machine',
+            line: r.line || 'Floor Line',
+          });
+        });
+      });
+
+      const machineTasks = matchedRepairs
+        .filter((r) => r.status === 'IN_PROGRESS' || r.status === 'ASSIGNED')
+        .map((r) => ({
+          ticketId: r.id,
+          machineId: r.machineId,
+          line: r.line || 'Line 01',
+          fault: r.faultCategory || r.faultDetails || 'Breakdown Repair',
+          urgency: r.urgency as 'CRITICAL' | 'WARNING',
+          startedAt: r.startedAt || r.reportedAt,
+        }));
+
+      return {
+        ...m,
+        activePartsDrawn: partsDrawn.length > 0 ? partsDrawn : m.activePartsDrawn || [],
+        activeMachineTasks: machineTasks.length > 0 ? machineTasks : m.activeMachineTasks || [],
+      };
+    });
+  }, [currentRole, activeStaffRoster, repairs]);
 
   // Sync active selected mechanic
   useEffect(() => {

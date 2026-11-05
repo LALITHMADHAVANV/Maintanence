@@ -39,7 +39,8 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 
 interface StoreIssueRecord {
-  id: string; // e.g. SLIP-1082
+  id: string; // e.g. SLIP-1082 or WO-7683-SP-095
+  ticketId?: string; // e.g. WO-7683
   date: string; // ISO string or formatted
   mechanicId: string;
   mechanicName: string;
@@ -57,6 +58,8 @@ interface StoreIssueRecord {
   receiverEmpId?: string;
   receiverPhone?: string;
   notificationSent?: boolean;
+  source?: 'REPAIR_WORK_ORDER' | 'COUNTER_CHIT';
+  status?: string;
 }
 
 interface DraftIndentItem {
@@ -82,6 +85,7 @@ interface StoreDashboardProps {
 
 // Local storage key for persistent store issue ledger
 const STORAGE_STORE_ISSUES = 'sahana_store_issues';
+const STORAGE_SCRAP_OVERRIDES = 'sahana_scrap_overrides';
 
 export function StoreDashboard({
   machines = [],
@@ -99,6 +103,7 @@ export function StoreDashboard({
 
   // ─── 1. MECHANIC ISSUE LOG STATE (REPORT 1) ──────────────────────
   const [issueRecords, setIssueRecords] = useState<StoreIssueRecord[]>([]);
+  const [scrapOverrides, setScrapOverrides] = useState<Record<string, boolean>>({});
   const [issueSearch, setIssueSearch] = useState('');
   const [selectedMechanicFilter, setSelectedMechanicFilter] = useState('ALL');
   const [scrapReturnFilter, setScrapReturnFilter] = useState<'ALL' | 'RETURNED' | 'PENDING'>('ALL');
@@ -125,6 +130,15 @@ export function StoreDashboard({
     } catch {
       // Ignore invalid or unavailable browser storage.
     }
+
+    try {
+      const rawOverrides = localStorage.getItem(STORAGE_SCRAP_OVERRIDES);
+      if (rawOverrides) {
+        setScrapOverrides(JSON.parse(rawOverrides));
+      }
+    } catch {
+      // Ignore
+    }
   }, []);
 
   const saveIssueRecords = (records: StoreIssueRecord[]) => {
@@ -138,13 +152,77 @@ export function StoreDashboard({
     }
   };
 
-  // Toggle Scrap Return status
+  // Convert all spare parts used on machine repairs into store issue records
+  const repairIssues = useMemo<StoreIssueRecord[]>(() => {
+    const list: StoreIssueRecord[] = [];
+    (repairs || []).forEach((r) => {
+      if (!r.partsUsed || !Array.isArray(r.partsUsed) || r.partsUsed.length === 0) return;
+
+      r.partsUsed.forEach((pu, idx) => {
+        const compositeId = `${r.id}-${pu.partId || pu.sku || idx}`;
+        const defaultReturned = r.status === 'COMPLETED';
+        const isReturned = scrapOverrides[compositeId] !== undefined ? scrapOverrides[compositeId] : defaultReturned;
+        const mechName = pu.usedByName || r.attendedBy || 'Unknown mechanic';
+
+        list.push({
+          id: compositeId,
+          ticketId: r.id,
+          date: pu.usedAt || r.startedAt || r.completedAt || r.resolvedAt || r.reportedAt || new Date().toISOString(),
+          mechanicId: pu.usedById || mechName,
+          mechanicName: mechName,
+          targetLine: r.line || 'Sewing Floor',
+          targetMachineId: r.machineId,
+          partId: pu.partId,
+          partName: pu.name || 'Spare Part',
+          sku: pu.sku || pu.partId,
+          quantity: pu.quantity || 1,
+          unit: 'pcs',
+          oldPartReturned: isReturned,
+          remarks: r.actionTaken
+            ? `Repair Action: ${r.actionTaken}`
+            : r.faultCategory
+            ? `Breakdown: ${r.faultCategory}`
+            : 'Machine repair part withdrawal',
+          storekeeper: 'Floor Repair Dispatch',
+          receivedByPerson: mechName,
+          source: 'REPAIR_WORK_ORDER',
+          status: r.status,
+        });
+      });
+    });
+    return list;
+  }, [repairs, scrapOverrides]);
+
+  // Unified issues list combining both mechanic repair tickets and manual counter slips
+  const allIssues = useMemo<StoreIssueRecord[]>(() => {
+    const manual = issueRecords.map((ir) => ({
+      ...ir,
+      source: 'COUNTER_CHIT' as const,
+      oldPartReturned: scrapOverrides[ir.id] !== undefined ? scrapOverrides[ir.id] : ir.oldPartReturned,
+    }));
+    const combined = [...repairIssues, ...manual];
+    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [repairIssues, issueRecords, scrapOverrides]);
+
+  // Toggle Scrap Return status (works for both repair parts and counter chits)
   const handleToggleScrapReturn = (id: string) => {
-    const updated = issueRecords.map((r) =>
-      r.id === id ? { ...r, oldPartReturned: !r.oldPartReturned } : r
-    );
-    saveIssueRecords(updated);
-    showToast('Scrap return status updated!', 'info');
+    const target = allIssues.find((r) => r.id === id);
+    const currentVal = target ? target.oldPartReturned : false;
+    const newVal = !currentVal;
+
+    const updatedOverrides = { ...scrapOverrides, [id]: newVal };
+    setScrapOverrides(updatedOverrides);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_SCRAP_OVERRIDES, JSON.stringify(updatedOverrides));
+      } catch {}
+    }
+
+    const inManual = issueRecords.some((r) => r.id === id);
+    if (inManual) {
+      saveIssueRecords(issueRecords.map((r) => (r.id === id ? { ...r, oldPartReturned: newVal } : r)));
+    }
+    showToast(`Scrap status marked as ${newVal ? 'RETURNED' : 'PENDING'}!`, 'info');
   };
 
   // ─── 2. STOCK BALANCE STATE (REPORT 2) ───────────────────────────
@@ -567,25 +645,46 @@ export function StoreDashboard({
   };
 
   // ─── FILTERED DATASETS ───────────────────────────────────────────
-  // Filtered Issue Log (Report 1)
+  // Available mechanics for dropdown filter (from staff roster + anyone in issue history/repairs)
+  const availableMechanics = useMemo(() => {
+    const map = new Map<string, string>();
+    activeStaffRoster.forEach((m) => {
+      if (m.name) map.set(m.name.toLowerCase(), m.name);
+    });
+    allIssues.forEach((i) => {
+      if (i.mechanicName && !map.has(i.mechanicName.toLowerCase())) {
+        map.set(i.mechanicName.toLowerCase(), i.mechanicName);
+      }
+    });
+    return Array.from(map.entries()).map(([_, name]) => ({ id: name, name }));
+  }, [activeStaffRoster, allIssues]);
+
+  // Filtered Issue Log (Report 1) - unified across repair tickets and counter slips
   const filteredIssues = useMemo(() => {
-    return issueRecords.filter((r) => {
-      if (selectedMechanicFilter !== 'ALL' && r.mechanicId !== selectedMechanicFilter) return false;
+    return allIssues.filter((r) => {
+      if (selectedMechanicFilter !== 'ALL') {
+        const filterLower = selectedMechanicFilter.toLowerCase();
+        const mNameLower = (r.mechanicName || '').toLowerCase();
+        const mIdLower = (r.mechanicId || '').toLowerCase();
+        if (!mNameLower.includes(filterLower) && !mIdLower.includes(filterLower)) return false;
+      }
       if (scrapReturnFilter === 'RETURNED' && !r.oldPartReturned) return false;
       if (scrapReturnFilter === 'PENDING' && r.oldPartReturned) return false;
 
       if (issueSearch.trim()) {
         const q = issueSearch.toLowerCase();
-        const m1 = r.mechanicName.toLowerCase().includes(q);
-        const m2 = r.partName.toLowerCase().includes(q);
-        const m3 = r.id.toLowerCase().includes(q);
-        const m4 = (r.targetMachineId || '').toLowerCase().includes(q);
-        const m5 = (r.targetLine || '').toLowerCase().includes(q);
-        if (!m1 && !m2 && !m3 && !m4 && !m5) return false;
+        const m1 = (r.mechanicName || '').toLowerCase().includes(q);
+        const m2 = (r.partName || '').toLowerCase().includes(q);
+        const m3 = (r.id || '').toLowerCase().includes(q);
+        const m4 = (r.ticketId || '').toLowerCase().includes(q);
+        const m5 = (r.targetMachineId || '').toLowerCase().includes(q);
+        const m6 = (r.targetLine || '').toLowerCase().includes(q);
+        const m7 = (r.sku || '').toLowerCase().includes(q);
+        if (!m1 && !m2 && !m3 && !m4 && !m5 && !m6 && !m7) return false;
       }
       return true;
     });
-  }, [issueRecords, selectedMechanicFilter, scrapReturnFilter, issueSearch]);
+  }, [allIssues, selectedMechanicFilter, scrapReturnFilter, issueSearch]);
 
   // Filtered Stock Balance (Report 2)
   const filteredStock = useMemo(() => {
@@ -627,8 +726,8 @@ export function StoreDashboard({
   }, [parts]);
 
   const pendingScrapReturnsCount = useMemo(() => {
-    return issueRecords.filter((r) => !r.oldPartReturned).length;
-  }, [issueRecords]);
+    return allIssues.filter((r) => !r.oldPartReturned).length;
+  }, [allIssues]);
 
   // ─── 5. CSV EXPORT HELPERS ───────────────────────────────────────
   const handleExportIssueReport = () => {
@@ -786,8 +885,10 @@ export function StoreDashboard({
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Parts Issued</span>
             <Wrench className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{issueRecords.length}</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Total recorded chits</div>
+          <div className="text-2xl font-black text-slate-900">{allIssues.length}</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {repairIssues.length > 0 ? `${repairIssues.length} via repairs • ${issueRecords.length} counter slips` : 'Total recorded chits'}
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs">
@@ -878,10 +979,10 @@ export function StoreDashboard({
               onChange={(e) => setSelectedMechanicFilter(e.target.value)}
               className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-700 font-medium cursor-pointer"
             >
-              <option value="ALL">All Mechanics ({issueRecords.length})</option>
-              {activeStaffRoster.map((m) => (
+              <option value="ALL">All Mechanics ({allIssues.length})</option>
+              {availableMechanics.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name} ({m.id})
+                  {m.name}
                 </option>
               ))}
             </select>
@@ -935,8 +1036,25 @@ export function StoreDashboard({
                         •{' '}
                         {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono font-bold text-indigo-700 text-[11px] whitespace-nowrap">
-                        {r.id}
+                      <td className="py-2 px-3 border-r border-slate-200 font-mono font-bold text-[11px] whitespace-nowrap">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={r.source === 'REPAIR_WORK_ORDER' ? 'text-indigo-700 font-black' : 'text-emerald-700'}>
+                            {r.ticketId || r.id}
+                          </span>
+                          {r.source === 'REPAIR_WORK_ORDER' ? (
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase border ${
+                              r.status === 'IN_PROGRESS'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            }`}>
+                              {r.status === 'IN_PROGRESS' ? 'In Progress' : 'Work Order'}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                              Chit Slip
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-3 border-r border-slate-200 whitespace-nowrap font-bold text-slate-900">
                         <div className="flex items-center gap-1.5">
@@ -999,7 +1117,7 @@ export function StoreDashboard({
             <tfoot className="bg-slate-50 font-bold border-t border-slate-300 text-xs text-slate-700">
               <tr>
                 <td colSpan={6} className="py-2 px-3">
-                  Showing {filteredIssues.length} mechanic part issue transactions
+                  Showing {filteredIssues.length} mechanic part issue transactions ({repairIssues.length} from machine repairs)
                 </td>
                 <td colSpan={4} className="py-2 px-3 text-right text-slate-500 font-normal">
                   Pending scrap returns: <strong className="text-rose-700 font-bold">{pendingScrapReturnsCount}</strong> items

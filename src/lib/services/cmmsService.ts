@@ -615,6 +615,22 @@ export async function startRepairTicket(
       };
     });
 
+  const result = await apiFetch('/api/repairs', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: ticketId,
+      updates: {
+        status: 'IN_PROGRESS',
+        startedAt,
+        attendedBy: attendedBy || undefined,
+        partsUsed: resolvedPartsUsed.length > 0 ? resolvedPartsUsed : undefined,
+      },
+    }),
+  });
+
+  if (!result.ok) throw new Error('Could not save repair and spare usage.');
+
   let foundTicket = false;
   const updatedRepairs = currentRepairs.map((t) => {
     if (t.id === ticketId || (t as any).ticketId === ticketId) {
@@ -663,19 +679,20 @@ export async function startRepairTicket(
   }
 
   try {
-    await apiFetch('/api/repairs', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: ticketId,
-        updates: {
-          status: 'IN_PROGRESS',
-          startedAt,
-          attendedBy: attendedBy || undefined,
-          partsUsed: resolvedPartsUsed.length > 0 ? resolvedPartsUsed : undefined,
-        },
-      }),
-    });
+    // Persist stock deduction to MongoDB so store inventory stays in sync
+    for (const pu of resolvedPartsUsed) {
+      const partDoc = currentParts.find((cp) => cp.partId === pu.partId);
+      if (partDoc) {
+        await apiFetch('/api/parts', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            partId: pu.partId,
+            updates: { stock: Math.max(0, partDoc.stock - pu.quantity) },
+          }),
+        }).catch((e) => console.warn('startRepairTicket parts stock patch warning:', e));
+      }
+    }
   } catch (e) {
     console.error('MongoDB startRepairTicket error:', e);
   }
@@ -918,9 +935,20 @@ export async function resolveRepairTicket(
     });
   }
 
-  // 2. Decrement parts stock
+  // 2. Decrement parts stock — but skip parts already deducted when work was started
+  //    Compare resolvedPartsUsed against what was already on the ticket from startRepairTicket
+  const alreadyDeducted = (ticket.partsUsed || []);
+  const newPartsToDeduct = resolvedPartsUsed
+    .map((pu) => {
+      const prev = alreadyDeducted.find((a) => a.partId === pu.partId);
+      const alreadyQty = prev ? prev.quantity : 0;
+      const remaining = pu.quantity - alreadyQty;
+      return remaining > 0 ? { ...pu, quantity: remaining } : null;
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
   const updatedParts = currentParts.map((part) => {
-    const used = resolvedPartsUsed.find((u) => u.partId === part.partId);
+    const used = newPartsToDeduct.find((u) => u.partId === part.partId);
     if (!used) return part;
     return {
       ...part,
@@ -974,7 +1002,7 @@ export async function resolveRepairTicket(
       console.warn(`apiFetch PATCH /api/repairs status ${res.status}:`, errJson);
     }
 
-    for (const p of resolvedPartsUsed) {
+    for (const p of newPartsToDeduct) {
       const partDoc = currentParts.find((cp) => cp.partId === p.partId);
       if (partDoc) {
         await apiFetch('/api/parts', {
