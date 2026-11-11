@@ -8,7 +8,12 @@ export const revalidate = 0;
 export async function GET(req: Request) {
   try {
     const db = await getDatabase(req);
-    const logs = await db.collection<AssetLogEntry>('asset_logs').find({}).sort({ changedAt: -1 }).limit(200).toArray();
+    const machineId = new URL(req.url).searchParams.get('machineId');
+    const collection = db.collection<AssetLogEntry>('asset_logs');
+    const escapedId = machineId?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const logs = escapedId
+      ? await collection.find({ machineId: { $regex: `^${escapedId}$`, $options: 'i' } }).sort({ changedAt: -1 }).toArray()
+      : await collection.find({}).sort({ changedAt: -1 }).limit(200).toArray();
     const cleanLogs = logs.map(({ _id, ...l }: any) => ({
       ...l,
       company: l.company || db.companyName,

@@ -1500,19 +1500,10 @@ function SettingsContent() {
       ────────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'DEPARTMENTS' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="text-xs font-semibold text-slate-500">
               {departments.length} {departments.length === 1 ? 'department' : 'departments'} configured
             </span>
-
-            <button
-              type="button"
-              onClick={() => setIsAddDeptModalOpen(true)}
-              className="bg-[#059669] hover:bg-[#047857] text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add department</span>
-            </button>
           </div>
 
           {departments.length === 0 ? (
@@ -1522,16 +1513,8 @@ function SettingsContent() {
               </div>
               <h3 className="font-bold text-sm text-slate-800">No departments configured</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                All department data has been removed. Click &quot;Add department&quot; above to create and configure new factory departments.
+                Use &quot;Add Department&quot; in the page header to create a department.
               </p>
-              <button
-                type="button"
-                onClick={() => setIsAddDeptModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Department</span>
-              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

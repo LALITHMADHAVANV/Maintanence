@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
 import {
   TrendingUp,
   Plus,
@@ -141,6 +142,8 @@ export function PlantOperationsDashboard({
   const { showToast } = useToast();
   const companySlug = (user?.companySlug || 'sahana').toLowerCase();
   const [isLogBreakdownModalOpen, setIsLogBreakdownModalOpen] = useState(false);
+  const [inspectedMachineId, setInspectedMachineId] = useState<string | null>(null);
+  const inspectedMachine = machines.find((machine) => machine.id === inspectedMachineId);
 
   const handleQuickCompletePPM = async (ppmId: string, machineId: string) => {
     try {
@@ -1160,7 +1163,10 @@ export function PlantOperationsDashboard({
                     </td>
                     <td className="py-1.5 px-2.5 border-b border-slate-200 text-right">
                       <button
-                        onClick={() => router.push(`/scan/${m.id}`)}
+                        type="button"
+                        onClick={() => setInspectedMachineId(m.id)}
+                        aria-label={`Inspect asset log for ${m.id}`}
+                        aria-haspopup="dialog"
                         className="px-2 py-0.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 rounded transition cursor-pointer"
                       >
                         Inspect
@@ -1396,6 +1402,15 @@ export function PlantOperationsDashboard({
       {/* ================================================================= */}
       {/* 7. WIDGET DRILL-DOWN SIDEBAR (SLIDE-OVER RIGHT TO LEFT)           */}
       {/* ================================================================= */}
+      {inspectedMachine && (
+        <AssetHistoryModal
+          key={inspectedMachine.id}
+          machine={inspectedMachine}
+          isOpen
+          showStatusActivity
+          onClose={() => setInspectedMachineId(null)}
+        />
+      )}
       <WidgetDrilldownDrawer
         isOpen={drillDownState.isOpen}
         onClose={closeDrillDown}

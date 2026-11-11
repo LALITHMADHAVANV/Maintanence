@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { assetHistoryHref } from '@/lib/historyNavigation';
 import {
   Wrench,
   ShieldAlert,
@@ -980,8 +981,10 @@ export function SeniorMechanicDashboard({
                                 <span>Details</span>
                               </button>
                               <button
-                                onClick={() => router.push(`/scan/${t.machineId}`)}
-                                title="View Asset & Ticket Details"
+                                type="button"
+                                onClick={() => router.push(assetHistoryHref(companySlug, t.machineId || ''))}
+                                title="View Asset History"
+                                aria-label="View Asset History"
                                 className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />

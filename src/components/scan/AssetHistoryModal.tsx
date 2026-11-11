@@ -22,6 +22,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
+import { AssetStatusHistory } from '@/components/history/AssetStatusHistory';
 import { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
 import { subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
 import { formatAssetLocation } from '@/lib/formatters';
@@ -30,12 +31,14 @@ interface AssetHistoryModalProps {
   machine: Machine | null;
   isOpen: boolean;
   onClose: () => void;
+  showStatusActivity?: boolean;
 }
 
 export function AssetHistoryModal({
   machine,
   isOpen,
   onClose,
+  showStatusActivity = false,
 }: AssetHistoryModalProps) {
   const [activeTab, setActiveTab] = useState<'REPAIRS' | 'PPM' | 'RELOCATIONS' | 'LIFECYCLE'>('REPAIRS');
   const [repairs, setRepairs] = useState<RepairTicket[]>([]);
@@ -95,11 +98,13 @@ export function AssetHistoryModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+      <div role="dialog" aria-modal="true" aria-label={`Asset log for ${machine.id}`} className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Top Asset Banner */}
         <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 text-white p-6 relative shrink-0">
           <button
             onClick={onClose}
+            type="button"
+            aria-label="Close asset log"
             className="absolute top-5 right-5 text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -258,6 +263,8 @@ export function AssetHistoryModal({
           {/* TAB 1: REPAIR WORK ORDERS */}
           {activeTab === 'REPAIRS' && (
             <div className="space-y-4 animate-in fade-in duration-100">
+              {showStatusActivity && <AssetStatusHistory key={machine.id} machineId={machine.id} />}
+              {showStatusActivity && <h3 className="text-sm font-bold text-slate-900">Repair History</h3>}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="relative flex-1 max-w-sm">
                   <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />

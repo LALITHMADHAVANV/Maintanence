@@ -1,16 +1,18 @@
 'use client';
 
 import { assetScanUrl } from '@/lib/scanUrl';
+import { historyReturnHref } from '@/lib/historyNavigation';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { Suspense, useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { normalizeRole } from '@/lib/constants/roles';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
+import { AssetStatusHistory } from '@/components/history/AssetStatusHistory';
 import { QRCodeSVG } from 'qrcode.react';
 import { BulkQrPrintModal, BulkQrAsset } from '@/components/history/BulkQrPrintModal';
 import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
@@ -245,9 +247,17 @@ const CATEGORIES_META: {
 ];
 
 export default function HistoryPage() {
+  return <Suspense fallback={<p className="p-4 text-sm text-slate-500">Loading history…</p>}><HistoryContent /></Suspense>;
+}
+
+function HistoryContent() {
   const router = useRouter();
+  const params = useSearchParams();
   const { showToast } = useToast();
   const { user, role, isLoading } = useAuth();
+  const requestedAssetId = params.get('asset');
+  const returnTo = params.get('returnTo');
+  const returnHref = returnTo === null ? null : historyReturnHref(returnTo, user?.companySlug || 'sahana');
 
   useEffect(() => {
     if (role === 'CEO') {
@@ -305,7 +315,7 @@ export default function HistoryPage() {
   }, []);
 
   // The active asset whose dedicated FULL HISTORY PAGE is currently open
-  const [selectedAssetForHistory, setSelectedAssetForHistory] = useState<AssetHistoryRecord | null>(null);
+  const [selectedAsset, setSelectedAssetForHistory] = useState<AssetHistoryRecord | null>(null);
 
   // Active tab inside the dedicated history page
   const [activeDossierTab, setActiveDossierTab] = useState<'LOGS' | 'STAGES' | 'PPM' | 'LOCATION'>('LOGS');
@@ -1165,13 +1175,29 @@ export default function HistoryPage() {
 
   const currentRole = normalizeRole(user?.role || role);
   const isFloorTechnician = currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN';
+  const canViewAssetHistory = isExecutiveOrAdmin || currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN';
+  const selectedAssetForHistory = selectedAsset || (canViewAssetHistory && requestedAssetId
+    ? allItems.find((asset) => asset.assetId.toLowerCase() === requestedAssetId.toLowerCase())
+    : null);
+  const closeAssetHistory = () => {
+    if (returnHref) router.replace(returnHref);
+    else if (requestedAssetId) router.replace(`/${encodeURIComponent(user?.companySlug || 'sahana')}/dashboard/history`);
+    else setSelectedAssetForHistory(null);
+  };
+  const closeHistoryLink = returnHref && (
+    <Link href={returnHref} replace className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900">
+      <ArrowLeft className="w-4 h-4" />
+      Back to previous page
+    </Link>
+  );
 
   // =========================================================================
   // VIEW 1: PERSONNEL WORK HISTORY (TABLE FORM) - FOR ALL NON-ADMIN/NON-CEO PERSONS
   // =========================================================================
-  if (!isExecutiveOrAdmin) {
+  if (!isExecutiveOrAdmin && !selectedAssetForHistory) {
     return (
       <div className="space-y-4 pt-0 animate-in fade-in duration-200">
+        {closeHistoryLink}
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-2xs">
@@ -1229,9 +1255,10 @@ export default function HistoryPage() {
   // =========================================================================
   // ADMIN VIEW: PERSONNEL WORK LOG SUB-VIEW (IF ADMIN INSPECTS PERSONNEL LOGS)
   // =========================================================================
-  if (adminTab === 'PERSONNEL') {
+  if (adminTab === 'PERSONNEL' && !selectedAssetForHistory) {
     return (
       <div className="space-y-4 pt-0 animate-in fade-in duration-200">
+        {closeHistoryLink}
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-2xs">
@@ -1299,11 +1326,11 @@ export default function HistoryPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setSelectedAssetForHistory(null)}
+              onClick={closeAssetHistory}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition cursor-pointer shadow-2xs"
             >
               <ArrowLeft className="w-4 h-4 text-slate-600" />
-              <span>Back to Categories Matrix</span>
+              <span>{returnHref ? 'Back to previous page' : 'Back to Categories Matrix'}</span>
             </button>
 
             <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
@@ -1331,9 +1358,10 @@ export default function HistoryPage() {
 
             <button
               type="button"
-              onClick={() => setSelectedAssetForHistory(null)}
+              onClick={closeAssetHistory}
               className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer"
               title="Close Page"
+              aria-label="Close Page"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1458,6 +1486,8 @@ export default function HistoryPage() {
             </div>
           </div>
         </div>
+
+        <AssetStatusHistory key={a.assetId} machineId={a.assetId} />
 
         {/* Dossier Navigation Tabs */}
         <div className="bg-white rounded-2xl border border-slate-200 p-2 shadow-xs flex flex-wrap items-center gap-1.5 text-xs">
@@ -1921,6 +1951,7 @@ export default function HistoryPage() {
   // =========================================================================
   return (
     <div className="space-y-4 pt-0">
+      {closeHistoryLink}
       {/* 1. Page Header & Personnel Quick Link */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div className="flex items-center gap-2.5">
