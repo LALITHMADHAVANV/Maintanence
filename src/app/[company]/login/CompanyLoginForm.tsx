@@ -39,7 +39,7 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
     const cleanPass = password || '';
 
     if (!cleanInput) {
-      showToast('Please enter your Employee ID or Email', 'warning');
+      showToast('Please enter your username, employee ID, or email', 'warning');
       return;
     }
     if (!cleanPass) {
@@ -55,7 +55,6 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(msg, 'error');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -71,7 +70,6 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(msg, 'error');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -108,9 +106,9 @@ export function CompanyLoginForm({ companySlug, companyName, description }: Comp
           <h2>Welcome back</h2>
           <p className="login-description">Sign in to manage your plant?s maintenance.</p>
           <form onSubmit={handleFormLogin} className="login-form">
-            <div><label htmlFor="employee-id">Employee ID or email</label><div className="login-input-wrap"><User size={18} /><input id="employee-id" type="text" value={emailOrId} onChange={(e) => setEmailOrId(e.target.value)} placeholder="Enter your ID or email" autoComplete="username" disabled={isLoading} required /></div></div>
+            <div><label htmlFor="employee-id">Username, employee ID, or email</label><div className="login-input-wrap"><User size={18} /><input id="employee-id" type="text" value={emailOrId} onChange={(e) => setEmailOrId(e.target.value)} placeholder="Enter your username, ID, or email" autoComplete="username" disabled={isLoading} required /></div></div>
             <div><label htmlFor="password">Password</label><div className="login-input-wrap"><Lock size={18} /><input id="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" disabled={isLoading} required /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></div>
-            <button className="login-submit" type="submit" disabled={isLoading}>{isLoading ? <><Loader2 size={18} className="animate-spin" /> Signing in?</> : <>Sign in to workspace <ArrowRight size={18} /></>}</button>
+            <button className="login-submit" type="submit" disabled={isLoading}>{isLoading ? <><Loader2 size={18} className="animate-spin" /> Opening your workspace…</> : <>Sign in to workspace <ArrowRight size={18} /></>}</button>
             <div className="login-divider"><span />Administrator access<span /></div>
             <button className="login-admin" type="button" onClick={handleQuickAdminLogin} disabled={isLoading}><Shield size={17} /> Quick administrator sign in</button>
           </form>

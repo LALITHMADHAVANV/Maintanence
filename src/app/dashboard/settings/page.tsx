@@ -548,6 +548,7 @@ function SettingsContent() {
   const [newRole, setNewRole] = useState<UserRole>(() => departments[0]?.name || '');
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newUsername, setNewUsername] = useState('');
   const [newTitle, setNewTitle] = useState(() => (departments[0] ? `${departments[0].name} Specialist` : 'Staff'));
   const [newDepartment, setNewDepartment] = useState(() => departments[0]?.name || '');
   const [newPhone, setNewPhone] = useState('');
@@ -561,7 +562,7 @@ function SettingsContent() {
   // Edit User Modal State
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editName, setEditName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
+  const [editUsername, setEditUsername] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('MECHANIC');
   const [editTitle, setEditTitle] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
@@ -1046,6 +1047,7 @@ function SettingsContent() {
         body: JSON.stringify({
           name: newName.trim(),
           email: newEmail.trim().toLowerCase(),
+          username: newUsername.trim(),
           role: newRole,
           title: newTitle.trim(),
           department: newDepartment.trim(),
@@ -1066,6 +1068,7 @@ function SettingsContent() {
       setIsAddUserModalOpen(false);
       setNewName('');
       setNewEmail('');
+      setNewUsername('');
       setNewPassword('');
       setNewPhone('');
       setNewZones([]);
@@ -1082,7 +1085,7 @@ function SettingsContent() {
   const handleOpenEditUser = (u: UserProfile) => {
     setEditingUser(u);
     setEditName(u.name);
-    setEditEmail(u.email);
+    setEditUsername(u.username || '');
     setEditRole(u.role);
     setEditTitle(u.title || '');
     setEditDepartment(u.department || '');
@@ -1120,6 +1123,7 @@ function SettingsContent() {
         department: editDepartment.trim(),
         phone: editPhone.trim(),
         employeeId: editEmployeeId.trim(),
+        username: editUsername.trim(),
         unit: editUnit,
         zones: isMech ? editZones : [],
         status: editStatus,
@@ -1223,6 +1227,7 @@ function SettingsContent() {
         u.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
         u.email?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
         u.employeeId?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+        u.username?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
         u.department?.toLowerCase().includes(userSearchQuery.toLowerCase());
 
       const matchesRole =
@@ -1387,7 +1392,7 @@ function SettingsContent() {
   }, [workerKpiList, kpiSearchQuery, kpiTradeFilter, kpiSortBy]);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* ─────────────────────────────────────────────────────────────────────────
           HEADER SECTION & TABS
       ────────────────────────────────────────────────────────────────────────── */}
@@ -2248,6 +2253,7 @@ function SettingsContent() {
                               <div>
                                 <span className="font-bold text-slate-900 block">{u.name}</span>
                                 <span className="text-[11px] text-slate-400">{u.email}</span>
+                                {u.username && <span className="block text-xs font-semibold text-slate-600">Username: {u.username}</span>}
                               </div>
                             </div>
                           </td>
@@ -3389,6 +3395,12 @@ function SettingsContent() {
             </div>
 
             <form onSubmit={handleCreateUser} className="space-y-3.5 text-xs">
+              <div>
+                <label htmlFor="new-username" className="mb-1 block font-bold text-slate-700">Username</label>
+                <input id="new-username" type="text" value={newUsername} onChange={event => setNewUsername(event.target.value)}
+                  autoCapitalize="none" spellCheck={false} maxLength={40} placeholder="Generated automatically if blank"
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-600" />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Full Name *</label>
@@ -3709,6 +3721,12 @@ function SettingsContent() {
             </div>
 
             <form onSubmit={handleSaveEditUser} className="space-y-3.5 text-xs">
+              <div>
+                <label htmlFor="edit-username" className="mb-1 block font-bold text-slate-700">Username</label>
+                <input id="edit-username" type="text" value={editUsername} onChange={event => setEditUsername(event.target.value)}
+                  autoCapitalize="none" spellCheck={false} maxLength={40} placeholder="Generated automatically if blank"
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-600" />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Full Name</label>

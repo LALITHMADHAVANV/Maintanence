@@ -208,7 +208,7 @@ export default function InventoryPage() {
           userToMechanicDuty({
             name,
             role: 'Line Sewing Mechanic',
-            employeeId: `MEC-${name.slice(0, 4).toUpperCase()}`,
+            uid: `repair-history:${name.toLowerCase()}`,
             department: r.line || 'Sewing Floor',
           })
         );

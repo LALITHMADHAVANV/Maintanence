@@ -12,12 +12,9 @@ import {
   RotateCw,
   Search,
   Filter,
-  User,
   ShieldAlert,
-  Flame,
   ArrowRight,
   Boxes,
-  CalendarCheck,
   Check,
   X,
   Phone,
@@ -294,25 +291,6 @@ export default function ActiveTnaPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredWorks.length / pageSize));
 
-  // Summary Metrics
-  const summaryMetrics = useMemo(() => {
-    const total = activeWorks.length;
-    const breakdowns = activeWorks.filter((w) => w.sourceType === 'BREAKDOWN').length;
-    const ppms = activeWorks.filter((w) => w.sourceType === 'PPM').length;
-    const critical = activeWorks.filter((w) => w.urgency === 'CRITICAL').length;
-    const totalRunningDowntime = activeWorks.reduce((sum, w) => sum + w.runningMinutes, 0);
-    const activeTechs = new Set(activeWorks.map((w) => w.assignedTo).filter((name) => name !== 'Unassigned')).size;
-
-    return {
-      total,
-      breakdowns,
-      ppms,
-      critical,
-      totalRunningDowntime,
-      activeTechs,
-    };
-  }, [activeWorks]);
-
   // Open Complete Work Modal
   const handleOpenCompleteModal = (work: ActiveWorkItem) => {
     setResolvingWork(work);
@@ -470,44 +448,6 @@ export default function ActiveTnaPage() {
             <Printer className="w-3.5 h-3.5" />
             <span>Print</span>
           </button>
-        </div>
-      </div>
-
-      {/* ─── 2. COMPACT KPI STRIP ────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3.5 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 bg-amber-50 text-amber-900 border border-amber-200 px-3 py-1.5 rounded-xl font-bold text-xs shadow-2xs">
-          <Layers className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>Total Active Works:</span>
-          <span className="font-mono font-black text-amber-800 text-sm ml-0.5">{summaryMetrics.total}</span>
-          <span className="text-[10px] text-amber-700 font-semibold uppercase">jobs</span>
-        </div>
-
-        <div className="flex items-center gap-2 bg-rose-50 text-rose-900 border border-rose-200 px-3 py-1.5 rounded-xl font-bold text-xs shadow-2xs">
-          <Clock className="w-4 h-4 text-rose-600 shrink-0" />
-          <span>Running Downtime:</span>
-          <span className="font-mono font-black text-rose-800 text-sm ml-0.5">{summaryMetrics.totalRunningDowntime}</span>
-          <span className="text-[10px] text-rose-700 font-semibold uppercase">mins</span>
-        </div>
-
-        <div className="flex items-center gap-2 bg-rose-100/70 text-rose-950 border border-rose-300 px-3 py-1.5 rounded-xl font-bold text-xs shadow-2xs">
-          <Flame className="w-4 h-4 text-rose-700 shrink-0" />
-          <span>Critical Halts:</span>
-          <span className="font-mono font-black text-rose-900 text-sm ml-0.5">{summaryMetrics.critical}</span>
-          <span className="text-[10px] text-rose-700 font-semibold uppercase">urgent</span>
-        </div>
-
-        <div className="flex items-center gap-2 bg-blue-50 text-blue-900 border border-blue-200 px-3 py-1.5 rounded-xl font-bold text-xs shadow-2xs">
-          <CalendarCheck className="w-4 h-4 text-blue-600 shrink-0" />
-          <span>PPM Overhauls:</span>
-          <span className="font-mono font-black text-blue-800 text-sm ml-0.5">{summaryMetrics.ppms}</span>
-          <span className="text-[10px] text-blue-700 font-semibold uppercase">sched</span>
-        </div>
-
-        <div className="flex items-center gap-2 bg-indigo-50 text-indigo-900 border border-indigo-200 px-3 py-1.5 rounded-xl font-bold text-xs shadow-2xs">
-          <User className="w-4 h-4 text-indigo-600 shrink-0" />
-          <span>Floor Technicians:</span>
-          <span className="font-mono font-black text-indigo-800 text-sm ml-0.5">{summaryMetrics.activeTechs}</span>
-          <span className="text-[10px] text-indigo-700 font-semibold uppercase">attending</span>
         </div>
       </div>
 

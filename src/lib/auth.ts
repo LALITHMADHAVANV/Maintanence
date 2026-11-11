@@ -98,6 +98,7 @@ export function sanitizeUserProfile(dbUser: any, companySlug: string, companyNam
     uid: dbUser.uid || String(dbUser._id || 'USR-01'),
     name: dbUser.name || 'Factory Staff',
     email: (dbUser.email || '').toLowerCase().trim(),
+    username: dbUser.username || '',
     role: rawRole,
     title: dbUser.title || `${companyName} Specialist`,
     phone: dbUser.phone || '',

@@ -4,15 +4,12 @@ import React from 'react';
 import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { RouteGuard } from '@/components/layout/RouteGuard';
-import { useNav } from '@/context/NavContext';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { isNavHidden } = useNav();
-
   return (
     <div className="workspace-shell min-h-screen bg-[#e5e9f0] text-slate-800 flex flex-col md:flex-row antialiased selection:bg-indigo-500 selection:text-white">
       <a href="#main-content" className="skip-navigation">Skip to content</a>
@@ -23,9 +20,7 @@ export default function DashboardLayout({
           <WorkspaceHeader />
           <main
             id="main-content"
-            className={`flex-grow w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 transition-all duration-200 ${
-              isNavHidden ? 'max-w-none' : 'max-w-7xl'
-            }`}
+            className="w-full min-w-0 flex-grow space-y-6 px-4 pb-4 sm:px-6 sm:pb-6"
           >
             {children}
           </main>

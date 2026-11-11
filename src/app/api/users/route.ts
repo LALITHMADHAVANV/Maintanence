@@ -1,4 +1,5 @@
 import { reserveLoginIdentifiers } from '@/lib/loginIdentifiers';
+import { defaultUsername, reserveGeneratedUsername, usernamePattern } from '@/lib/usernames';
 import { NextResponse } from 'next/server';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { UserProfile, UserRole } from '@/types/cmms';
@@ -43,6 +44,7 @@ export async function GET(req: Request) {
         uid: data.uid || String(_id),
         name: data.name || 'Factory Staff',
         email: data.email || '',
+        username: data.username || '',
         role: rawRole,
         title: data.title || getDefaultTitle(rawRole, db.companyName),
         phone: data.phone || '',
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
   try {
     const db = await getDatabase(req);
     const body = await req.json();
-    const { name, email, role, title, password, phone, department, employeeId, unit, zones } = body;
+    const { name, email, role, title, password, phone, department, employeeId, unit, zones, username } = body;
 
     if (!name || !email || !role) {
       return NextResponse.json(
@@ -83,6 +85,10 @@ export async function POST(req: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const requestedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    if ((username !== undefined && typeof username !== 'string') || (requestedUsername && !usernamePattern.test(requestedUsername))) {
+      return NextResponse.json({ error: 'Username must be 3–40 characters using letters, numbers, dots, underscores, or hyphens.' }, { status: 400 });
+    }
     const cleanRole = role.toString().trim().toUpperCase() as UserRole;
     if (typeof password !== 'string' || password.length < 8 || password.length > 1024) return NextResponse.json({ error: 'A password of at least 8 characters is required.' }, { status: 400 });
     const cleanPass = password;
@@ -98,13 +104,19 @@ export async function POST(req: Request) {
 
     // Check if email already exists in this company
     const existing = await collection.findOne({ email: cleanEmail });
-    await reserveLoginIdentifiers(db.tenant, existing ? existing.uid || String(existing._id) : uid, [cleanEmail, finalEmpId, ...(existing ? [] : [uid])]);
+    const ownerId = existing ? existing.uid || String(existing._id) : uid;
+    await reserveLoginIdentifiers(db.tenant, ownerId, [cleanEmail, finalEmpId, ...(existing ? [] : [uid])]);
+    if (requestedUsername) await reserveLoginIdentifiers(db.tenant, ownerId, [requestedUsername]);
+    const finalUsername = requestedUsername || existing?.username || await reserveGeneratedUsername(
+      defaultUsername(cleanEmail, name), candidate => reserveLoginIdentifiers(db.tenant, ownerId, [candidate]),
+    );
     if (existing) {
       await collection.updateOne(
         { email: cleanEmail },
         {
           $set: {
             name: name.trim(),
+            username: finalUsername,
             role: cleanRole,
             title: finalTitle,
             passwordHash: hashedPassword,
@@ -131,6 +143,7 @@ export async function POST(req: Request) {
       uid,
       name: name.trim(),
       email: cleanEmail,
+      username: finalUsername,
       role: cleanRole,
       title: finalTitle,
       passwordHash: hashedPassword,
@@ -155,6 +168,7 @@ export async function POST(req: Request) {
         uid,
         name: newUserDoc.name,
         email: newUserDoc.email,
+        username: newUserDoc.username,
         role: newUserDoc.role,
         title: newUserDoc.title,
         employeeId: newUserDoc.employeeId,
@@ -176,7 +190,7 @@ export async function PUT(req: Request) {
   try {
     const db = await getDatabase(req);
     const body = await req.json();
-    const { uid, email, name, role, title, department, phone, employeeId, unit, zones, status, password } = body;
+    const { uid, email, name, role, title, department, phone, employeeId, unit, zones, status, password, username } = body;
 
     if (!uid && !email) {
       return NextResponse.json({ error: 'User UID or email is required to update' }, { status: 400 });
@@ -193,11 +207,24 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'User not found in company workspace' }, { status: 404 });
     }
 
-    await reserveLoginIdentifiers(db.tenant, existing.uid || String(existing._id), [existing.email || '', employeeId ?? existing.employeeId ?? '']);
+    const requestedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    if ((username !== undefined && typeof username !== 'string') || (requestedUsername && requestedUsername !== existing.username && !usernamePattern.test(requestedUsername))) {
+      return NextResponse.json({ error: 'Username must be 3–40 characters using letters, numbers, dots, underscores, or hyphens.' }, { status: 400 });
+    }
+    const ownerId = existing.uid || String(existing._id);
+    const changedIdentifiers = [
+      employeeId !== undefined && employeeId.trim() !== existing.employeeId ? employeeId : '',
+      requestedUsername !== existing.username ? requestedUsername : '',
+    ].filter(Boolean);
+    if (changedIdentifiers.length) await reserveLoginIdentifiers(db.tenant, ownerId, changedIdentifiers);
+    const finalUsername = requestedUsername || existing.username || await reserveGeneratedUsername(
+      defaultUsername(existing.email || '', existing.name || ''), candidate => reserveLoginIdentifiers(db.tenant, ownerId, [candidate]),
+    );
     const updateDoc: Record<string, any> = {
       updatedAt: new Date().toISOString(),
       company: db.companyName,
       companySlug: db.tenant,
+      username: finalUsername,
     };
 
     if (name !== undefined) updateDoc.name = name.trim();

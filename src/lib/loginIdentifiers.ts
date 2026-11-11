@@ -17,7 +17,7 @@ export async function reserveLoginIdentifiers(companySlug: string, uid: string, 
         $or: ['email', 'username', 'employeeId', 'uid'].map(field => ({ [field]: { $regex: exact } })),
       }).limit(2).toArray();
       if (matches.some(account => company.slug !== companySlug || (account.uid || String(account._id)) !== uid)) {
-        throw new TenantError('This login identifier is already assigned. Use a unique work email or employee ID.', 409, 'IDENTIFIER_TAKEN');
+        throw new TenantError('This login identifier is already assigned. Use a unique username, work email, or employee ID.', 409, 'IDENTIFIER_TAKEN');
       }
     }
     try {

@@ -31,7 +31,7 @@ import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/uni
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 import AllowancePage from '@/app/dashboard/allowance/page';
-import HistoryPage from '@/app/dashboard/history/page';
+import { HistoryView } from '@/app/dashboard/history/HistoryView';
 
 // Preserved 4 Categories
 type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
@@ -141,24 +141,13 @@ function AssetsPageContent() {
     }
   }, [unitParam, user, role]);
 
-  // Upper horizontal tabs bar: Asset, Allowance, History
-  const tabParam = searchParams.get('tab');
-  const [activeMainTab, setActiveMainTab] = useState<'ASSET' | 'ALLOWANCE' | 'HISTORY'>(() => {
-    if (tabParam) {
-      const up = tabParam.toUpperCase();
-      if (up === 'ALLOWANCE' || up === 'HISTORY' || up === 'ASSET') return up as any;
-    }
-    return 'ASSET';
-  });
-
-  useEffect(() => {
-    if (tabParam) {
-      const up = tabParam.toUpperCase();
-      if (up === 'ALLOWANCE' || up === 'HISTORY' || up === 'ASSET') {
-        setActiveMainTab(up as any);
-      }
-    }
-  }, [tabParam]);
+  const tabParam = searchParams.get('tab')?.toUpperCase();
+  const activeMainTab = tabParam === 'ALLOWANCE' || tabParam === 'HISTORY' ? tabParam : 'ASSET';
+  const changeMainTab = (tab: 'asset' | 'allowance' | 'history') => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState(null, '', url);
+  };
 
   const handlePlantChange = (newPlant: string) => {
     if (!isAdmin) return;
@@ -480,10 +469,7 @@ function AssetsPageContent() {
       <div className="flex items-center gap-6 border-b border-slate-200 overflow-x-auto select-none pt-1">
         <button
           type="button"
-          onClick={() => {
-            setActiveMainTab('ASSET');
-            window.history.replaceState({}, '', '/dashboard/asset-types?tab=asset');
-          }}
+          onClick={() => changeMainTab('asset')}
           className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
             activeMainTab === 'ASSET'
               ? 'border-[#059669] text-[#065f46] font-bold'
@@ -496,10 +482,7 @@ function AssetsPageContent() {
 
         <button
           type="button"
-          onClick={() => {
-            setActiveMainTab('ALLOWANCE');
-            window.history.replaceState({}, '', '/dashboard/asset-types?tab=allowance');
-          }}
+          onClick={() => changeMainTab('allowance')}
           className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
             activeMainTab === 'ALLOWANCE'
               ? 'border-[#059669] text-[#065f46] font-bold'
@@ -512,18 +495,15 @@ function AssetsPageContent() {
 
         <button
           type="button"
-          onClick={() => {
-            setActiveMainTab('HISTORY');
-            window.history.replaceState({}, '', '/dashboard/asset-types?tab=history');
-          }}
-          className={`flex items-center gap-2 pb-2.5 text-xs sm:text-sm font-semibold transition cursor-pointer shrink-0 border-b-2 ${
+          onClick={() => changeMainTab('history')}
+          className={`flex shrink-0 cursor-pointer items-center gap-2 border-b-2 pb-2.5 text-xs font-semibold transition sm:text-sm ${
             activeMainTab === 'HISTORY'
-              ? 'border-[#059669] text-[#065f46] font-bold'
+              ? 'border-[#059669] font-bold text-[#065f46]'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <History className={`w-4 h-4 ${activeMainTab === 'HISTORY' ? 'text-[#059669]' : 'text-slate-400'}`} />
-          <span>History</span>
+          <History className="h-4 w-4" />
+          <span>Asset History</span>
         </button>
       </div>
 
@@ -533,11 +513,7 @@ function AssetsPageContent() {
         </div>
       )}
 
-      {activeMainTab === 'HISTORY' && (
-        <div className="pt-1 animate-in fade-in duration-200">
-          <HistoryPage />
-        </div>
-      )}
+      {activeMainTab === 'HISTORY' && <HistoryView assetOnly />}
 
       {activeMainTab === 'ASSET' && (
         <div className="space-y-5 animate-in fade-in duration-200">

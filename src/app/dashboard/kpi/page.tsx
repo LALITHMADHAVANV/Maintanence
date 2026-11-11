@@ -317,7 +317,7 @@ export default function UserKpiPage() {
   }, [userKpiProfiles, tradeFilter, tierFilter, selectedUnit, searchQuery, sortBy]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16 font-sans p-6 md:p-8">
+    <div className="space-y-6 pb-16 font-sans">
       {/* ─── Header Section ─── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
