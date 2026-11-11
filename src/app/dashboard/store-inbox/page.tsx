@@ -14,7 +14,6 @@ import {
   Filter,
   ArrowUpRight,
   Truck,
-  User,
   Printer,
   FileText,
   Check,
@@ -76,7 +75,6 @@ function StoreInboxContent() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'FULFILLED' | 'REJECTED'>('PENDING');
-  const [selectedMechanicFilter, setSelectedMechanicFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [lineFilter, setLineFilter] = useState<string>('ALL');
 
@@ -180,11 +178,6 @@ function StoreInboxContent() {
         if (r.status !== 'REJECTED') return false;
       }
 
-      // Mechanic filter
-      if (selectedMechanicFilter !== 'ALL') {
-        if (r.requestedBy?.toLowerCase() !== selectedMechanicFilter.toLowerCase()) return false;
-      }
-
       // Line filter
       if (lineFilter !== 'ALL') {
         if (!r.targetLine?.toLowerCase().includes(lineFilter.toLowerCase())) return false;
@@ -199,7 +192,7 @@ function StoreInboxContent() {
 
       return true;
     });
-  }, [requisitions, statusFilter, selectedMechanicFilter, lineFilter, searchQuery]);
+  }, [requisitions, statusFilter, lineFilter, searchQuery]);
 
   // Summary counts
   const pendingCount = useMemo(
@@ -487,77 +480,6 @@ function StoreInboxContent() {
         </div>
       </div>
 
-      {/* ─── 3. MECHANIC-WISE QUICK FILTER TABS ─────────────────────────────────── */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider">
-            <User className="w-4 h-4 text-[#059669]" />
-            <span>Filter Indents By Requesting Mechanic</span>
-          </div>
-          {selectedMechanicFilter !== 'ALL' && (
-            <button
-              type="button"
-              onClick={() => setSelectedMechanicFilter('ALL')}
-              className="text-xs text-[#059669] hover:underline cursor-pointer font-semibold"
-            >
-              Show All Mechanics
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setSelectedMechanicFilter('ALL')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-              selectedMechanicFilter === 'ALL'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            All Mechanics ({requisitions.length})
-          </button>
-
-          {requestingMechanics.map((mechName) => {
-            const count = requisitions.filter(
-              (r) => r.requestedBy?.toLowerCase() === mechName.toLowerCase()
-            ).length;
-            const pendingMechCount = requisitions.filter(
-              (r) =>
-                r.requestedBy?.toLowerCase() === mechName.toLowerCase() &&
-                r.status !== 'FULFILLED' &&
-                r.status !== 'REJECTED'
-            ).length;
-
-            return (
-              <button
-                key={mechName}
-                type="button"
-                onClick={() => setSelectedMechanicFilter(mechName)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 cursor-pointer ${
-                  selectedMechanicFilter.toLowerCase() === mechName.toLowerCase()
-                    ? 'bg-[#059669] text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                <span>{mechName}</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                    selectedMechanicFilter.toLowerCase() === mechName.toLowerCase()
-                      ? 'bg-white/20 text-white'
-                      : pendingMechCount > 0
-                      ? 'bg-rose-100 text-rose-700'
-                      : 'bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* ─── 4. SEARCH & STATUS CONTROLS BAR ───────────────────────────────────── */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Status Filter Tabs */}
@@ -667,14 +589,6 @@ function StoreInboxContent() {
               ? 'No pending urgent indents awaiting store issuance at this time.'
               : 'No indents match your active filters or search criteria.'}
           </p>
-          <button
-            type="button"
-            onClick={() => setIsWalkInModalOpen(true)}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Walk-In Urgent Indent</span>
-          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

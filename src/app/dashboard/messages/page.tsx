@@ -13,7 +13,6 @@ import {
   XCircle,
   User,
   Layers,
-  Search,
   Filter,
   RotateCw,
   Volume2,
@@ -26,7 +25,6 @@ import {
   Sparkles,
   Check,
   X,
-  ChevronDown,
   Building2,
   Activity,
   Boxes,
@@ -87,15 +85,6 @@ export type NotificationCategory =
   | 'PPM_OVERDUE'
   | 'LOW_STOCK'
   | 'APPROVALS';
-
-export type RoleScope =
-  | 'MY_ROLE'
-  | 'ALL_ROLES'
-  | 'ROLE_MECHANIC'
-  | 'ROLE_ELECTRICIAN'
-  | 'ROLE_STORE'
-  | 'ROLE_SUPERVISOR'
-  | 'ROLE_EXECUTIVE';
 
 export interface UnifiedNotificationItem {
   id: string;
@@ -162,10 +151,6 @@ export default function NotificationsPage() {
 
   // User UI controls
   const [activeTab, setActiveTab] = useState<NotificationCategory>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedUnit, setSelectedUnit] = useState<string>('ALL');
-  const [selectedRoleScope, setSelectedRoleScope] = useState<RoleScope>('MY_ROLE');
-  const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
   const [isMuted, setIsMuted] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
@@ -238,21 +223,7 @@ export default function NotificationsPage() {
     };
   }, []);
 
-  // Effective unit scoping:
-  // If user is non-admin and marked for a specific unit (e.g. "UNIT - 1" or "UNIT-2"),
-  // they are strictly locked to their unit.
-  // Admins & CEOs can toggle selectedUnit freely.
-  const effectiveUnit = useMemo(() => {
-    if (isAdmin) {
-      return selectedUnit;
-    }
-    if (userAssignedUnit && userAssignedUnit !== 'All Units' && userAssignedUnit !== 'ALL') {
-      return userAssignedUnit;
-    }
-    return selectedUnit;
-  }, [isAdmin, userAssignedUnit, selectedUnit]);
-
-
+  const effectiveUnit = isAdmin || userAssignedUnit === 'All Units' ? 'ALL' : userAssignedUnit;
 
   // Helper to determine if a defect is electrical
   const isElectricalDefect = (faultCategory?: string, faultDetails?: string, machineType?: string) => {
@@ -547,72 +518,32 @@ export default function NotificationsPage() {
   }, [repairs, assetLogs, ppmSchedules, parts, machines, requisitions, appNotifs, nowMs]);
 
   // Helper to match notification to target role scope
-  const matchesRoleScope = (item: UnifiedNotificationItem, scope: RoleScope): boolean => {
-    if (scope === 'ALL_ROLES') return true;
-
-    // MY_ROLE auto-scoping based on logged-in user
-    if (scope === 'MY_ROLE') {
-      if (isAdmin) return true; // Admins and Asset Managers see plant-wide alerts by default
-      if (currentRole === 'MECHANIC') {
-        return (
-          item.targetTrade === 'MECHANIC' ||
-          item.targetTrade === 'ALL' ||
-          (Array.isArray(item.targetRoles) && item.targetRoles.includes('MECHANIC')) ||
-          item.targetRoles === 'ALL'
-        );
-      }
-      if (currentRole === 'ELECTRICIAN') {
-        return (
-          item.targetTrade === 'ELECTRICIAN' ||
-          item.targetTrade === 'ALL' ||
-          (Array.isArray(item.targetRoles) && item.targetRoles.includes('ELECTRICIAN')) ||
-          item.targetRoles === 'ALL'
-        );
-      }
-      if (currentRole === 'STORE_PERSON') {
-        return (
-          item.category === 'LOW_STOCK' ||
-          (Array.isArray(item.targetRoles) && item.targetRoles.includes('STORE_PERSON')) ||
-          item.targetRoles === 'ALL'
-        );
-      }
-      if (currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN') {
-        return (
-          item.category === 'UNATTENDED_5M' ||
-          item.category === 'BREAKDOWN_WARNING' ||
-          item.category === 'ASSET_ACTION' ||
-          item.category === 'PPM_OVERDUE' ||
-          (Array.isArray(item.targetRoles) && (item.targetRoles.includes('SENIOR_MECHANIC') || item.targetRoles.includes('SENIOR_ELECTRICIAN')))
-        );
-      }
-      if (currentRole === 'CEO') {
-        return (
-          item.category === 'APPROVAL' ||
-          item.isUnattended5Mins ||
-          (Array.isArray(item.targetRoles) && item.targetRoles.includes('CEO'))
-        );
-      }
-    }
-
-    if (scope === 'ROLE_MECHANIC') {
+  const matchesRoleScope = (item: UnifiedNotificationItem): boolean => {
+    if (isAdmin) return true; // Admins and Asset Managers see plant-wide alerts by default
+    if (currentRole === 'MECHANIC') {
       return (
         item.targetTrade === 'MECHANIC' ||
-        (Array.isArray(item.targetRoles) && item.targetRoles.includes('MECHANIC'))
+        item.targetTrade === 'ALL' ||
+        (Array.isArray(item.targetRoles) && item.targetRoles.includes('MECHANIC')) ||
+        item.targetRoles === 'ALL'
       );
     }
-    if (scope === 'ROLE_ELECTRICIAN') {
+    if (currentRole === 'ELECTRICIAN') {
       return (
         item.targetTrade === 'ELECTRICIAN' ||
-        (Array.isArray(item.targetRoles) && item.targetRoles.includes('ELECTRICIAN'))
+        item.targetTrade === 'ALL' ||
+        (Array.isArray(item.targetRoles) && item.targetRoles.includes('ELECTRICIAN')) ||
+        item.targetRoles === 'ALL'
       );
     }
-    if (scope === 'ROLE_STORE') {
+    if (currentRole === 'STORE_PERSON') {
       return (
         item.category === 'LOW_STOCK' ||
-        (Array.isArray(item.targetRoles) && item.targetRoles.includes('STORE_PERSON'))
+        (Array.isArray(item.targetRoles) && item.targetRoles.includes('STORE_PERSON')) ||
+        item.targetRoles === 'ALL'
       );
     }
-    if (scope === 'ROLE_SUPERVISOR') {
+    if (currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN') {
       return (
         item.category === 'UNATTENDED_5M' ||
         item.category === 'BREAKDOWN_WARNING' ||
@@ -621,13 +552,6 @@ export default function NotificationsPage() {
         (Array.isArray(item.targetRoles) && (item.targetRoles.includes('SENIOR_MECHANIC') || item.targetRoles.includes('SENIOR_ELECTRICIAN')))
       );
     }
-    if (scope === 'ROLE_EXECUTIVE') {
-      return (
-        item.category === 'APPROVAL' ||
-        (Array.isArray(item.targetRoles) && item.targetRoles.includes('CEO'))
-      );
-    }
-
     return true;
   };
 
@@ -647,15 +571,15 @@ export default function NotificationsPage() {
       }
 
       // 2. Strict Role Scoping
-      if (!matchesRoleScope(item, selectedRoleScope)) {
+      if (!matchesRoleScope(item)) {
         return false;
       }
 
       return true;
     });
-  }, [allNotifications, effectiveUnit, selectedRoleScope, dismissedIds]);
+  }, [allNotifications, effectiveUnit, currentRole, isAdmin, dismissedIds]);
 
-  // Tab & secondary filtered notifications
+  // Notifications for the selected widget
   const filteredNotifications = useMemo(() => {
     return roleAndUnitScopedNotifications.filter((item) => {
       // Tab Category filter
@@ -666,30 +590,13 @@ export default function NotificationsPage() {
       if (activeTab === 'LOW_STOCK' && item.category !== 'LOW_STOCK') return false;
       if (activeTab === 'APPROVALS' && item.category !== 'APPROVAL') return false;
 
-      // Severity filter
-      if (selectedSeverity !== 'ALL' && item.severity !== selectedSeverity) return false;
-
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesTitle = item.title.toLowerCase().includes(q);
-        const matchesMessage = item.message.toLowerCase().includes(q);
-        const matchesMachine = (item.machineId || '').toLowerCase().includes(q);
-        const matchesLine = (item.line || '').toLowerCase().includes(q);
-        const matchesTech = (item.attendedBy || '').toLowerCase().includes(q);
-        const matchesUnitField = (item.unit || '').toLowerCase().includes(q);
-        if (!matchesTitle && !matchesMessage && !matchesMachine && !matchesLine && !matchesTech && !matchesUnitField) {
-          return false;
-        }
-      }
-
       return true;
     }).sort((a, b) => {
       const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
       const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
       return timeB - timeA;
     });
-  }, [roleAndUnitScopedNotifications, activeTab, selectedSeverity, searchQuery]);
+  }, [roleAndUnitScopedNotifications, activeTab]);
 
   // Counts for tabs & badges dynamically reflecting active role and unit scopes
   const unattended5MCount = useMemo(() => {
@@ -797,26 +704,7 @@ export default function NotificationsPage() {
     return `${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
   };
 
-  const getRoleScopeLabel = (scope: RoleScope) => {
-    switch (scope) {
-      case 'MY_ROLE':
-        return `My Role (${currentRole.replace(/_/g, ' ')})`;
-      case 'ALL_ROLES':
-        return 'All Roles (Plant-wide)';
-      case 'ROLE_MECHANIC':
-        return 'Line Mechanics (Sewing)';
-      case 'ROLE_ELECTRICIAN':
-        return 'Plant Electricians (Electrical)';
-      case 'ROLE_STORE':
-        return 'Tool Crib & Central Stores';
-      case 'ROLE_SUPERVISOR':
-        return 'Supervisors & In-Charges';
-      case 'ROLE_EXECUTIVE':
-        return 'Executive & Directorate';
-      default:
-        return scope;
-    }
-  };
+  const roleScopeLabel = `My Role (${currentRole.replace(/_/g, ' ')})`;
 
   return (
     <div className="space-y-6 pt-0 font-sans text-slate-800">
@@ -903,7 +791,7 @@ export default function NotificationsPage() {
           {/* Role Scope Pill */}
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold">
             <User className="w-3.5 h-3.5" />
-            <span>{getRoleScopeLabel(selectedRoleScope)}</span>
+            <span>{roleScopeLabel}</span>
           </span>
 
           {/* Unit Scope Pill */}
@@ -926,8 +814,13 @@ export default function NotificationsPage() {
           </span>
         </div>
 
-        <div className="text-[11px] text-slate-500 font-medium">
-          Showing <strong>{filteredNotifications.length}</strong> active alerts
+        <div className="flex items-center gap-3 text-[11px] font-medium text-slate-500">
+          <span>Showing <strong>{filteredNotifications.length}</strong> active alerts</span>
+          {activeTab !== 'ALL' && (
+            <button type="button" onClick={() => setActiveTab('ALL')} className="font-bold text-indigo-700 hover:underline">
+              Show all alerts
+            </button>
+          )}
         </div>
       </div>
 
@@ -969,274 +862,118 @@ export default function NotificationsPage() {
       {/* ─── 4. CATEGORY SUMMARY METRIC CARDS ────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {/* Unattended 5m */}
-        <div
-          onClick={() => setActiveTab('UNATTENDED_5M')}
-          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+        <button
+          type="button"
+          aria-pressed={activeTab === 'UNATTENDED_5M'}
+          onClick={() => setActiveTab(activeTab === 'UNATTENDED_5M' ? 'ALL' : 'UNATTENDED_5M')}
+          className={`p-4 text-left rounded-2xl border transition cursor-pointer shadow-2xs ${
             activeTab === 'UNATTENDED_5M'
               ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-500/20'
               : 'bg-white border-slate-200/80 hover:border-rose-300'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+          <span className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
             <span>&gt; 5m SLA</span>
             <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
-          </div>
-          <div className="text-2xl font-black text-rose-600">{unattended5MCount}</div>
-          <div className="text-[10px] text-slate-500 font-medium mt-1">SLA response breach</div>
-        </div>
+          </span>
+          <span className="block text-2xl font-black text-rose-600">{unattended5MCount}</span>
+          <span className="block text-[10px] text-slate-500 font-medium mt-1">SLA response breach</span>
+        </button>
 
         {/* Breakdown Warnings */}
-        <div
-          onClick={() => setActiveTab('BREAKDOWN_WARNING')}
-          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+        <button
+          type="button"
+          aria-pressed={activeTab === 'BREAKDOWN_WARNING'}
+          onClick={() => setActiveTab(activeTab === 'BREAKDOWN_WARNING' ? 'ALL' : 'BREAKDOWN_WARNING')}
+          className={`p-4 text-left rounded-2xl border transition cursor-pointer shadow-2xs ${
             activeTab === 'BREAKDOWN_WARNING'
               ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-500/20'
               : 'bg-white border-slate-200/80 hover:border-amber-300'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+          <span className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
             <span>Breakdowns</span>
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-          </div>
-          <div className="text-2xl font-black text-amber-700">{breakdownWarningCount}</div>
-          <div className="text-[10px] text-slate-500 font-medium mt-1">Defects &amp; repair tickets</div>
-        </div>
+          </span>
+          <span className="block text-2xl font-black text-amber-700">{breakdownWarningCount}</span>
+          <span className="block text-[10px] text-slate-500 font-medium mt-1">Defects &amp; repair tickets</span>
+        </button>
 
         {/* Asset Actions Done */}
-        <div
-          onClick={() => setActiveTab('ASSET_ACTIONS')}
-          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+        <button
+          type="button"
+          aria-pressed={activeTab === 'ASSET_ACTIONS'}
+          onClick={() => setActiveTab(activeTab === 'ASSET_ACTIONS' ? 'ALL' : 'ASSET_ACTIONS')}
+          className={`p-4 text-left rounded-2xl border transition cursor-pointer shadow-2xs ${
             activeTab === 'ASSET_ACTIONS'
               ? 'bg-indigo-50/80 border-indigo-400 ring-2 ring-indigo-500/20'
               : 'bg-white border-slate-200/80 hover:border-indigo-300'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+          <span className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
             <span>Asset Actions</span>
             <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
-          </div>
-          <div className="text-2xl font-black text-indigo-700">{assetActionsCount}</div>
-          <div className="text-[10px] text-slate-500 font-medium mt-1">Status &amp; relocations</div>
-        </div>
+          </span>
+          <span className="block text-2xl font-black text-indigo-700">{assetActionsCount}</span>
+          <span className="block text-[10px] text-slate-500 font-medium mt-1">Status &amp; relocations</span>
+        </button>
 
         {/* PPM Overdue */}
-        <div
-          onClick={() => setActiveTab('PPM_OVERDUE')}
-          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+        <button
+          type="button"
+          aria-pressed={activeTab === 'PPM_OVERDUE'}
+          onClick={() => setActiveTab(activeTab === 'PPM_OVERDUE' ? 'ALL' : 'PPM_OVERDUE')}
+          className={`p-4 text-left rounded-2xl border transition cursor-pointer shadow-2xs ${
             activeTab === 'PPM_OVERDUE'
               ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20'
               : 'bg-white border-slate-200/80 hover:border-blue-300'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+          <span className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
             <span>Overdue PPM</span>
             <Clock className="w-3.5 h-3.5 text-blue-600" />
-          </div>
-          <div className="text-2xl font-black text-blue-700">{ppmOverdueCount}</div>
-          <div className="text-[10px] text-slate-500 font-medium mt-1">Scheduled service due</div>
-        </div>
+          </span>
+          <span className="block text-2xl font-black text-blue-700">{ppmOverdueCount}</span>
+          <span className="block text-[10px] text-slate-500 font-medium mt-1">Scheduled service due</span>
+        </button>
 
         {/* Low Stock */}
-        <div
-          onClick={() => setActiveTab('LOW_STOCK')}
-          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+        <button
+          type="button"
+          aria-pressed={activeTab === 'LOW_STOCK'}
+          onClick={() => setActiveTab(activeTab === 'LOW_STOCK' ? 'ALL' : 'LOW_STOCK')}
+          className={`p-4 text-left rounded-2xl border transition cursor-pointer shadow-2xs ${
             activeTab === 'LOW_STOCK'
               ? 'bg-orange-50/80 border-orange-400 ring-2 ring-orange-500/20'
               : 'bg-white border-slate-200/80 hover:border-orange-300'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+          <span className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
             <span>Tool Crib</span>
             <Package className="w-3.5 h-3.5 text-orange-600" />
-          </div>
-          <div className="text-2xl font-black text-orange-700">{lowStockCount}</div>
-          <div className="text-[10px] text-slate-500 font-medium mt-1">Below safety stock</div>
-        </div>
+          </span>
+          <span className="block text-2xl font-black text-orange-700">{lowStockCount}</span>
+          <span className="block text-[10px] text-slate-500 font-medium mt-1">Below safety stock</span>
+        </button>
 
         {/* Approvals */}
-        <div
-          onClick={() => setActiveTab('APPROVALS')}
-          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs col-span-2 md:col-span-1 ${
+        <button
+          type="button"
+          aria-pressed={activeTab === 'APPROVALS'}
+          onClick={() => setActiveTab(activeTab === 'APPROVALS' ? 'ALL' : 'APPROVALS')}
+          className={`p-4 text-left rounded-2xl border transition cursor-pointer shadow-2xs col-span-2 md:col-span-1 ${
             activeTab === 'APPROVALS'
               ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-500/20'
               : 'bg-white border-slate-200/80 hover:border-emerald-300'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
+          <span className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1.5">
             <span>Capex Indents</span>
             <FileText className="w-3.5 h-3.5 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-black text-emerald-700">{approvalsCount}</div>
-          <div className="text-[10px] text-slate-500 font-medium mt-1">Awaiting sign-off</div>
-        </div>
-      </div>
-
-      {/* ─── 5. TABS & FILTER TOOLBAR ─────────────────────────────────────── */}
-      <div className="space-y-3">
-        {/* Category Filter Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setActiveTab('ALL')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-              activeTab === 'ALL'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            All Alerts ({roleAndUnitScopedNotifications.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('UNATTENDED_5M')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
-              activeTab === 'UNATTENDED_5M'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-rose-700 hover:bg-rose-50'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5" />
-            <span>Unattended &gt; 5m ({unattended5MCount})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('BREAKDOWN_WARNING')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-              activeTab === 'BREAKDOWN_WARNING'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            Breakdowns ({breakdownWarningCount})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('ASSET_ACTIONS')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-              activeTab === 'ASSET_ACTIONS'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            Asset Actions ({assetActionsCount})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('PPM_OVERDUE')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-              activeTab === 'PPM_OVERDUE'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            Overdue PPM ({ppmOverdueCount})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('LOW_STOCK')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-              activeTab === 'LOW_STOCK'
-                ? 'bg-orange-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            Tool Crib Spares ({lowStockCount})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('APPROVALS')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-              activeTab === 'APPROVALS'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            Executive Capex ({approvalsCount})
-          </button>
-        </div>
-
-        {/* Filter Controls Row: Search, Role Category Filter, Severity, Unit Scoping */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
-          {/* Keyword Search */}
-          <div className="lg:col-span-4 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Machine, Line, Defect, or Staff..."
-              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition shadow-2xs font-medium"
-            />
-          </div>
-
-          {/* Role Category Selector */}
-          <div className="lg:col-span-3 relative">
-            <select
-              value={selectedRoleScope}
-              onChange={(e) => setSelectedRoleScope(e.target.value as RoleScope)}
-              className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
-            >
-              <option value="MY_ROLE">Scoped to My Role ({currentRole.replace(/_/g, ' ')})</option>
-              <option value="ALL_ROLES">All Roles (Full Overview)</option>
-              <option value="ROLE_MECHANIC">Sewing Line Mechanics</option>
-              <option value="ROLE_ELECTRICIAN">Plant Electricians</option>
-              <option value="ROLE_STORE">Tool Crib &amp; Stores</option>
-              <option value="ROLE_SUPERVISOR">Supervisors &amp; In-Charges</option>
-              <option value="ROLE_EXECUTIVE">Executive / CEO Capex</option>
-            </select>
-            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-
-          {/* Unit Scope Selector */}
-          <div className="lg:col-span-3 relative">
-            {isAdmin || userAssignedUnit === 'All Units' ? (
-              <>
-                <select
-                  value={selectedUnit}
-                  onChange={(e) => setSelectedUnit(e.target.value)}
-                  className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
-                >
-                  <option value="ALL">All Plant Units</option>
-                  <option value="UNIT - 1">Unit 1 &mdash; Nethaji Campus</option>
-                  <option value="UNIT-2">Unit 2 &mdash; Perundurai Campus</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </>
-            ) : (
-              <div
-                className="w-full px-3.5 py-2 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-between shadow-2xs"
-                title="Your account is assigned strictly to this plant unit"
-              >
-                <span className="truncate flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <span>{userAssignedUnit}</span>
-                </span>
-                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              </div>
-            )}
-          </div>
-
-          {/* Severity Selector */}
-          <div className="lg:col-span-2 relative">
-            <select
-              value={selectedSeverity}
-              onChange={(e) => setSelectedSeverity(e.target.value)}
-              className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
-            >
-              <option value="ALL">All Severities</option>
-              <option value="CRITICAL">Critical Alarms</option>
-              <option value="WARNING">Warnings</option>
-              <option value="INFO">Informational</option>
-            </select>
-            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-        </div>
+          </span>
+          <span className="block text-2xl font-black text-emerald-700">{approvalsCount}</span>
+          <span className="block text-[10px] text-slate-500 font-medium mt-1">Awaiting sign-off</span>
+        </button>
       </div>
 
       {/* ─── 6. NOTIFICATION CARDS LIST ───────────────────────────────────── */}
@@ -1248,7 +985,7 @@ export default function NotificationsPage() {
             </div>
             <h3 className="text-sm font-bold text-slate-800">No active alerts for this role &amp; unit filter</h3>
             <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-              All machine defects and alerts in {effectiveUnit === 'ALL' ? 'the plant' : effectiveUnit} matching {getRoleScopeLabel(selectedRoleScope)} are resolved or cleared.
+              All machine defects and alerts in {effectiveUnit === 'ALL' ? 'the plant' : effectiveUnit} matching {roleScopeLabel} are resolved or cleared.
             </p>
           </div>
         ) : (

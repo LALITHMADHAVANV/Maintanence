@@ -1936,29 +1936,6 @@ function SettingsContent() {
         // VIEW 1: Overview of All Factory Units
         return (
           <div className="space-y-6">
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-[#059669]" />
-                  <h3 className="font-bold text-sm text-slate-900">
-                    {factoryUnits.length} Manufacturing Plants Configured
-                  </h3>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Click any factory unit to manage its production floor zones, live machinery allocations, and unit specifications.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleOpenAddUnit}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer shrink-0 self-start sm:self-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Factory Unit</span>
-              </button>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {factoryUnits.map((u) => {
                 const unitMachines = machines.filter((m) => matchesUnit(m.unit, u.code) || matchesUnit(m.unit, u.id));

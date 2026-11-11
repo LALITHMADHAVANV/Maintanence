@@ -843,18 +843,6 @@ function AssetsPageContent() {
 
             {/* Filter Dropdowns + Search */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Unit Dropdown Filter */}
-              <select
-                value={selectedPlant}
-                onChange={(e) => handlePlantChange(e.target.value)}
-                className="px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                title="Switch Unit Filter"
-              >
-                <option value="ALL">All Units ({allUnitsCount})</option>
-                <option value="UNIT - 1">UNIT - 1 ({unit1Count})</option>
-                <option value="UNIT-2">UNIT-2 ({unit2Count})</option>
-              </select>
-
               {/* Location Filter */}
               <select
                 value={selectedLocation}
