@@ -68,7 +68,6 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
   // 2. STORE_PERSON permissions
   if (role === 'STORE_PERSON') {
     const storeAllowed = [
-      '/dashboard',
       '/dashboard/store-inbox',
       '/dashboard/inventory',
       '/dashboard/asset-types',
@@ -82,7 +81,6 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
   // 3. MECHANIC & ELECTRICIAN permissions (Floor Technicians)
   if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
     const mechanicAllowed = [
-      '/dashboard',
       '/dashboard/calendar',
       '/dashboard/inventory',
       '/dashboard/history',

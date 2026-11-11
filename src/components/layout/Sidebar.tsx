@@ -35,7 +35,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { normalizeRole } from '@/lib/constants/roles';
+import { canAccessRoute, normalizeRole } from '@/lib/constants/roles';
+import { departmentMenuGroups } from '@/lib/departmentNavigation';
 import {
   subscribeParts,
   subscribeRepairs,
@@ -61,7 +62,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, logout } = useAuth();
-  const { isNavHidden, showNav, hideNav, isMobileOpen, setIsMobileOpen, closeMobileNav } = useNav();
+  const { isNavHidden, showNav, hideNav, isMobileOpen, setIsMobileOpen, closeMobileNav, departmentNavigation } = useNav();
 
   const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
@@ -498,16 +499,28 @@ export function Sidebar() {
         },
       ];
     };
-    const rawSections = buildSections();
+    const sections = buildSections();
+    const isVisible = (path: string) => departmentNavigation?.includes(path) && canAccessRoute(currentRole, path);
+    const rawSections = departmentNavigation === null ? sections : sections.map(section => ({
+      ...section, items: section.items.filter(item => isVisible(item.href)),
+    }));
+    if (departmentNavigation !== null) {
+      const present = new Set(rawSections.flatMap(section => section.items.map(item => item.href)));
+      for (const group of departmentMenuGroups) {
+        const items = group.items.filter(([path]) => isVisible(path) && !present.has(path))
+          .map(([href, label]) => ({ href, label, icon: LayoutDashboard }));
+        if (items.length) rawSections.push({ title: group.label, items });
+      }
+    }
     const companySlug = user?.companySlug || 'sahana';
-    return rawSections.map((sec) => ({
+    return rawSections.filter(section => section.items.length > 0).map((sec) => ({
       ...sec,
       items: sec.items.map((it) => ({
         ...it,
         href: it.href.startsWith('/dashboard') ? `/${companySlug}${it.href}` : it.href,
       })),
     }));
-  }, [currentRole, pendingTicketsCount, pendingPpmCount, activeInChargesCount, pendingCeoCount, pendingStoreCount, lowStockCount, user?.companySlug]);
+  }, [currentRole, pendingTicketsCount, pendingPpmCount, activeInChargesCount, pendingCeoCount, pendingStoreCount, lowStockCount, user?.companySlug, departmentNavigation]);
 
   const userInitial = useMemo(() => {
     if (currentRole === 'ADMIN') return 'A';
@@ -544,6 +557,7 @@ export function Sidebar() {
 
           <div className="flex items-center gap-1.5">
             {/* Top Notification Bell with unseen counter */}
+            {(departmentNavigation === null || departmentNavigation.includes('/dashboard/messages')) && (
             <Link
               href={`/${user?.companySlug || 'sahana'}/dashboard/messages`}
               className="relative p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer flex items-center justify-center group"
@@ -556,6 +570,7 @@ export function Sidebar() {
                 </span>
               )}
             </Link>
+            )}
 
             {/* Desktop hide button */}
             <button
@@ -688,6 +703,8 @@ export function Sidebar() {
         </Link>
 
         {/* Top Notification Bell with unseen counter */}
+
+        {(departmentNavigation === null || departmentNavigation.includes('/dashboard/messages')) && (
         <Link
           href={`/${companySlug}/dashboard/messages`}
           className="relative p-2 text-slate-600 hover:text-rose-600 hover:bg-slate-50 rounded-xl transition cursor-pointer flex items-center justify-center group"
@@ -700,6 +717,8 @@ export function Sidebar() {
             </span>
           )}
         </Link>
+
+        )}
 
         {/* Open/Expand Navbar button */}
         <button
@@ -756,14 +775,16 @@ export function Sidebar() {
         </div>
 
         {/* Sparkles / performance icon */}
-        <button
-          type="button"
-          onClick={() => router.push(`/${companySlug}/dashboard/kpi`)}
-          className="p-1.5 text-slate-400 hover:text-amber-500 rounded-lg hover:bg-white transition cursor-pointer"
-          title="Department KPI & Performance"
-        >
-          <Sparkles className="w-4 h-4" />
-        </button>
+        {(departmentNavigation === null || (departmentNavigation.includes('/dashboard/kpi') && canAccessRoute(currentRole, '/dashboard/kpi'))) && (
+          <button
+            type="button"
+            onClick={() => router.push(`/${companySlug}/dashboard/kpi`)}
+            className="p-1.5 text-slate-400 hover:text-amber-500 rounded-lg hover:bg-white transition cursor-pointer"
+            title="Department KPI & Performance"
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Sign out button */}
         <button

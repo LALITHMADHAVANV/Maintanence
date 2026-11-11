@@ -1,6 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { apiFetch } from '@/lib/services/cmmsService';
+import { departmentNavigationChanged } from '@/lib/departmentNavigation';
 
 interface NavContextType {
   isNavHidden: boolean;
@@ -11,6 +14,7 @@ interface NavContextType {
   setIsMobileOpen: (open: boolean) => void;
   openMobileNav: () => void;
   closeMobileNav: () => void;
+  departmentNavigation: string[] | null;
 }
 
 const NavContext = createContext<NavContextType>({
@@ -22,9 +26,38 @@ const NavContext = createContext<NavContextType>({
   setIsMobileOpen: () => {},
   openMobileNav: () => {},
   closeMobileNav: () => {},
+  departmentNavigation: null,
 });
 
 export function NavProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const accountKey = user ? `${user.companySlug}:${user.uid}:${user.department}` : null;
+  const [menu, setMenu] = useState<{ accountKey: string; paths: string[] | null } | null>(null);
+  const departmentNavigation = menu?.accountKey === accountKey ? menu.paths : null;
+
+  useEffect(() => {
+    if (!accountKey) return;
+    let controller: AbortController;
+    const refresh = async () => {
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      try {
+        const response = await apiFetch('/api/departments', { signal: request.signal, cache: 'no-store' });
+        if (!response.ok) return;
+        const { navigation } = await response.json();
+        if (!request.signal.aborted) setMenu({ accountKey, paths: Array.isArray(navigation) ? navigation : null });
+      } catch { /* Keep the last available menu for this account. */ }
+    };
+    void refresh();
+    window.addEventListener(departmentNavigationChanged, refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      controller?.abort();
+      window.removeEventListener(departmentNavigationChanged, refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [accountKey]);
   const [isNavHidden, setIsNavHidden] = useState<boolean>(false);
   const [isMobileOpen, setIsMobileOpen] = useState<boolean>(false);
 
@@ -65,6 +98,7 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
         setIsMobileOpen,
         openMobileNav,
         closeMobileNav,
+        departmentNavigation,
       }}
     >
       {children}

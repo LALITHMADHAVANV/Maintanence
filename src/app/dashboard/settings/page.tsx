@@ -1,6 +1,8 @@
 'use client';
 
 import { tenantPreferences } from '@/lib/tenantPreferences';
+import { departmentNavigationChanged } from '@/lib/departmentNavigation';
+import { DepartmentNavigationChecklist } from '@/components/layout/DepartmentNavigationChecklist';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -56,7 +58,7 @@ import {
 import { UserProfile, UserRole, RepairTicket, Machine } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty } from '@/lib/constants/mechanics';
 import { FACTORY_UNITS, getUnitBadgeInfo, matchesUnit, getZonesForUnit } from '@/lib/constants/units';
-import { subscribeRepairs, subscribeMachines } from '@/lib/services/cmmsService';
+import { apiFetch, subscribeRepairs, subscribeMachines } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import Link from 'next/link';
@@ -120,6 +122,7 @@ const INITIAL_FACTORY_UNITS: FactoryUnitItem[] = [
 
 // ─── DEPARTMENT DATA MODEL ───
 export interface DepartmentItem {
+  navigation?: string[];
   id: string;
   name: string;
   badge?: string;
@@ -386,12 +389,6 @@ function SettingsContent() {
   const [departments, setDepartments] = useState<DepartmentItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const hasCleared = tenantPreferences.getItem('cmms_settings_dept_wiped_v2');
-        if (!hasCleared) {
-          tenantPreferences.removeItem('cmms_settings_departments');
-          tenantPreferences.setItem('cmms_settings_dept_wiped_v2', 'true');
-          return [];
-        }
         const saved = tenantPreferences.getItem('cmms_settings_departments');
         if (saved) return JSON.parse(saved);
       } catch {
@@ -401,17 +398,56 @@ function SettingsContent() {
     return INITIAL_DEPARTMENTS;
   });
 
-  const saveDepartments = (items: DepartmentItem[]) => {
-    setDepartments(items);
+  const [savingDepartment, setSavingDepartment] = useState(false);
+
+  useEffect(() => {
+    if (!currentUser?.companySlug) return;
+    const controller = new AbortController();
+    apiFetch('/api/departments?manage', { signal: controller.signal, cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Unable to load departments.');
+        const { departments: saved } = await response.json() as { departments: DepartmentItem[] };
+        const legacy = JSON.parse(tenantPreferences.getItem('cmms_settings_departments') || '[]') as DepartmentItem[];
+        if (!controller.signal.aborted) setDepartments([
+          ...saved,
+          ...legacy.filter(item => !saved.some(dept => dept.id === item.id || dept.name.toLowerCase() === item.name.toLowerCase())),
+        ]);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) showToast('Unable to load shared departments.', 'error');
+      });
+    return () => controller.abort();
+  }, [currentUser?.companySlug, showToast]);
+
+  const persistDepartment = async (id: string, item?: DepartmentItem) => {
+    setSavingDepartment(true);
     try {
-      tenantPreferences.setItem('cmms_settings_departments', JSON.stringify(items));
-    } catch {
-      // ignore
+      const response = await apiFetch(item ? '/api/departments' : `/api/departments?id=${encodeURIComponent(id)}`, {
+        method: item ? 'PUT' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: item ? JSON.stringify({ ...item, navigation: item.navigation ?? [] }) : undefined,
+      });
+      if (!response.ok) throw new Error((await response.json()).error || 'Unable to save department.');
+      setDepartments(previous => item
+        ? [{ ...item, name: item.name.trim() }, ...previous.filter(dept => dept.id !== id)]
+        : previous.filter(dept => dept.id !== id));
+      try {
+        const legacy = JSON.parse(tenantPreferences.getItem('cmms_settings_departments') || '[]') as DepartmentItem[];
+        tenantPreferences.setItem('cmms_settings_departments', JSON.stringify(legacy.filter(dept => dept.id !== id)));
+      } catch { /* The department is already saved. */ }
+      window.dispatchEvent(new Event(departmentNavigationChanged));
+      return true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to save department.', 'error');
+      return false;
+    } finally {
+      setSavingDepartment(false);
     }
   };
 
   // Add Department Modal
   const [isAddDeptModalOpen, setIsAddDeptModalOpen] = useState(false);
+  const [newDeptNavigation, setNewDeptNavigation] = useState<string[]>([]);
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptDesc, setNewDeptDesc] = useState('');
   const [newDeptUsers, setNewDeptUsers] = useState<number>(0);
@@ -672,14 +708,15 @@ function SettingsContent() {
   };
 
   // ─── Department Handlers ───
-  const handleCreateDepartment = (e: React.FormEvent) => {
+  const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeptName.trim()) {
       showToast('Department name is required', 'error');
       return;
     }
     const created: DepartmentItem = {
-      id: `dept-${Date.now()}`,
+      id: `dept-${crypto.randomUUID()}`,
+      navigation: newDeptNavigation,
       name: newDeptName.trim(),
       description: newDeptDesc.trim(),
       userCount: Number(newDeptUsers) || 0,
@@ -693,8 +730,8 @@ function SettingsContent() {
       kpi3Type: 'manual',
       kpi3Weight: Number(newDeptKpi3Weight) || 30,
     };
-    const updated = [created, ...departments];
-    saveDepartments(updated);
+    if (!await persistDepartment(created.id, created)) return;
+    setNewDeptNavigation([]);
     showToast(`Department "${created.name}" created successfully!`, 'success');
     setIsAddDeptModalOpen(false);
     setNewDeptName('');
@@ -702,25 +739,23 @@ function SettingsContent() {
     setNewDeptUsers(0);
   };
 
-  const handleSaveEditDept = (e: React.FormEvent) => {
+  const handleSaveEditDept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDept) return;
     if (!editingDept.name.trim()) {
       showToast('Department name cannot be empty', 'error');
       return;
     }
-    const updated = departments.map((d) => (d.id === editingDept.id ? editingDept : d));
-    saveDepartments(updated);
+    if (!await persistDepartment(editingDept.id, editingDept)) return;
     showToast(`Department "${editingDept.name}" updated!`, 'success');
     setEditingDept(null);
   };
 
-  const handleDeleteDept = (id: string) => {
+  const handleDeleteDept = async (id: string) => {
     const target = departments.find((d) => d.id === id);
     if (!target) return;
     if (window.confirm(`Are you sure you want to remove department "${target.name}"?`)) {
-      const updated = departments.filter((d) => d.id !== id);
-      saveDepartments(updated);
+      if (!await persistDepartment(id)) return;
       showToast(`Department "${target.name}" removed`, 'success');
     }
   };
@@ -2687,7 +2722,7 @@ function SettingsContent() {
       ────────────────────────────────────────────────────────────────────────── */}
       {isAddDeptModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto p-6 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-xs bg-[#059669]" />
@@ -2768,6 +2803,8 @@ function SettingsContent() {
                 </div>
               </div>
 
+              <DepartmentNavigationChecklist selected={newDeptNavigation} onChange={setNewDeptNavigation} />
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -2778,6 +2815,7 @@ function SettingsContent() {
                 </button>
                 <button
                   type="submit"
+                  disabled={savingDepartment}
                   className="px-4 py-2 font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
                 >
                   Save Department
@@ -2793,7 +2831,7 @@ function SettingsContent() {
       ────────────────────────────────────────────────────────────────────────── */}
       {editingDept && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto p-6 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-xs bg-[#059669]" />
@@ -2841,6 +2879,8 @@ function SettingsContent() {
                 />
               </div>
 
+              <DepartmentNavigationChecklist selected={editingDept.navigation ?? []} onChange={navigation => setEditingDept({ ...editingDept, navigation })} />
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -2851,6 +2891,7 @@ function SettingsContent() {
                 </button>
                 <button
                   type="submit"
+                  disabled={savingDepartment}
                   className="px-4 py-2 font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
                 >
                   Save Changes

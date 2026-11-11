@@ -36,7 +36,8 @@ import {
 import { LiveClock } from './LiveClock';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { normalizeRole } from '@/lib/constants/roles';
+import { canAccessRoute, normalizeRole } from '@/lib/constants/roles';
+import { departmentMenuGroups } from '@/lib/departmentNavigation';
 import {
   subscribeParts,
   subscribeRepairs,
@@ -58,7 +59,7 @@ export interface NavTab {
 export function Navbar() {
   const pathname = usePathname();
   const { user, role, logout } = useAuth();
-  const { isNavHidden, toggleNav, openMobileNav } = useNav();
+  const { isNavHidden, toggleNav, openMobileNav, departmentNavigation } = useNav();
 
   const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
@@ -410,7 +411,16 @@ export function Navbar() {
       ];
     };
 
-    const defaultTabs = buildTabs();
+    const tabs = buildTabs();
+    const isVisible = (path: string) => departmentNavigation?.includes(path) && canAccessRoute(currentRole, path);
+    const defaultTabs = departmentNavigation === null ? tabs : tabs.filter(tab => isVisible(tab.href));
+    if (departmentNavigation !== null) {
+      const present = new Set(defaultTabs.map(tab => tab.href));
+      const extraTabs = departmentMenuGroups.flatMap(group => group.items)
+        .filter(([path]) => isVisible(path) && !present.has(path))
+        .map(([href, label]) => ({ href, label, icon: LayoutDashboard }));
+      defaultTabs.push(...extraTabs);
+    }
     const companySlug = user?.companySlug || 'sahana';
     return defaultTabs.map((tab) => ({
       ...tab,
@@ -426,6 +436,7 @@ export function Navbar() {
     lowStockCount,
     unattendedBreachCount,
     user?.companySlug,
+    departmentNavigation,
   ]);
 
   if (!user) return null;
