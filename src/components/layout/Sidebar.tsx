@@ -659,16 +659,6 @@ export function Sidebar() {
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            {/* Settings trigger */}
-            <button
-              type="button"
-              onClick={() => router.push(`/${companySlug}/dashboard/settings`)}
-              className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition cursor-pointer"
-              title="System Settings"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
             {/* Logout arrow icon */}
             <button
               type="button"

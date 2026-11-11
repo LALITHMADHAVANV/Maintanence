@@ -29,7 +29,7 @@ export function PreLoginForm({ companySlug }: { companySlug?: string }) {
   return (
     <main className="login-page">
       <section className="login-story" aria-label="Plant maintenance">
-        <div className="login-brand"><span className="brand-mark"><Wrench size={22} /></span>maintain.</div>
+        <div className="login-brand"><span className="brand-mark"><Wrench size={22} /></span>Asset.</div>
         <div className="login-story-content">
           <span className="login-eyebrow"><span /> YOUR PLANT. CONNECTED.</span>
           <h1>One sign-in.<br /><span>Your workspace.</span></h1>
