@@ -1,6 +1,7 @@
 'use client';
 
 import { assetScanUrl } from '@/lib/scanUrl';
+import { normalizeUnit } from '@/lib/constants/units';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -30,6 +31,7 @@ export interface BulkQrAsset {
   type?: string;
   typeName?: string;
   unit?: string;
+  zone?: string;
   currentLine?: string;
   location?: string;
   company?: string;
@@ -42,6 +44,16 @@ interface BulkQrPrintModalProps {
   onClose: () => void;
   assets: BulkQrAsset[];
   companyName?: string;
+}
+
+function locationChoices(assets: BulkQrAsset[], field: 'unit' | 'zone') {
+  const choices = new Map<string, string>();
+  for (const asset of assets) {
+    const label = asset[field]?.trim();
+    const key = normalizeUnit(label);
+    if (key && label && !choices.has(key)) choices.set(key, label);
+  }
+  return [...choices].sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true }));
 }
 
 export function BulkQrPrintModal({
@@ -91,6 +103,8 @@ export function BulkQrPrintModal({
   const [rangeEnd, setRangeEnd] = useState<number>(() => Math.min(assets.length, 34));
 
   // Filters
+  const [unitFilter, setUnitFilter] = useState('');
+  const [zoneFilter, setZoneFilter] = useState('');
   const [lineFilter, setLineFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -130,19 +144,24 @@ export function BulkQrPrintModal({
     };
   }, [isOpen]);
 
-  // Extract unique lines for filter
+  const availableUnits = useMemo(() => locationChoices(assets, 'unit'), [assets]);
+  const unitAssets = useMemo(() => assets.filter((asset) => !unitFilter || normalizeUnit(asset.unit) === unitFilter), [assets, unitFilter]);
+  const availableZones = useMemo(() => locationChoices(unitAssets, 'zone'), [unitAssets]);
+  const locationAssets = useMemo(() => unitAssets.filter((asset) => !zoneFilter || normalizeUnit(asset.zone) === zoneFilter), [unitAssets, zoneFilter]);
+
+  // Extract unique lines for the selected unit and zone.
   const availableLines = useMemo(() => {
     const lines = new Set<string>();
-    assets.forEach((a) => {
+    locationAssets.forEach((a) => {
       const line = a.currentLine || (a.location?.includes('Line') ? a.location : '') || (a.unit?.includes('Line') ? a.unit : '');
       if (line) lines.add(line);
     });
     return Array.from(lines).sort();
-  }, [assets]);
+  }, [locationAssets]);
 
   // Filter pool based on line and search query
   const filteredPool = useMemo(() => {
-    return assets.filter((a) => {
+    return locationAssets.filter((a) => {
       if (lineFilter !== 'ALL') {
         const line = a.currentLine || a.location || a.unit || '';
         if (!line.toLowerCase().includes(lineFilter.toLowerCase())) return false;
@@ -160,7 +179,7 @@ export function BulkQrPrintModal({
 
       return true;
     });
-  }, [assets, lineFilter, searchQuery]);
+  }, [locationAssets, lineFilter, searchQuery]);
 
   // Sync limits when filtered pool changes
   useEffect(() => {
@@ -169,6 +188,9 @@ export function BulkQrPrintModal({
     }
     if (rangeEnd > filteredPool.length) {
       setRangeEnd(Math.max(1, filteredPool.length));
+    }
+    if (rangeStart > filteredPool.length) {
+      setRangeStart(Math.max(1, filteredPool.length));
     }
   }, [filteredPool.length]);
 
@@ -682,6 +704,29 @@ export function BulkQrPrintModal({
                   </button>
                 </div>
 
+                <label className="ml-2 flex items-center gap-1 text-[11px] font-bold text-slate-600">
+                  Unit:
+                  <select value={unitFilter} onChange={(event) => {
+                    setUnitFilter(event.target.value);
+                    setZoneFilter('');
+                    setLineFilter('ALL');
+                  }} className="h-7 max-w-36 cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-slate-800 shadow-2xs">
+                    <option value="">All Units</option>
+                    {availableUnits.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  </select>
+                </label>
+
+                <label className="ml-2 flex items-center gap-1 text-[11px] font-bold text-slate-600">
+                  Zone:
+                  <select value={zoneFilter} onChange={(event) => {
+                    setZoneFilter(event.target.value);
+                    setLineFilter('ALL');
+                  }} className="h-7 max-w-36 cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-slate-800 shadow-2xs">
+                    <option value="">All Zones</option>
+                    {availableZones.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  </select>
+                </label>
+
                 {/* Line Filter */}
                 {availableLines.length > 0 && (
                   <div className="flex items-center gap-1 ml-2">
@@ -691,7 +736,7 @@ export function BulkQrPrintModal({
                       onChange={(e) => setLineFilter(e.target.value)}
                       className="h-7 px-2 text-[11px] font-bold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                     >
-                      <option value="ALL">All Lines ({assets.length})</option>
+                      <option value="ALL">All Lines ({locationAssets.length})</option>
                       {availableLines.map((l) => (
                         <option key={l} value={l}>
                           {l}

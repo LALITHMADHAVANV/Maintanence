@@ -460,6 +460,7 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
 
   // Prepared assets for bulk QR printing modal
   const bulkQrAssets: BulkQrAsset[] = useMemo(() => {
+    const machinesById = new Map(liveMachines.map((machine) => [machine.id, machine]));
     return allItems.map((item, idx) => ({
       id: item.assetId,
       mcNo: (item as any).mcNo || (item as any).serialNo || item.assetId,
@@ -468,14 +469,15 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
       model: item.model,
       type: item.subCategory || item.category,
       typeName: item.categoryLabel,
-      unit: item.unit,
+      unit: machinesById.get(item.assetId)?.unit || item.unit,
+      zone: machinesById.get(item.assetId)?.zone || machinesById.get(item.assetId)?.area,
       currentLine: (item as any).currentLine || item.location || item.unit,
       location: item.location || item.unit,
       company: (item as any).company,
       status: item.status,
       sNo: idx + 1,
     }));
-  }, [allItems]);
+  }, [allItems, liveMachines]);
 
   // Helper to resolve assigned mechanic for an asset
   const getAssetMechanic = (asset: AssetHistoryRecord): string => {
