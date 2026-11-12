@@ -270,7 +270,9 @@ export function BulkQrPrintModal({
   const renderSticker = (asset: BulkQrAsset, idx: number, isPrintPortal: boolean = false) => {
     const qrValue = `${assetScanUrl(origin, asset.id)}?brand=${encodeURIComponent(asset.brand || '')}&model=${encodeURIComponent(asset.model || '')}&unit=${encodeURIComponent(asset.unit || '')}&company=${encodeURIComponent(asset.company || effectiveCompanyName)}`;
     const displayId = asset.mcNo && asset.mcNo !== '-' ? asset.mcNo : asset.id;
-    const lineLabel = asset.currentLine || asset.location || asset.unit || '';
+    const make = asset.brand?.trim();
+    const type = asset.type?.trim() || asset.typeName?.trim();
+    const makeAndType = [make, type].filter((label) => label && label !== '-').join(' • ');
 
     // =========================================================================
     // 1. PURE QR CODE (NO TEXT AT ALL)
@@ -348,14 +350,14 @@ export function BulkQrPrintModal({
             />
           </div>
 
-          {/* Machine Number / ID Only */}
+          {/* Machine ID, make, and type */}
           <div className="mt-1.5 text-center w-full px-1">
             <div className="font-mono font-black text-xs sm:text-sm print:text-[9.5pt] text-slate-950 tracking-wider truncate">
               {displayId}
             </div>
-            {lineLabel && (
-              <div className="text-[9px] print:text-[6.5pt] font-semibold text-slate-500 print:text-black truncate">
-                {lineLabel}
+            {makeAndType && (
+              <div className="text-[9px] print:text-[6.5pt] font-semibold text-slate-500 print:text-black">
+                {makeAndType}
               </div>
             )}
           </div>
@@ -402,9 +404,9 @@ export function BulkQrPrintModal({
           <div className="text-[9.5px] print:text-[6.5pt] font-bold text-slate-800 truncate">
             {asset.brand || 'Equipment'} {asset.model && asset.model !== '-' ? `• ${asset.model}` : ''}
           </div>
-          {lineLabel && (
-            <div className="text-[8.5px] print:text-[6pt] font-semibold text-indigo-700 print:text-black truncate">
-              {lineLabel}
+          {type && type !== '-' && (
+            <div className="text-[8.5px] print:text-[6pt] font-semibold text-indigo-700 print:text-black">
+              {type}
             </div>
           )}
         </div>
@@ -807,7 +809,7 @@ export function BulkQrPrintModal({
                 Previewing <span className="text-indigo-600 font-extrabold">{itemsToPrint.length}</span> QR codes (Page details will be 100% hidden when printing)
               </span>
               <span className="text-slate-400">
-                Format: {stickerFormat === 'QR_ONLY' ? 'QR Code + Machine No' : stickerFormat === 'PURE_QR' ? 'Pure QR Only' : 'QR + Details'}
+                Format: {stickerFormat === 'QR_ONLY' ? 'QR Code + Machine No, Make & Type' : stickerFormat === 'PURE_QR' ? 'Pure QR Only' : 'QR + Details'}
               </span>
             </div>
 
