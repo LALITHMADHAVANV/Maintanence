@@ -159,7 +159,7 @@ export function BulkQrPrintModal({
     return Array.from(lines).sort();
   }, [locationAssets]);
 
-  // Filter pool based on line and search query
+  // Location filters scope the print job. Search only narrows the picker.
   const filteredPool = useMemo(() => {
     return locationAssets.filter((a) => {
       if (lineFilter !== 'ALL') {
@@ -167,19 +167,16 @@ export function BulkQrPrintModal({
         if (!line.toLowerCase().includes(lineFilter.toLowerCase())) return false;
       }
 
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const idMatch = a.id?.toLowerCase().includes(q);
-        const mcNoMatch = a.mcNo?.toLowerCase().includes(q);
-        const nameMatch = a.name?.toLowerCase().includes(q);
-        const brandMatch = a.brand?.toLowerCase().includes(q);
-        const modelMatch = a.model?.toLowerCase().includes(q);
-        if (!idMatch && !mcNoMatch && !nameMatch && !brandMatch && !modelMatch) return false;
-      }
-
       return true;
     });
-  }, [locationAssets, lineFilter, searchQuery]);
+  }, [locationAssets, lineFilter]);
+
+  const pickerAssets = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return filteredPool;
+    return filteredPool.filter((asset) => [asset.id, asset.mcNo, asset.name, asset.brand, asset.model, asset.type]
+      .some((value) => value?.toLowerCase().includes(query)));
+  }, [filteredPool, searchQuery]);
 
   // Sync limits when filtered pool changes
   useEffect(() => {
@@ -193,18 +190,6 @@ export function BulkQrPrintModal({
       setRangeStart(Math.max(1, filteredPool.length));
     }
   }, [filteredPool.length]);
-
-  // Initialize selectedIds when switching to custom mode or when pool loads
-  useEffect(() => {
-    if (filteredPool.length > 0 && selectedIds.size === 0) {
-      const initial = new Set<string>();
-      const limit = Math.min(filteredPool.length, chosenCount || 34);
-      for (let i = 0; i < limit; i++) {
-        initial.add(filteredPool[i].id);
-      }
-      setSelectedIds(initial);
-    }
-  }, [filteredPool]);
 
   // Determine final items to print
   const itemsToPrint = useMemo(() => {
@@ -227,19 +212,16 @@ export function BulkQrPrintModal({
 
   // Toggle individual asset in CUSTOM mode
   const toggleSelectAsset = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    setSelectedIds(next);
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
-  const selectAllPool = () => {
-    const next = new Set<string>();
-    filteredPool.forEach((a) => next.add(a.id));
-    setSelectedIds(next);
+  const selectAllVisible = () => {
+    setSelectedIds((previous) => new Set([...previous, ...pickerAssets.map((asset) => asset.id)]));
   };
 
   const clearAllPool = () => {
@@ -642,11 +624,12 @@ export function BulkQrPrintModal({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={selectAllPool}
+                    onClick={selectAllVisible}
+                    disabled={pickerAssets.length === 0}
                     className="px-2.5 py-1 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1"
                   >
                     <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Select All ({filteredPool.length})</span>
+                    <span>Select all shown ({pickerAssets.length})</span>
                   </button>
                   <button
                     type="button"
@@ -654,7 +637,7 @@ export function BulkQrPrintModal({
                     className="px-2.5 py-1 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1"
                   >
                     <Square className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Clear</span>
+                    <span>Clear selection</span>
                   </button>
                 </div>
               )}
@@ -804,6 +787,33 @@ export function BulkQrPrintModal({
 
           {/* Interactive Screen Preview */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/70">
+            {selectionMode === 'CUSTOM' && (
+              <section aria-label="Choose assets to print" className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-800">Choose assets to print</h3>
+                  <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs">
+                    <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
+                    <input type="search" aria-label="Search assets" placeholder="Search asset ID, make, or type"
+                      value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="w-52 max-w-full" />
+                  </label>
+                </div>
+                {pickerAssets.length === 0 ? (
+                  <p className="text-xs text-slate-500">No assets match the current filters and search.</p>
+                ) : (
+                  <div className="grid max-h-52 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                    {pickerAssets.map((asset) => (
+                      <label key={asset.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs">
+                        <input type="checkbox" checked={selectedIds.has(asset.id)} onChange={() => toggleSelectAsset(asset.id)} />
+                        <span className="min-w-0">
+                          <span className="block font-bold text-slate-900">{asset.mcNo && asset.mcNo !== '-' ? asset.mcNo : asset.id}</span>
+                          <span className="block truncate text-slate-600">{asset.name}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
             <div className="mb-3 flex items-center justify-between text-xs text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200">
               <span className="font-bold">
                 Previewing <span className="text-indigo-600 font-extrabold">{itemsToPrint.length}</span> QR codes (Page details will be 100% hidden when printing)
@@ -817,7 +827,7 @@ export function BulkQrPrintModal({
               <div className="p-12 text-center text-slate-400 bg-white rounded-3xl border border-dashed border-slate-300">
                 <QrCode className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm font-bold text-slate-700">No assets selected</p>
-                <p className="text-xs text-slate-400 mt-1">Adjust your chosen number or filters above.</p>
+                <p className="text-xs text-slate-400 mt-1">{selectionMode === 'CUSTOM' ? 'Check the assets you want to print above.' : 'Adjust your chosen number or filters above.'}</p>
               </div>
             )}
 
