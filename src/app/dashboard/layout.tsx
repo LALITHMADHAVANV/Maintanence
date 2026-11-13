@@ -11,11 +11,11 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="workspace-shell min-h-screen bg-[#e5e9f0] text-slate-800 flex flex-col md:flex-row antialiased selection:bg-indigo-500 selection:text-white">
+    <div className="workspace-shell min-h-dvh bg-[#e5e9f0] text-slate-800 flex flex-col lg:flex-row antialiased selection:bg-indigo-500 selection:text-white">
       <a href="#main-content" className="skip-navigation">Skip to content</a>
       <Sidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 min-h-dvh">
         <RouteGuard>
           <WorkspaceHeader />
           <main

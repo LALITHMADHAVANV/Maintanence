@@ -63,6 +63,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   // Breakdown Form
   const [faultType, setFaultType] = useState('Skipping Stitches / Looper Timing Misalignment');
   const [urgency, setUrgency] = useState<RepairUrgency>('CRITICAL');
+  const [guestTicketId, setGuestTicketId] = useState('');
   const [faultNotes, setFaultNotes] = useState('');
   const [selectedMechanic, setSelectedMechanic] = useState('');
   const [registeredTechs, setRegisteredTechs] = useState<any[]>([]);
@@ -174,18 +175,25 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   const handleBreakdownSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!machine) return;
-    if (!user) {
-      try {
-        sessionStorage.setItem(draftKey, JSON.stringify({ faultType, faultNotes, urgency }));
-      } catch {
-        showToast('Your browser could not save the form. Please sign in and enter the report again.', 'warning');
-      }
-      router.push(loginUrl);
-      return;
-    }
     setIsSubmitting(true);
 
     try {
+      if (!user) {
+        const query = new URLSearchParams({ company: companySlug, id: machine.id });
+        const response = await fetch(`/api/public/scan?${query}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'breakdown', faultCategory: faultType, notes: faultNotes, urgency }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to submit breakdown report');
+        setMachine({ ...machine, status: 'BREAKDOWN' });
+        setGuestTicketId(result.ticketId);
+        setFaultNotes('');
+        try { sessionStorage.removeItem(draftKey); } catch { /* The report is already saved. */ }
+        showToast('Breakdown reported to the mechanic queue.', 'success');
+        return;
+      }
       const ticketId = await createBreakdownTicket({
         machineId: machine.id,
         machineType: machine.typeName || machine.type,
@@ -216,7 +224,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
         router.push('/dashboard/calendar');
       }
     } catch (err) {
-      showToast('Failed to dispatch breakdown ticket', 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to dispatch breakdown ticket', 'error');
       console.error(err);
     } finally {
       setIsSubmitting(false);
@@ -225,11 +233,25 @@ function ScanContent({ companySlug }: { companySlug: string }) {
 
   const handleRelocateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) { router.push(loginUrl); return; }
     if (!machine) return;
     setIsSubmitting(true);
 
     try {
+      if (!user) {
+        const query = new URLSearchParams({ company: companySlug, id: machine.id });
+        const response = await fetch(`/api/public/scan?${query}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetLine, station: targetStation, reason: relocateReason }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to relocate machine');
+        setMachine(result.data);
+        setTargetStation(result.data.stationNo);
+        setRelocateReason('');
+        showToast(`Machine ${machine.id} relocated to ${result.data.currentLine} (${result.data.stationNo})`, 'success');
+        return;
+      }
       await relocateMachine(
         machine.id,
         targetLine,
@@ -246,7 +268,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
         router.push('/dashboard');
       }
     } catch (err) {
-      showToast('Failed to relocate machine', 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to relocate machine', 'error');
       console.error(err);
     } finally {
       setIsSubmitting(false);
@@ -402,7 +424,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
               <span className="text-[10px] text-slate-500 block font-medium">Located Area</span>
               <span className="font-semibold text-emerald-700 flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-emerald-600" />
-                {formatAssetLocation(machine)}
+                {formatAssetLocation(machine, true)}
               </span>
             </div>
           </div>
@@ -439,7 +461,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
           </button>
           <button
             type="button"
-            onClick={() => user ? setActiveTab('relocate') : router.push(loginUrl)}
+            onClick={() => setActiveTab('relocate')}
             className={`flex-1 py-3.5 text-center border-b-2 transition flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === 'relocate'
                 ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60 font-extrabold'
@@ -453,7 +475,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
 
         {/* Form Body */}
         <div className="p-6">
-          {!user && <p className="mb-4 text-xs text-slate-600">Enter the breakdown details below. Continue to sign in, choose a technician, and submit your report.</p>}
+          {!user && <p className="mb-4 text-xs text-slate-600">Submit the breakdown directly to the mechanic queue.</p>}
           {activeTab === 'report' ? (
             <form onSubmit={handleBreakdownSubmit} className="space-y-4">
               <div>
@@ -629,6 +651,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
                 </label>
                 <textarea
                   value={faultNotes}
+                  maxLength={1000}
                   onChange={(e) => setFaultNotes(e.target.value)}
                   rows={3}
                   placeholder="e.g. Breaking needle on heavy seam crossover on pocket attachment..."
@@ -636,13 +659,14 @@ function ScanContent({ companySlug }: { companySlug: string }) {
                 />
               </div>
 
+              {guestTicketId && <p role="status" className="break-all rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">Report sent to the mechanic queue. Ticket {guestTicketId}</p>}
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || Boolean(guestTicketId)}
                 className="w-full py-3 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/25 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Radio className="w-4 h-4" />
-                <span>{user ? 'Broadcast Breakdown to Mechanic Queue' : 'Continue to Login to Register Breakdown'}</span>
+                <span>{isSubmitting ? 'Submitting…' : 'Report Breakdown'}</span>
               </button>
             </form>
           ) : (
@@ -662,7 +686,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
                   <option value="Line 03">Line 03 (Woven Shirts)</option>
                   <option value="Line 04">Line 04 (Denim Bottoms)</option>
                   <option value="Buffer Workshop">Buffer Workshop (Standby Pool)</option>
-                  <option value="Scrap Bay">Scrap Bay (Decommissioned)</option>
+                  {user && <option value="Scrap Bay">Scrap Bay (Decommissioned)</option>}
                 </select>
               </div>
 
@@ -673,6 +697,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
                 <input
                   type="text"
                   value={targetStation}
+                  maxLength={80}
                   onChange={(e) => setTargetStation(e.target.value)}
                   placeholder="e.g. Station 06"
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 outline-none font-medium focus:bg-white transition"
@@ -686,6 +711,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
                 <input
                   type="text"
                   value={relocateReason}
+                  maxLength={300}
                   onChange={(e) => setRelocateReason(e.target.value)}
                   placeholder="e.g. Style changeover: line balancing for heavy seam"
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 outline-none focus:bg-white transition"

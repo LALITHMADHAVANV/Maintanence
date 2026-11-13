@@ -143,6 +143,20 @@ export function Sidebar() {
     closeMobileNav();
   }, [pathname, closeMobileNav]);
 
+  useEffect(() => {
+    if (!isMobileOpen) return;
+    const desktop = window.matchMedia('(min-width: 64rem)');
+    const closeOnDesktop = () => { if (desktop.matches) closeMobileNav(); };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') closeMobileNav(); };
+    closeOnDesktop();
+    desktop.addEventListener('change', closeOnDesktop);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      desktop.removeEventListener('change', closeOnDesktop);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isMobileOpen, closeMobileNav]);
+
   const currentRole = useMemo(() => {
     return normalizeRole(user?.role || role);
   }, [user?.role, role]);
@@ -546,7 +560,7 @@ export function Sidebar() {
   const sidebarContent = (
     <div className="workspace-sidebar sidebar-expanded flex flex-col h-full select-none border-r">
       {/* ─── Top Brand Header (matching reference image) ─── */}
-      <div className="p-4 border-b border-slate-100 flex flex-col gap-1">
+      <div className="shrink-0 p-4 border-b border-slate-100 flex flex-col gap-1">
         <div className="flex items-center justify-between">
           <Link href={`/${user?.companySlug || 'sahana'}/dashboard`} className="flex items-center gap-2 group">
             <span className="workspace-brand text-lg font-bold tracking-tight hover:opacity-90 transition font-sans">
@@ -575,7 +589,7 @@ export function Sidebar() {
             {/* Desktop hide button */}
             <button
               onClick={hideNav}
-              className="hidden md:flex p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              className="hidden lg:flex p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               title="Hide Navigation Bar"
             >
               <PanelLeftClose className="w-4 h-4" />
@@ -585,7 +599,7 @@ export function Sidebar() {
             <button
               onClick={closeMobileNav}
               aria-label="Close navigation"
-              className="md:hidden p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              className="lg:hidden p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -599,7 +613,7 @@ export function Sidebar() {
       </div>
 
       {/* ─── Categorized Navigation Links (matching reference image) ─── */}
-      <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto">
+      <nav className="min-h-0 flex-1 px-3 py-2 space-y-4 overflow-y-auto overscroll-contain">
         {navSections.map((section, sIdx) => (
           <div key={sIdx} className="space-y-0.5">
             {section.title && (
@@ -804,12 +818,14 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile Top App Bar (Only visible on small screens) */}
-      <div className="md:hidden bg-white text-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-200 sticky top-0 z-40">
+      <div className="lg:hidden bg-white text-slate-900 px-4 py-3 flex items-center justify-between border-b border-slate-200 sticky top-0 z-40">
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsMobileOpen(true)}
             className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 transition cursor-pointer"
             title="Open Menu"
+            aria-label="Open navigation"
+            aria-expanded={isMobileOpen}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -834,12 +850,12 @@ export function Sidebar() {
 
       {/* Mobile Sidebar Backdrop & Drawer */}
       {isMobileOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
+        <div className="lg:hidden fixed inset-0 z-50 flex">
           <div
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
             onClick={closeMobileNav}
           />
-          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10 bg-white">
+          <div role="dialog" aria-modal="true" aria-label="Navigation menu" className="relative w-72 max-w-[90vw] h-dvh shadow-2xl z-10 bg-white">
             {sidebarContent}
           </div>
         </div>
@@ -847,7 +863,7 @@ export function Sidebar() {
 
       {/* Desktop Sticky Left Sidebar (Full w-64 or Collapsed w-[72px]) */}
       <aside
-        className={`hidden md:flex flex-col shrink-0 sticky top-0 h-screen bg-white z-30 transition-all duration-150 ${isNavHidden ? 'w-[72px]' : 'w-64'
+        className={`hidden lg:flex flex-col shrink-0 sticky top-0 h-dvh bg-white z-30 transition-all duration-150 ${isNavHidden ? 'w-[72px]' : 'w-64'
           }`}
       >
         {isNavHidden ? collapsedSidebarContent : sidebarContent}

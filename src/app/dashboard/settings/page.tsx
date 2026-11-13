@@ -1147,6 +1147,7 @@ function SettingsContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update user');
 
+      window.dispatchEvent(new Event(departmentNavigationChanged));
       showToast(`User profile for ${editName} updated successfully!`, 'success');
       setEditingUser(null);
       setEditZones([]);
@@ -3739,39 +3740,22 @@ function SettingsContent() {
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Role / Department</label>
-                  <select
-                    value={editRole}
-                    onChange={(e) => {
-                      const val = e.target.value as UserRole;
-                      setEditRole(val);
-                      setEditDepartment(val);
-                      const matchedDept = departments.find(
-                        (d) => d.name.toLowerCase() === (val as string).toLowerCase()
-                      );
-                      if (matchedDept) {
-                        setEditTitle(`${matchedDept.name} Specialist`);
-                      }
-                      if (isMechanicRole(val, val, '') && (!editUnit || editUnit === 'All Units') && factoryUnits.length > 0) {
-                        setEditUnit(factoryUnits[0].code);
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#059669] outline-none"
-                  >
-                    {departments.length > 0 ? (
-                      departments.map((d) => (
-                        <option key={d.id} value={d.name}>
-                          {d.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="" disabled>
-                        No departments created yet (add in Departments tab)
-                      </option>
-                    )}
-                    {editRole && !departments.some((d) => d.name === editRole) && (
-                      <option value={editRole}>{editRole}</option>
-                    )}
+                  <label htmlFor="edit-user-role" className="block font-bold text-slate-700 mb-1">Role</label>
+                  <select id="edit-user-role" value={editRole} onChange={(event) => setEditRole(event.target.value as UserRole)}
+                    className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-bold">
+                    {[...new Set([editRole, 'ADMIN', 'ASSET_MANAGER', 'CEO', 'SENIOR_MECHANIC', 'MECHANIC', 'SENIOR_ELECTRICIAN', 'ELECTRICIAN', 'STORE_PERSON'])].filter(Boolean).map((value) => (
+                      <option key={value} value={value}>{value.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="edit-user-department" className="block font-bold text-slate-700 mb-1">Department</label>
+                  <select id="edit-user-department" value={editDepartment} onChange={(event) => setEditDepartment(event.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-bold">
+                    <option value="">No department assigned</option>
+                    {[...new Set([editDepartment, ...departments.map((department) => department.name)])].filter(Boolean).map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
                   </select>
                 </div>
               </div>

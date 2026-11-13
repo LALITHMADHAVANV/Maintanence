@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { departmentMenuPaths } from '@/lib/departmentNavigation';
+import { normalizeRole } from '@/lib/constants/roles';
 
 const normalizeName = (value: string) => value.trim().toLowerCase();
 const canManage = (role?: string) => ['ADMIN', 'ASSET_MANAGER'].includes(String(role).toUpperCase());
@@ -27,7 +28,14 @@ export async function GET(request: Request) {
       : { uid }, { projection: { department: 1 } });
     const nameKey = normalizeName(String(account?.department || ''));
     const department = nameKey ? await departments.findOne({ nameKey }) : null;
-    return NextResponse.json({ navigation: department?.navigation ?? null });
+    if (department) return NextResponse.json({ navigation: department.navigation ?? null });
+
+    // Older accounts may have a generic department label. Use the role only
+    // when exactly one configured department corresponds to it.
+    const role = normalizeRole(db.sessionUser?.role);
+    const configured = await departments.find({ navigation: { $type: 'array' } }, { projection: { name: 1, navigation: 1 } }).toArray();
+    const matching = configured.filter((item) => typeof item.name === 'string' && normalizeRole(item.name) === role);
+    return NextResponse.json({ navigation: matching.length === 1 ? matching[0].navigation : null });
   } catch (error) {
     return failure(error);
   }

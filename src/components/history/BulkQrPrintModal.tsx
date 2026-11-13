@@ -430,25 +430,25 @@ export function BulkQrPrintModal({
       {/* ===================================================================== */}
       {/* 1. ON-SCREEN MODAL (Hidden during print) */}
       {/* ===================================================================== */}
-      <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto no-print">
-        <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[96vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto">
+      <div className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto no-print">
+        <div role="dialog" aria-modal="true" aria-labelledby="bulk-qr-title" className="bg-white rounded-3xl max-w-5xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto">
           
           {/* Top Bar */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 sm:p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-900/50 shrink-0">
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-3 sm:p-5 text-white flex items-start sm:items-center justify-between gap-3 border-b border-indigo-900/50 shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shadow-inner">
                 <QrCode className="w-5 h-5 text-indigo-300" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="font-extrabold text-sm sm:text-base text-white tracking-tight">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 id="bulk-qr-title" className="font-extrabold text-sm sm:text-base text-white tracking-tight">
                     Print QR Codes Only
                   </h2>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 uppercase tracking-wider">
                     {effectiveCompanyName}
                   </span>
                 </div>
-                <p className="text-xs text-slate-300">
+                <p className="hidden text-xs text-slate-300 sm:block">
                   Select chosen number of machines to print pure scannable QR sticker tags
                 </p>
               </div>
@@ -459,7 +459,7 @@ export function BulkQrPrintModal({
                 type="button"
                 onClick={handlePrint}
                 disabled={itemsToPrint.length === 0}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-lg shadow-indigo-600/30"
+                className="hidden sm:flex px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold items-center gap-2 transition cursor-pointer shadow-lg shadow-indigo-600/30"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print {itemsToPrint.length} QR Codes Now</span>
@@ -475,6 +475,7 @@ export function BulkQrPrintModal({
             </div>
           </div>
 
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {/* Interactive Controls Bar */}
           <div className="bg-slate-50 border-b border-slate-200 p-3 sm:p-4 space-y-3 shrink-0">
             
@@ -482,7 +483,7 @@ export function BulkQrPrintModal({
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               
               {/* Mode Tabs */}
-              <div className="inline-flex items-center p-1 bg-slate-200/80 rounded-xl text-xs font-semibold text-slate-600">
+              <div className="flex flex-wrap items-center p-1 bg-slate-200/80 rounded-xl text-xs font-semibold text-slate-600">
                 <button
                   type="button"
                   onClick={() => setSelectionMode('COUNT')}
@@ -558,7 +559,7 @@ export function BulkQrPrintModal({
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     {[5, 10, 20, 34, 43, 77].filter((n) => n <= filteredPool.length || n === 34).map((n) => (
                       <button
                         key={n}
@@ -651,7 +652,7 @@ export function BulkQrPrintModal({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-bold text-slate-700">Print Format:</span>
                 
-                <div className="inline-flex items-center p-0.5 bg-slate-200 rounded-lg text-[11px] font-bold">
+                <div className="flex flex-wrap items-center p-0.5 bg-slate-200 rounded-lg text-[11px] font-bold">
                   <button
                     type="button"
                     onClick={() => setStickerFormat('QR_ONLY')}
@@ -786,7 +787,7 @@ export function BulkQrPrintModal({
           </div>
 
           {/* Interactive Screen Preview */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/70">
+          <div className="p-3 sm:p-6 bg-slate-100/70">
             {selectionMode === 'CUSTOM' && (
               <section aria-label="Choose assets to print" className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -814,7 +815,7 @@ export function BulkQrPrintModal({
                 )}
               </section>
             )}
-            <div className="mb-3 flex items-center justify-between text-xs text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200">
               <span className="font-bold">
                 Previewing <span className="text-indigo-600 font-extrabold">{itemsToPrint.length}</span> QR codes (Page details will be 100% hidden when printing)
               </span>
@@ -834,19 +835,21 @@ export function BulkQrPrintModal({
             <div
               className={`grid gap-3 ${
                 gridColumns === '2-COL'
-                  ? 'grid-cols-2'
+                  ? 'grid-cols-1 min-[420px]:grid-cols-2'
                   : gridColumns === '4-COL'
-                  ? 'grid-cols-4'
-                  : 'grid-cols-3'
+                  ? 'grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+                  : 'grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3'
               }`}
             >
               {itemsToPrint.map((asset, idx) => renderSticker(asset, idx, false))}
             </div>
           </div>
 
+          </div>
+
           {/* Modal Footer */}
-          <div className="bg-white border-t border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between shrink-0">
-            <div className="text-xs text-slate-500 flex items-center gap-2">
+          <div className="bg-white border-t border-slate-200 px-3 sm:px-6 py-3 flex flex-wrap items-center justify-end gap-2 sm:justify-between shrink-0">
+            <div className="hidden text-xs text-slate-500 sm:flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span>Clean QR Print Ready • Only QR codes will print</span>
             </div>

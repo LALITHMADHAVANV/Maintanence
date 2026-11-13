@@ -25,7 +25,7 @@ export function formatAssetLocation(m?: {
   currentLine?: string;
   stationNo?: string;
   department?: string;
-} | null): string {
+} | null, showLine01 = false): string {
   if (!m) return 'Unknown Location';
 
   const parts: string[] = [];
@@ -52,7 +52,7 @@ export function formatAssetLocation(m?: {
     m.currentLine &&
     m.area &&
     m.currentLine !== m.area &&
-    m.currentLine !== 'Line 01' &&
+    (showLine01 || m.currentLine !== 'Line 01') &&
     !parts.includes(m.currentLine)
   ) {
     parts.push(m.currentLine);

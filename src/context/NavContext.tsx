@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch } from '@/lib/services/cmmsService';
 import { departmentNavigationChanged } from '@/lib/departmentNavigation';
@@ -84,8 +84,8 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
     setIsNavHidden(false);
   };
 
-  const openMobileNav = () => setIsMobileOpen(true);
-  const closeMobileNav = () => setIsMobileOpen(false);
+  const openMobileNav = useCallback(() => setIsMobileOpen(true), []);
+  const closeMobileNav = useCallback(() => setIsMobileOpen(false), []);
 
   return (
     <NavContext.Provider

@@ -529,7 +529,7 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={openMobileNav}
-                className="md:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                className="lg:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
                 title="Open Navigation Menu"
               >
                 <Menu className="w-5 h-5" />
@@ -539,7 +539,7 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={toggleNav}
-                className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition cursor-pointer active:scale-95 shadow-2xs ${isNavHidden
+                className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition cursor-pointer active:scale-95 shadow-2xs ${isNavHidden
                     ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}
