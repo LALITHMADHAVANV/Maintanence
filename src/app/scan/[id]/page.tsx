@@ -681,10 +681,14 @@ function ScanContent({ companySlug }: { companySlug: string }) {
                   required
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-slate-800 outline-none font-medium focus:bg-white transition"
                 >
-                  <option value="Line 01">Line 01 (Polo / Knit)</option>
-                  <option value="Line 02">Line 02 (T-Shirts Basic)</option>
-                  <option value="Line 03">Line 03 (Woven Shirts)</option>
-                  <option value="Line 04">Line 04 (Denim Bottoms)</option>
+                  <option value="Line 01">Line 01</option>
+                  <option value="Line 02">Line 02</option>
+                  <option value="Line 03">Line 03</option>
+                  <option value="Line 04">Line 04</option>
+                  <option value="Line 05">Line 05</option>
+                  <option value="Line 06">Line 06</option>
+                  <option value="Line 07">Line 07</option>
+                  <option value="Line 08">Line 08</option>
                   <option value="Buffer Workshop">Buffer Workshop (Standby Pool)</option>
                   {user && <option value="Scrap Bay">Scrap Bay (Decommissioned)</option>}
                 </select>
