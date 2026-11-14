@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   const targetLine = input?.targetLine;
   const station = typeof input?.station === 'string' ? input.station.trim() : '';
   const reason = typeof input?.reason === 'string' ? input.reason.trim() : '';
-  if (typeof targetLine !== 'string' || !/^(Line 0[1-4]|Buffer Workshop)$/.test(targetLine) ||
+  if (typeof targetLine !== 'string' || !/^(Line 0[1-8]|Buffer Workshop)$/.test(targetLine) ||
     station.length > 80 || reason.length > 300) {
     return NextResponse.json({ error: 'Select a valid destination and enter a short station and reason.' }, { status: 400 });
   }

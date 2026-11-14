@@ -516,6 +516,10 @@ export function ScanModal({
                     <option value="Line 02">Sewing Floor - Line 02 (T-Shirts Basic)</option>
                     <option value="Line 03">Sewing Floor - Line 03 (Woven Shirts)</option>
                     <option value="Line 04">Sewing Floor - Line 04 (Denim Heavy)</option>
+                    <option value="Line 05">Sewing Floor - Line 05</option>
+                    <option value="Line 06">Sewing Floor - Line 06</option>
+                    <option value="Line 07">Sewing Floor - Line 07</option>
+                    <option value="Line 08">Sewing Floor - Line 08</option>
                   </optgroup>
                   <optgroup label="🏢 Plant Departments">
                     <option value="Cutting Department">Fabric Cutting Department</option>

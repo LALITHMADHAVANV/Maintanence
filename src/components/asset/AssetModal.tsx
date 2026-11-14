@@ -1679,6 +1679,10 @@ export function AssetModal({
                       <option value="Line 02">Sewing Floor - Line 02 (Tees & Tops)</option>
                       <option value="Line 03">Sewing Floor - Line 03 (Wovens & Shirts)</option>
                       <option value="Line 04">Sewing Floor - Line 04 (Heavy Denim)</option>
+                      <option value="Line 05">Sewing Floor - Line 05</option>
+                      <option value="Line 06">Sewing Floor - Line 06</option>
+                      <option value="Line 07">Sewing Floor - Line 07</option>
+                      <option value="Line 08">Sewing Floor - Line 08</option>
                     </optgroup>
                     <optgroup label="🏢 Factory Plant Departments">
                       <option value="Cutting Department">Fabric Cutting Department</option>
