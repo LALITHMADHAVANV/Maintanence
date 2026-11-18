@@ -210,24 +210,9 @@ function SettingsContent() {
     }
     return '';
   });
-  const [telegramUnit1ChatId, setTelegramUnit1ChatId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return tenantPreferences.getItem('cmms_telegram_unit1_chat') || '';
-    }
-    return '';
-  });
-  const [telegramAdminChatId, setTelegramAdminChatId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return tenantPreferences.getItem('cmms_telegram_admin_chat') || '';
-    }
-    return '';
-  });
-  const [telegramUnit2ChatId, setTelegramUnit2ChatId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return tenantPreferences.getItem('cmms_telegram_unit2_chat') || '';
-    }
-    return '';
-  });
+  const [telegramUnit1ChatId, setTelegramUnit1ChatId] = useState('');
+  const [telegramAdminChatId, setTelegramAdminChatId] = useState('');
+  const [telegramUnit2ChatId, setTelegramUnit2ChatId] = useState('');
   const [isTestingTelegram, setIsTestingTelegram] = useState(false);
   const [isTokenVisible, setIsTokenVisible] = useState(false);
   const [showTelegramCredentials, setShowTelegramCredentials] = useState(false);
@@ -261,45 +246,25 @@ function SettingsContent() {
       .catch((err) => console.warn('Could not auto-fetch telegram config:', err));
   }, []);
 
-  const handleTestTelegram = async (overrideTarget?: string) => {
+  const handleTestTelegram = async () => {
     setIsTestingTelegram(true);
     setTelegramStatusMessage(null);
 
-    let targetChat = overrideTarget;
-    let targetName = 'Unit 1 Group';
-
-    if (!targetChat) {
-      if (testTargetChannel === 'UNIT2') {
-        targetChat = telegramUnit2ChatId.trim() || '';
-        targetName = 'Unit 2 Maintenance Group';
-      } else if (testTargetChannel === 'ADMIN') {
-        targetChat = telegramAdminChatId.trim() || '';
-        targetName = 'Admin Personal Direct';
-      } else {
-        targetChat = telegramUnit1ChatId.trim() || '';
-        targetName = 'Unit 1 Maintenance Group';
-      }
-    } else {
-      if (targetChat === telegramUnit2ChatId.trim()) {
-        targetName = 'Unit 2 Maintenance Group';
-      } else if (targetChat === telegramAdminChatId.trim()) {
-        targetName = 'Admin Personal Direct';
-      } else {
-        targetName = 'Unit 1 Maintenance Group';
-      }
-    }
+    const targetName = {
+      UNIT1: 'Unit 1 Maintenance Group',
+      UNIT2: 'Unit 2 Maintenance Group',
+      ADMIN: 'Admin Personal Direct',
+    }[testTargetChannel];
 
     try {
-      if (!targetChat?.trim()) throw new Error('Configure the selected Telegram destination before testing.');
       const res = await fetch('/api/telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'TEST',
-          botToken: telegramBotToken.trim() || undefined,
+          targetChannel: testTargetChannel,
           payload: {
             unit: testTargetChannel === 'UNIT2' ? 'UNIT - 2' : 'UNIT - 1',
-            targetChatId: targetChat,
             issue: testCustomMessage.trim() || 'Bot message delivery test verified.',
           },
         }),
@@ -357,15 +322,19 @@ function SettingsContent() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'SAVE', botToken: telegramBotToken.trim(), unit1ChatId: telegramUnit1ChatId.trim(), unit2ChatId: telegramUnit2ChatId.trim(), adminChatId: telegramAdminChatId.trim() }),
       });
-      if (!response.ok) throw new Error('Unable to save Telegram settings.');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Unable to save Telegram settings.');
       const configResponse = await fetch('/api/telegram');
       const config = await configResponse.json();
       if (!configResponse.ok || !config.success) throw new Error('Unable to refresh Telegram settings.');
       setServerTelegramConfig(config);
+      setTelegramUnit1ChatId(config.unit1ChatId || '');
+      setTelegramUnit2ChatId(config.unit2ChatId || '');
+      setTelegramAdminChatId(config.adminChatId || '');
       tenantPreferences.removeItem('cmms_telegram_bot_token');
       setTelegramBotToken('');
       showToast('Telegram configuration saved for your company.', 'success');
-    } catch { showToast('Unable to save Telegram configuration.', 'error'); }
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to save Telegram configuration.', 'error'); }
   };
 
   const handleResetTelegramDefaults = () => {
