@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { ImportButton } from '@/components/import/ImportButton';
 import { normalizeRole } from '@/lib/constants/roles';
 import { PartRequisition, SparePart, RequisitionStatus } from '@/types/cmms';
 import {
@@ -405,7 +406,8 @@ function StoreInboxContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+        <div className="flex items-center gap-2 flex-wrap self-start md:self-auto shrink-0">
+          {['ADMIN', 'ASSET_MANAGER', 'STORE_PERSON'].includes(normalizeRole(user?.role || role)) && <ImportButton kind="indents" />}
           <button
             type="button"
             onClick={() => setIsWalkInModalOpen(true)}

@@ -69,6 +69,7 @@ import {
 } from '@/lib/services/cmmsService';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 import { MechanicCustodyModal } from '@/components/mechanic/MechanicCustodyModal';
+import { ImportButton } from '@/components/import/ImportButton';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { normalizeRole } from '@/lib/constants/roles';
@@ -1004,6 +1005,7 @@ export default function InventoryPage() {
 
         {/* Action Buttons: Stock Maintenance & Mechanic Indents */}
         <div className="flex items-center gap-2 flex-wrap">
+          {isStorePersonOrAdmin && <><ImportButton kind="parts" /><ImportButton kind="indents" /></>}
           <Link
             href="/dashboard/store-inbox"
             className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"

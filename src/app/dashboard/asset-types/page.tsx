@@ -29,6 +29,7 @@ import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
+import { ImportButton } from '@/components/import/ImportButton';
 import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 import AllowancePage from '@/app/dashboard/allowance/page';
 import { HistoryView } from '@/app/dashboard/history/HistoryView';
@@ -540,7 +541,8 @@ function AssetsPageContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {['ADMIN', 'ASSET_MANAGER'].includes(String(user?.role || role).toUpperCase()) && <ImportButton kind="assets" />}
           <Link
             href="/dashboard/machines"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white transition cursor-pointer shadow-xs"

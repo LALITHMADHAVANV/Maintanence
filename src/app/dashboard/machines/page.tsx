@@ -29,6 +29,7 @@ import {
   X,
 } from 'lucide-react';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
+import { ImportButton } from '@/components/import/ImportButton';
 import { QRCodeSVG } from 'qrcode.react';
 import { Machine, MachineType, MotorType, FloorLine, MachineStatus, AssetCategory } from '@/types/cmms';
 import { subscribeMachines, createMachine } from '@/lib/services/cmmsService';
@@ -644,6 +645,7 @@ export default function MachinesPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {['ADMIN', 'ASSET_MANAGER'].includes(String(user?.role || role).toUpperCase()) && <ImportButton kind="assets" />}
           <button
             type="button"
             onClick={() => setIsAssetPickerOpen(true)}
