@@ -234,9 +234,15 @@ export async function sendTelegramAlert(
   const botToken = customBotToken || config?.botToken || process.env[`${prefix}_TELEGRAM_BOT_TOKEN`];
   if (!botToken) return { success: false, error: 'Configure Telegram for this company in Settings.' };
   const unit = (payload.unit || '').replace(/[^0-9]/g, '');
+  if (!payload.targetChatId && payload.unit && unit !== '1' && unit !== '2') {
+    return { success: false, error: 'Select Unit 1 or Unit 2 for Telegram delivery.' };
+  }
   const group = unit === '2' ? config?.unit2ChatId || process.env[`${prefix}_TELEGRAM_CHAT_ID_UNIT2`]
     : config?.unit1ChatId || process.env[`${prefix}_TELEGRAM_CHAT_ID_UNIT1`];
   const admin = config?.adminChatId || process.env[`${prefix}_TELEGRAM_ADMIN_CHAT_ID`];
+  if (!payload.targetChatId && !group) {
+    return { success: false, error: `No Telegram destination configured for Unit ${unit || '1'}.` };
+  }
   const targetChatIds = payload.targetChatId ? [payload.targetChatId] : [...new Set([group, admin].filter(Boolean))];
   if (!targetChatIds.length) return { success: false, error: 'No Telegram destination configured for this company.' };
 

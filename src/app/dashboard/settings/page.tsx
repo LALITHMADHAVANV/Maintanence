@@ -243,25 +243,19 @@ function SettingsContent() {
 
   // Auto-fetch server environment credentials so user is NEVER prompted every time
   useEffect(() => {
-    fetch('/maintenance/api/telegram')
+    fetch('/api/telegram')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success && data.configured) {
+        if (data.success) {
           setServerTelegramConfig(data);
           // If token not set or matches server, keep synced
           setTelegramBotToken((prev) => {
             if (!prev || prev.trim() === '') return data.botToken || '';
             return prev;
           });
-          if (data.unit1ChatId) {
-            setTelegramUnit1ChatId((prev) => (!prev ? data.unit1ChatId : prev));
-          }
-          if (data.unit2ChatId) {
-            setTelegramUnit2ChatId((prev) => (!prev ? data.unit2ChatId : prev));
-          }
-          if (data.adminChatId) {
-            setTelegramAdminChatId((prev) => (!prev ? data.adminChatId : prev));
-          }
+          setTelegramUnit1ChatId(data.unit1ChatId || '');
+          setTelegramUnit2ChatId(data.unit2ChatId || '');
+          setTelegramAdminChatId(data.adminChatId || '');
         }
       })
       .catch((err) => console.warn('Could not auto-fetch telegram config:', err));
@@ -296,7 +290,8 @@ function SettingsContent() {
     }
 
     try {
-      const res = await fetch('/maintenance/api/telegram', {
+      if (!targetChat?.trim()) throw new Error('Configure the selected Telegram destination before testing.');
+      const res = await fetch('/api/telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -363,6 +358,10 @@ function SettingsContent() {
         body: JSON.stringify({ action: 'SAVE', botToken: telegramBotToken.trim(), unit1ChatId: telegramUnit1ChatId.trim(), unit2ChatId: telegramUnit2ChatId.trim(), adminChatId: telegramAdminChatId.trim() }),
       });
       if (!response.ok) throw new Error('Unable to save Telegram settings.');
+      const configResponse = await fetch('/api/telegram');
+      const config = await configResponse.json();
+      if (!configResponse.ok || !config.success) throw new Error('Unable to refresh Telegram settings.');
+      setServerTelegramConfig(config);
       tenantPreferences.removeItem('cmms_telegram_bot_token');
       setTelegramBotToken('');
       showToast('Telegram configuration saved for your company.', 'success');
@@ -1531,7 +1530,7 @@ function SettingsContent() {
           <Send className={`w-4 h-4 ${activeTab === 'TELEGRAM' ? 'text-sky-500' : 'text-slate-400'}`} />
           <span>Telegram Alerts</span>
           <span className="ml-1.5 px-2.5 py-0.5 text-xs rounded-full bg-sky-100 text-sky-800 font-bold">
-            Unit 1 & 2 Active
+            {serverTelegramConfig?.configured ? 'Configured' : 'Setup required'}
           </span>
         </button>
       </div>
@@ -2459,11 +2458,11 @@ function SettingsContent() {
                   {serverTelegramConfig?.configured ? (
                     <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Bot Connected (@{serverTelegramConfig.botUsername || 'Assetmbot'})
+                      Bot configured
                     </span>
                   ) : (
                     <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-sky-100 text-sky-800 border border-sky-200">
-                      Unit 1 & Unit 2 Connected
+                      Telegram setup required
                     </span>
                   )}
                 </div>
