@@ -23,6 +23,7 @@ export interface TelegramAlertPayload {
   assignedTo?: string;
   details?: string;
   targetChatId?: string | number;
+  appUrl?: string;
 }
 
 function escapeHtml(text?: string): string {
@@ -105,7 +106,6 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `❌ <b>ISSUE REJECTED / DECLINED${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
       `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
       (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
       `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
@@ -135,7 +135,6 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
       `🚨 <b>CRITICAL: 5-MIN SLA BREACH${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `⚠️ <b>Alert:</b> Machine Breakdown Unattended > 5 Mins\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
       `🏷️ <b>Machine:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code> ${payload.machineName ? `(${escapeHtml(payload.machineName)})` : ''}\n` +
       `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
       `🛠️ <b>Reported Fault:</b> ${escapeHtml(payload.issue || 'Defect reported')}\n` +
@@ -149,7 +148,6 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `🛠️ <b>TECHNICIAN STARTED WORK${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
       `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
       (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
       `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
@@ -169,7 +167,6 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     return (
       `✅ <b>ISSUE COMPLETED • RESTORED TO SERVICE${unitTag}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
       `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
       (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
       `📍 <b>Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
@@ -206,7 +203,6 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
   return (
     `${headerIcon} <b>NEW ISSUE REPORTED${unitTag}</b>\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    (payload.ticketId ? `🎫 <b>Ticket ID:</b> <code>#${escapeHtml(payload.ticketId)}</code>\n` : '') +
     `🏷️ <b>Asset ID:</b> <code>${escapeHtml(payload.machineId || 'N/A')}</code>\n` +
     (payload.machineName ? `⚙️ <b>Model:</b> ${escapeHtml(payload.machineName)}\n` : '') +
     `📍 <b>Floor Location:</b> ${escapeHtml(payload.zone || 'Floor')} • ${escapeHtml(payload.line || 'Line')}\n` +
@@ -214,8 +210,7 @@ export function buildTelegramMessage(payload: TelegramAlertPayload): string {
     `⚡ <b>Urgency:</b> ${escapeHtml(payload.severity || 'HIGH')}\n` +
     `👨‍🔧 <b>Attender:</b> ${attenderDisplay}\n` +
     `⏱️ <b>Reported At:</b> ${time} (${date})\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `<i>Broadcast to ${escapeHtml(payload.unit || 'Unit')} maintenance team.</i>`
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
   );
 }
 
@@ -246,7 +241,20 @@ export async function sendTelegramAlert(
   const targetChatIds = payload.targetChatId ? [payload.targetChatId] : [...new Set([group, admin].filter(Boolean))];
   if (!targetChatIds.length) return { success: false, error: 'No Telegram destination configured for this company.' };
 
-  const messageText = buildTelegramMessage(payload);
+  let assignmentUrl: string | undefined;
+  if (payload.ticketId && payload.assignedTo && ['BREAKDOWN', 'DISPATCH', 'STARTED'].includes(payload.category || 'BREAKDOWN')) {
+    const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || payload.appUrl;
+    if (baseUrl) {
+      const url = new URL(`/${encodeURIComponent(payload.companySlug)}/assigned-repair/${encodeURIComponent(payload.ticketId)}`, baseUrl);
+      if (['https:', 'http:'].includes(url.protocol)) assignmentUrl = url.toString();
+    }
+  }
+  const messageText = buildTelegramMessage(payload) + (assignmentUrl
+    ? `\n\nOpen your assigned mechanic page:\n${escapeHtml(assignmentUrl)}\nOnly the assigned mechanic can open this link. Sign in with your maintenance account.`
+    : '') ;
+  const replyMarkup = assignmentUrl ? {
+    inline_keyboard: [[{ text: 'Open assigned mechanic page', url: assignmentUrl }]],
+  } : undefined;
   let lastError = '';
   let deliveredMessageId: number | undefined;
 
@@ -260,6 +268,7 @@ export async function sendTelegramAlert(
           text: messageText,
           parse_mode: 'HTML',
           disable_web_page_preview: true,
+          reply_markup: replyMarkup,
         }),
       });
 
@@ -275,6 +284,7 @@ export async function sendTelegramAlert(
             chat_id: chatId,
             text: plainText,
             disable_web_page_preview: true,
+            reply_markup: replyMarkup,
           }),
         });
         data = await res.json();
@@ -286,8 +296,8 @@ export async function sendTelegramAlert(
         lastError = data.description || 'Unknown Telegram API error';
         console.warn(`[Telegram Alert] Failed to send to ${chatId}:`, data.description);
       }
-    } catch (err: any) {
-      lastError = err.message || 'Network request to Telegram failed';
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : 'Network request to Telegram failed';
       console.warn(`[Telegram Alert] Network error for ${chatId}:`, lastError);
     }
   }

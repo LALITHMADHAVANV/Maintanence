@@ -71,6 +71,7 @@ export async function POST(req: Request) {
 
         const tgRes = await sendTelegramAlert({
           companySlug: db.tenant,
+          appUrl: new URL(req.url).origin,
           category: 'BREAKDOWN',
           ticketId: ticket.id,
           title: ticket.faultCategory || 'Machine Breakdown',
@@ -144,6 +145,23 @@ export async function PATCH(req: Request) {
 
     const machineId = existingTicket?.machineId || updates.machineId;
 
+    if ((updates.attendedBy || updates.assignedTo) && updates.status !== 'IN_PROGRESS' && updates.status !== 'COMPLETED' && updates.status !== 'REJECTED') {
+      const assignedTo = updates.attendedBy || updates.assignedTo;
+      if (assignedTo !== (existingTicket?.attendedBy || existingTicket?.assignedTo)) {
+        try {
+          await sendTelegramAlert({
+            companySlug: db.tenant, appUrl: new URL(req.url).origin,
+            category: 'DISPATCH', ticketId: id, title: 'Mechanic assigned',
+            assignedTo, unit: existingTicket?.unit || updates.unit || 'UNIT - 1',
+            machineId, line: existingTicket?.line || updates.line,
+            issue: existingTicket?.faultDetails || existingTicket?.faultCategory,
+          });
+        } catch (error) {
+          console.warn('Telegram assignment dispatch error:', error);
+        }
+      }
+    }
+
     // 1. If technician starts work (status = IN_PROGRESS or startedAt is set), dispatch STARTED notification
     if (updates.status === 'IN_PROGRESS' || (updates.startedAt && updates.status !== 'COMPLETED')) {
       try {
@@ -155,6 +173,7 @@ export async function PATCH(req: Request) {
         const tgRes = await sendTelegramAlert({
           companySlug: db.tenant,
           category: 'STARTED',
+          appUrl: new URL(req.url).origin,
           ticketId: id,
           title: 'Technician Started Work',
           unit: targetUnit,
