@@ -111,7 +111,11 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
     } catch { }
   }
 
-  return fetch(target, { credentials: 'include', ...init, headers });
+  const isRead = !init?.method || ['GET', 'HEAD'].includes(init.method.toUpperCase());
+  const signal = isRead
+    ? (init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000))
+    : init?.signal;
+  return fetch(target, { credentials: 'include', ...init, headers, signal });
 }
 
 /**

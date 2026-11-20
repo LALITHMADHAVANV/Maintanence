@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import { createRequestLoadingTracker } from '@/lib/requestLoading';
-import { PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
+
 
 const tracker = createRequestLoadingTracker();
 
@@ -16,8 +16,9 @@ export function AppDataLoading({ children }: { children: React.ReactNode }) {
   }, []);
   return <>
     {children}
-    {pending > 0 && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/90 backdrop-blur-sm" aria-live="polite" aria-busy="true">
-      <PageLoadingIndicator label="Loading data…" />
+    {pending > 0 && <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 shadow-sm" role="status" aria-live="polite">
+      <span aria-hidden="true" className="h-3 w-3 animate-spin rounded-full border-2 border-slate-200 border-t-emerald-700" />
+      Updating data?
     </div>}
   </>;
 }

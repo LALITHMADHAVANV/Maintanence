@@ -1,0 +1,24 @@
+const assert = require('node:assert/strict');
+const ts = require('typescript');
+const fs = require('node:fs');
+const mod = { exports: {} };
+new Function('exports', ts.transpile(fs.readFileSync('src/lib/requestLoading.ts', 'utf8'), { module: ts.ModuleKind.CommonJS }))(mod.exports);
+(async () => {
+  const tracker = mod.exports.createRequestLoadingTracker();
+  let closeBody;
+  const body = new ReadableStream({ start(controller) { closeBody = () => controller.close(); } });
+  const wrapped = tracker.wrap(async () => new Response(body), 'http://localhost');
+  const response = await Promise.race([wrapped('/api/machines'), new Promise((_, reject) => setTimeout(() => reject(new Error('Response blocked by body')), 1000))]);
+  assert.equal(tracker.getSnapshot(), 1);
+  closeBody();
+  await response.text();
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(tracker.getSnapshot(), 0);
+  const failing = tracker.wrap(async () => { throw new Error('offline'); }, 'http://localhost');
+  await assert.rejects(failing('/api/repairs'), /offline/);
+  assert.equal(tracker.getSnapshot(), 0);
+  const external = tracker.wrap(async () => new Response('ok'), 'http://localhost');
+  await external('https://example.com/api/test');
+  assert.equal(tracker.getSnapshot(), 0);
+  console.log('Passed: streaming response returns immediately, body completion clears loading, errors clear loading, external requests ignored.');
+})().catch(error => { console.error(error); process.exitCode = 1; });

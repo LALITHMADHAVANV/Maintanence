@@ -1,18 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
-import { useToast } from '@/context/ToastContext';
+
 import type { Machine, RepairTicket, PPMSchedule, SparePart, PartRequisition, UserRole } from '@/types/cmms';
-import { PlantOperationsDashboard } from '@/components/dashboard/PlantOperationsDashboard';
-import { SeniorMechanicDashboard } from '@/components/dashboard/SeniorMechanicDashboard';
-import { MechanicDeskDashboard } from '@/components/dashboard/MechanicDeskDashboard';
-import { StoreDashboard } from '@/components/dashboard/StoreDashboard';
-import { ExecutiveDashboard } from '@/components/dashboard/ExecutiveDashboard';
-import { FACTORY_UNITS, matchesUnit, getUnitBadgeInfo, isUserAdmin, getUserScopedUnit, hasAllUnitsAccess } from '@/lib/constants/units';
+const PlantOperationsDashboard = dynamic(() => import('@/components/dashboard/PlantOperationsDashboard').then((module) => module.PlantOperationsDashboard));
+const SeniorMechanicDashboard = dynamic(() => import('@/components/dashboard/SeniorMechanicDashboard').then((module) => module.SeniorMechanicDashboard));
+const MechanicDeskDashboard = dynamic(() => import('@/components/dashboard/MechanicDeskDashboard').then((module) => module.MechanicDeskDashboard));
+const StoreDashboard = dynamic(() => import('@/components/dashboard/StoreDashboard').then((module) => module.StoreDashboard));
+const ExecutiveDashboard = dynamic(() => import('@/components/dashboard/ExecutiveDashboard').then((module) => module.ExecutiveDashboard));
+import { matchesUnit, isUserAdmin, getUserScopedUnit, hasAllUnitsAccess } from '@/lib/constants/units';
 import { normalizeRole } from '@/lib/constants/roles';
-import { Building, ShieldCheck, Layers } from 'lucide-react';
+import { Building } from 'lucide-react';
 
 import {
   subscribeMachines,
@@ -21,13 +21,16 @@ import {
   subscribePPMSchedules,
   subscribeParts,
   subscribeRequisitions,
-  apiFetch,
+  fetchMachinesOnce,
+  fetchPPMSchedulesOnce,
+  fetchPartsOnce,
+  fetchRequisitionsOnce,
 } from '@/lib/services/cmmsService';
 
 export default function DashboardPage() {
-  const router = useRouter();
+
   const { user, role, isLoading } = useAuth();
-  const { showToast } = useToast();
+
 
   // ─── API data state ──────────────────────────────────────────────────
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -39,16 +42,12 @@ export default function DashboardPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   // ─── Scoped Unit State ───────────────────────────────────────────────
-  const [selectedUnit, setSelectedUnit] = useState<string>('All Units');
-
-  useEffect(() => {
-    if (user?.unit) {
-      setSelectedUnit(user.unit);
-    }
-  }, [user?.unit]);
+  const [unitSelection, setSelectedUnit] = useState<string | null>(null);
+  const selectedUnit = unitSelection ?? user?.unit ?? 'All Units';
 
   // ─── Immediate local reactive subscriptions ─────────────────────────
   useEffect(() => {
+    if (isLoading || !user) return;
     const unsubMachines = subscribeMachines((data) => {
       if (Array.isArray(data)) setMachines(data);
     });
@@ -72,45 +71,21 @@ export default function DashboardPage() {
       unsubParts();
       unsubReqs();
     };
-  }, []);
+  }, [isLoading, user]);
 
   // ─── Fetch all data from MongoDB ─────────────────────────────────────
   const fetchAllData = async () => {
+    setDataLoading(true);
     try {
-      const [machRes, repRes, ppmRes, partRes, reqRes] = await Promise.allSettled([
-        apiFetch('/api/machines').then((r) => r.json()),
-        apiFetch('/api/repairs').then((r) => r.json()),
-        apiFetch('/api/ppm').then((r) => r.json()),
-        apiFetch('/api/parts').then((r) => r.json()),
-        apiFetch('/api/requisitions').then((r) => r.json()),
+      await Promise.allSettled([
+        fetchMachinesOnce(true), fetchRepairsOnce(true), fetchPPMSchedulesOnce(true),
+        fetchPartsOnce(true), fetchRequisitionsOnce(true),
       ]);
-
-      if (machRes.status === 'fulfilled' && Array.isArray(machRes.value?.data)) {
-        setMachines(machRes.value.data);
-      }
-      if (repRes.status === 'fulfilled' && Array.isArray(repRes.value?.data)) {
-        setRepairs(repRes.value.data);
-      }
-      if (ppmRes.status === 'fulfilled' && Array.isArray(ppmRes.value?.data)) {
-        setPpmSchedules(ppmRes.value.data);
-      }
-      if (partRes.status === 'fulfilled' && Array.isArray(partRes.value?.data)) {
-        setParts(partRes.value.data);
-      }
-      if (reqRes.status === 'fulfilled' && Array.isArray(reqRes.value?.data)) {
-        setRequisitions(reqRes.value.data);
-      }
-
       setLastRefresh(new Date());
-    } catch {
-      showToast('Failed to load dashboard data', 'error');
+    } finally {
+      setDataLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (!isLoading && user) fetchAllData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, user]);
 
   // Determine active dashboard view based on user's normalized role
   const activeRole: UserRole = normalizeRole(user?.role || role);

@@ -1,4 +1,4 @@
-/** Track concurrent application API requests through completion of their bodies. */
+/** Track API response bodies without delaying delivery to callers. */
 export function createRequestLoadingTracker() {
   let pending = 0;
   const listeners = new Set<() => void>();
@@ -11,12 +11,23 @@ export function createRequestLoadingTracker() {
         const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, origin);
         if (url.origin !== origin || !url.pathname.startsWith('/api/')) return fetcher(input, init);
         pending++; emit();
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          pending--; emit();
+        };
+        // A stalled body must not leave the background status visible forever.
+        const timer = setTimeout(finish, 20000);
         try {
           const response = await fetcher(input, init);
-          // fetch resolves at headers; keep the spinner until JSON/data arrives.
-          await response.clone().arrayBuffer();
+          void response.clone().arrayBuffer().then(finish, finish);
           return response;
-        } finally { pending--; emit(); }
+        } catch (error) {
+          finish();
+          throw error;
+        }
       };
     },
   };

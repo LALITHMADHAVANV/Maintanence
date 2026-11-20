@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isCurrent = () => isMounted && revision === authRevision.current;
     async function initAuth() {
       try {
-        const response = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+        const response = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(20000) });
         const data = response.ok ? await response.json() : null;
         if (!isCurrent()) return;
         if (data?.authenticated && data?.user?.companySlug) {

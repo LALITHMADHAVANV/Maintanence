@@ -129,7 +129,7 @@ function describeDonutSlice(
 
 export function PlantOperationsDashboard({
   machines,
-  repairs,
+  repairs: allRepairs,
   ppmSchedules,
   parts,
   requisitions,
@@ -137,6 +137,17 @@ export function PlantOperationsDashboard({
   onRefresh,
   isLoading = false,
 }: PlantOperationsDashboardProps) {
+  const [ticketDate, setTicketDate] = useState('');
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }), []);
+  const repairs = useMemo(() => {
+    if (!ticketDate) return allRepairs;
+    return allRepairs.filter((ticket) => {
+      const reported = new Date(ticket.reportedAt);
+      return !Number.isNaN(reported.getTime()) && dateFormatter.format(reported) === ticketDate;
+    });
+  }, [allRepairs, ticketDate, dateFormatter]);
   const router = useRouter();
   const { user, role } = useAuth();
   const { showToast } = useToast();
@@ -672,6 +683,16 @@ export function PlantOperationsDashboard({
 
   return (
     <div className="space-y-4 pb-12 animate-fade-in">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+        <label htmlFor="ticket-date" className="text-xs font-semibold text-slate-700">Ticket reported date (IST)</label>
+        <input id="ticket-date" type="date" value={ticketDate} onChange={(event) => setTicketDate(event.target.value)}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs" />
+        <button type="button" onClick={() => setTicketDate(dateFormatter.format(new Date()))}
+          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white">Today</button>
+        <button type="button" onClick={() => setTicketDate('')} aria-pressed={!ticketDate}
+          className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">All dates</button>
+        <span className="text-xs text-slate-500" aria-live="polite">{repairs.length} tickets{ticketDate ? ' reported on ' + ticketDate : ' across all dates'}</span>
+      </div>
       {/* ================================================================= */}
       {/* 1. TOP HEADER & FILTER BAR                                       */}
       {/* ================================================================= */}
