@@ -363,7 +363,7 @@ export function AssetHistoryModal({
                           <span>
                             Attended by:{' '}
                             <strong className="text-slate-800 font-semibold">
-                              {ticket.attendedBy || 'Ramesh Kumar (Lead)'}
+                              {ticket.attendedBy || 'Staff'}
                             </strong>
                           </span>
                         </div>

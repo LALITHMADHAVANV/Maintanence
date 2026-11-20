@@ -56,6 +56,7 @@ import {
   rejectRepairTicket,
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
+import { isTechnicalRole } from '@/lib/constants/roles';
 import { useToast } from '@/context/ToastContext';
 import { matchesUnit } from '@/lib/constants/units';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
@@ -155,7 +156,7 @@ export function SeniorMechanicDashboard({
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
           const techs = data.users.filter((u: any) =>
-            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+            isTechnicalRole(u.role) && u.status !== 'INACTIVE'
           );
           if (techs.length > 0) {
             setRegisteredTechs(techs.map(userToMechanicDuty));

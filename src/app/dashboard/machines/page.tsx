@@ -1,5 +1,7 @@
 'use client';
 
+import { canManageOperations } from '@/lib/constants/roles';
+
 import { assetScanUrl } from '@/lib/scanUrl';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -645,7 +647,7 @@ export default function MachinesPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {['ADMIN', 'ASSET_MANAGER'].includes(String(user?.role || role).toUpperCase()) && <ImportButton kind="assets" />}
+          {canManageOperations(user?.role || role) && <ImportButton kind="assets" />}
           <button
             type="button"
             onClick={() => setIsAssetPickerOpen(true)}

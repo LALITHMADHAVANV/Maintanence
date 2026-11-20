@@ -233,6 +233,14 @@ export interface RepairTicket {
   status: RepairStatus;
   attendedBy: string | null;
   assignedBy?: string | null;
+  serviceMechanicId?: string;
+  serviceStation?: string;
+  serviceTransferredAt?: string;
+  repairDueDate?: string;
+  serviceHandoverNote?: string;
+  serviceFollowUpNote?: string;
+  serviceFollowedUpAt?: string;
+  serviceFollowedUpBy?: string;
   startedAt?: string | null;
   resolvedAt: string | null;
   completedAt?: string | null;
@@ -288,6 +296,8 @@ export interface PPMSchedule {
 export type UserRole =
   | 'CEO'
   | 'ADMIN'
+  | 'HEAD_MECHANIC_MANAGER'
+  | 'SERVICE_MECHANIC'
   | 'SENIOR_MECHANIC'
   | 'MECHANIC'
   | 'SENIOR_ELECTRICIAN'

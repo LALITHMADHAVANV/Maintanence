@@ -3,11 +3,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const compiled = ts.transpileModule(fs.readFileSync('src/context/AuthContext.tsx', 'utf8'), { compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+const roleExports = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/constants/roles.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: roleExports });
 function harness(fetcher, path = '/login') {
     const values = [], effects = [], storage = new Map([['cmms_current_user', '{"companySlug":"sahana","role":"ADMIN"}']]);
     const react = { createContext: () => ({ Provider: 'provider' }), useState: v => { const i = values.length; values.push(v); return [v, x => values[i] = x]; }, useEffect: f => effects.push(f), useRef: v => ({ current: v }), createElement: (_type, props) => props };
     const module = { exports: {} };
-    vm.runInNewContext(compiled, { module, exports: module.exports, require: n => { if (n === 'react') return { ...react, default: react }; throw Error(n); }, fetch: fetcher, console, Event: class { }, window: { location: { pathname: path }, dispatchEvent: () => { } }, localStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) } });
+    vm.runInNewContext(compiled, { module, exports: module.exports, require: n => { if (n === 'react') return { ...react, default: react }; if (n === '@/lib/constants/roles') return roleExports; throw Error(n); }, fetch: fetcher, console, Event: class { }, window: { location: { pathname: path }, dispatchEvent: () => { } }, localStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) } });
     const provider = module.exports.AuthProvider({ children: null });
     return { values, effects, storage, auth: provider.value };
 }

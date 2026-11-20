@@ -1,4 +1,6 @@
 'use client';
+
+import { canManageOperations } from '@/lib/constants/roles';
 import { PDF_MACHINE_TYPES, PDF_MACHINE_MAKES, type PdfMachineType } from '@/lib/constants/machineCatalog';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -30,7 +32,6 @@ import { useAuth } from '@/context/AuthContext';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { ImportButton } from '@/components/import/ImportButton';
-import plantAssetsSeed from '@/data/plantAssetsSeed.json';
 import AllowancePage from '@/app/dashboard/allowance/page';
 import { HistoryView } from '@/app/dashboard/history/HistoryView';
 
@@ -200,11 +201,7 @@ function AssetsPageContent() {
 
   // Convert machines into uniform table items matching company scope
   const allItems: AssetItem[] = useMemo(() => {
-    const sourceMachines = isTexplus
-      ? machines.filter((m) => (m.company || '').toLowerCase().includes('texplus'))
-      : machines.length > 0
-      ? machines.filter((m) => !(m.company || '').toLowerCase().includes('texplus'))
-      : (plantAssetsSeed as unknown as Machine[]);
+    const sourceMachines = machines;
     return sourceMachines.map((m, idx) => {
       const cat = mapToMainCategory(m.category);
       const catLabel =
@@ -220,11 +217,11 @@ function AssetsPageContent() {
       const mcNo = (m as any).mcNo || m.id;
       const rawType = (m as any).machineType || m.typeName || m.type || 'SNLS';
       const machineType = canonicalMachineType(rawType);
-      const machineMake = (m as any).machineMake || m.brand || 'JUKI';
+      const machineMake = (m as any).machineMake || m.brand || 'Not recorded';
       const variety = (m as any).variety || (m as any).typeName || (m as any).subType || '';
       const model = m.model && m.model !== '—' && m.model !== machineType ? m.model : (m as any).model || '—';
       const year = (m as any).year || (m.purchaseDate ? new Date(m.purchaseDate).getFullYear() : '—');
-      const location = (m as any).location || m.area || 'NETHAJI';
+      const location = (m as any).location || m.area || 'Not recorded';
       const zone = (m as any).zone || '';
       const plant = (m as any).plant || m.unit || 'UNIT - 1';
 
@@ -542,7 +539,7 @@ function AssetsPageContent() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {['ADMIN', 'ASSET_MANAGER'].includes(String(user?.role || role).toUpperCase()) && <ImportButton kind="assets" />}
+          {canManageOperations(user?.role || role) && <ImportButton kind="assets" />}
           <Link
             href="/dashboard/machines"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white transition cursor-pointer shadow-xs"

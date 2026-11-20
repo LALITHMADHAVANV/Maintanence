@@ -48,6 +48,8 @@ import {
 } from '@/lib/services/cmmsService';
 import { filterSparesForMachine, detectMachineCategory } from '@/lib/utils/spareMapping';
 import { useAuth } from '@/context/AuthContext';
+import { normalizeRole, isTechnicalRole } from '@/lib/constants/roles';
+import { defaultRepairDueDate } from '@/lib/serviceRepairs';
 import { useToast } from '@/context/ToastContext';
 import { matchesUnit } from '@/lib/constants/units';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
@@ -94,6 +96,9 @@ export function MechanicDeskDashboard({
 
   // My assigned tickets (or floor open jobs if generic technician)
   const myTickets = useMemo(() => {
+    if (normalizeRole(user?.role) === 'SERVICE_MECHANIC') {
+      return repairs.filter(ticket => ticket.serviceMechanicId === user?.uid || ticket.attendedBy?.trim().toLowerCase() === userName.trim().toLowerCase());
+    }
     const userNameClean = (userName || '').trim().toLowerCase();
     const firstName = userNameClean.split(' ')[0] || '';
     const isGeneric =
@@ -118,7 +123,7 @@ export function MechanicDeskDashboard({
     }
 
     return matched;
-  }, [repairs, userName]);
+  }, [repairs, userName, user?.role, user?.uid]);
 
   const myOpenTickets = useMemo(() => {
     return myTickets.filter((r) => r.status !== 'COMPLETED');
@@ -471,6 +476,7 @@ export function MechanicDeskDashboard({
   const [selectedTicketToReassign, setSelectedTicketToReassign] = useState<RepairTicket | null>(null);
   const [targetColleagueName, setTargetColleagueName] = useState('');
   const [reassignReason, setReassignReason] = useState('');
+  const [repairDueDate, setRepairDueDate] = useState(defaultRepairDueDate);
   const [isSubmittingReassign, setIsSubmittingReassign] = useState(false);
 
   useEffect(() => {
@@ -479,7 +485,7 @@ export function MechanicDeskDashboard({
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
           const techs = data.users.filter((u: any) =>
-            ['MECHANIC', 'ELECTRICIAN', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN'].includes(u.role)
+            isTechnicalRole(u.role) && u.status !== 'INACTIVE'
           );
           setRegisteredTechs(techs);
         }
@@ -501,14 +507,17 @@ export function MechanicDeskDashboard({
     const myName = (userName || '').trim().toLowerCase();
     return registeredTechs.filter((t) => {
       const isSelf = t.name?.trim().toLowerCase() === myName;
-      const inSameUnit = matchesUnit(t.unit, targetUnit);
+      const inSameUnit = matchesUnit(targetUnit, t.unit);
       return !isSelf && inSameUnit;
     });
   }, [registeredTechs, targetUnit, userName]);
+  const selectedColleague = sameUnitColleagues.find(t => t.name === targetColleagueName);
+  const transferringToService = normalizeRole(selectedColleague?.role) === 'SERVICE_MECHANIC';
 
   const handleOpenReassign = (ticket: RepairTicket) => {
     setSelectedTicketToReassign(ticket);
     setTargetColleagueName('');
+    setRepairDueDate(defaultRepairDueDate());
     setReassignReason('Assisting urgent line task / shift handover');
     setIsReassignModalOpen(true);
   };
@@ -523,7 +532,9 @@ export function MechanicDeskDashboard({
 
     setIsSubmittingReassign(true);
     try {
-      await assignRepairTicket(selectedTicketToReassign.id, targetColleagueName.trim(), userName);
+      await assignRepairTicket(selectedTicketToReassign.id, targetColleagueName.trim(), userName, transferringToService ? {
+        serviceMechanicId: selectedColleague.uid, repairDueDate, serviceHandoverNote: reassignReason,
+      } : undefined);
       showToast(`Ticket #${selectedTicketToReassign.id} transferred to ${targetColleagueName.trim()} (${targetUnit})!`, 'success');
       setIsReassignModalOpen(false);
       setSelectedTicketToReassign(null);
@@ -532,7 +543,7 @@ export function MechanicDeskDashboard({
       }, 500);
     } catch (err) {
       console.error(err);
-      showToast('Failed to reassign ticket', 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to reassign ticket', 'error');
     } finally {
       setIsSubmittingReassign(false);
     }
@@ -1575,7 +1586,7 @@ export function MechanicDeskDashboard({
       {/* ─── MODAL: REASSIGN TICKET TO COLLEAGUE IN SAME UNIT ────────── */}
       {isReassignModalOpen && selectedTicketToReassign && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1651,6 +1662,14 @@ export function MechanicDeskDashboard({
                 )}
               </div>
 
+              {transferringToService && (
+                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs text-amber-900">The machine will move to the service station. Senior mechanics will track the repair until completion.</p>
+                  <label className="block text-xs font-bold">Repair due date (default: 10 days)
+                    <input type="date" required value={repairDueDate} onChange={event => setRepairDueDate(event.target.value)} className="mt-1 block w-full rounded-lg border p-2" />
+                  </label>
+                </div>
+              )}
               {/* Handover Note */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">

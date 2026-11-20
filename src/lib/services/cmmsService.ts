@@ -10,8 +10,6 @@ import {
   RequisitionStatus,
   AppNotification,
 } from '@/types/cmms';
-import plantAssetsSeed from '@/data/plantAssetsSeed.json';
-import factorySparesSeed from '@/data/factorySparesSeed.json';
 
 // Local storage keys for offline/immediate UI responsiveness
 const STORAGE_KEYS = {
@@ -238,7 +236,7 @@ export async function relocateMachine(
   targetLine: FloorLine,
   stationNo: string,
   reason: string = 'Line rebalancing',
-  mechanicName: string = 'Ramesh Kumar'
+  mechanicName: string = 'Staff'
 ): Promise<void> {
   const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   const machine = currentMachines.find((m) => m.id === machineId);
@@ -1088,8 +1086,20 @@ export function acknowledgeAppNotification(id: string): void {
 export async function assignRepairTicket(
   ticketId: string,
   mechanicName: string,
-  assignedBy?: string
+  assignedBy?: string,
+  handover?: { serviceMechanicId?: string; repairDueDate?: string; serviceHandoverNote?: string }
 ): Promise<void> {
+  // Save on the server before updating the local queue, so a rejected handover
+  // cannot look successful or remove work from the current mechanic's desk.
+  const response = await apiFetch('/api/repairs', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: ticketId, updates: {
+      attendedBy: mechanicName, assignedBy: assignedBy || 'Senior Mechanic', status: 'ASSIGNED',
+      ...(handover?.serviceMechanicId ? { transferToService: true, ...handover } : {}),
+    } }),
+  });
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error || 'Unable to transfer repair.');
   const currentRepairs = getLocal<RepairTicket[]>(STORAGE_KEYS.REPAIRS, []);
   const updatedRepairs = currentRepairs.map((r) =>
     r.id === ticketId
@@ -1098,28 +1108,13 @@ export async function assignRepairTicket(
         attendedBy: mechanicName,
         assignedBy: assignedBy || r.assignedBy || 'Senior Mechanic',
         status: (r.status === 'COMPLETED' ? 'COMPLETED' : 'ASSIGNED') as RepairTicket['status'],
+        ...(handover?.serviceMechanicId ? { ...handover, serviceTransferredAt: new Date().toISOString(), serviceStation: 'Service Station', startedAt: null } : {}),
       }
       : r
   );
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
 
-  try {
-    await apiFetch('/api/repairs', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: ticketId,
-        updates: {
-          attendedBy: mechanicName,
-          assignedBy: assignedBy || 'Senior Mechanic',
-          status: 'ASSIGNED',
-        },
-      }),
-    });
-  } catch (e) {
-    console.error('MongoDB assignRepairTicket error:', e);
-  }
 }
 
 export interface AssignMechanicTaskInput {
@@ -1350,7 +1345,7 @@ export async function stopPPMTask(scheduleId: string): Promise<void> {
 
 export async function completePPMTask(
   scheduleId: string,
-  mechanicName: string = 'Ramesh Kumar',
+  mechanicName: string = 'Staff',
   proofImage?: string,
   durationMinutes?: number,
   notes?: string

@@ -129,7 +129,7 @@ export default function NotificationsPage() {
     return user?.unit && user.unit.trim().length > 0 ? user.unit.trim() : 'All Units';
   }, [user?.unit]);
 
-  const isAdmin = currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER' || currentRole === 'CEO';
+  const isAdmin = currentRole === 'ADMIN' || currentRole === 'HEAD_MECHANIC_MANAGER' || currentRole === 'ASSET_MANAGER' || currentRole === 'CEO';
 
   // Live real-time tick (updates every 1000ms for live stopwatch on unattended issues)
   const [nowMs, setNowMs] = useState<number>(Date.now());
@@ -637,6 +637,7 @@ export default function NotificationsPage() {
 
   // Role checks: Admin and Senior Mechanic supervise and assign
   const isSupervisorOrAdmin =
+    currentRole === 'HEAD_MECHANIC_MANAGER' ||
     currentRole === 'ADMIN' ||
     currentRole === 'SENIOR_MECHANIC' ||
     currentRole === 'SENIOR_ELECTRICIAN' ||

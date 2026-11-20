@@ -23,8 +23,8 @@ export const CLIENT_LINES = [
   'Line 08',
 ] as const;
 
-export type ClientZone = (typeof CLIENT_ZONES)[number];
-export type ClientLine = (typeof CLIENT_LINES)[number];
+export type ClientZone = string;
+export type ClientLine = string;
 
 const STORAGE_KEYS = {
   ASSET_LOGS: 'sahana_asset_logs',
@@ -67,7 +67,7 @@ function notifyLogListeners(logs: AssetLogEntry[]) {
  * Extracts normalized Zone (Zone 1 .. Zone 8) from a Machine object
  */
 export function getMachineZone(machine: Machine): ClientZone {
-  if (machine.zone && CLIENT_ZONES.includes(machine.zone as any)) {
+  if (machine.zone) {
     return machine.zone as ClientZone;
   }
   const matchArea = (machine.area || '').match(/Zone\s*([1-8])/i);
@@ -83,10 +83,7 @@ export function getMachineZone(machine: Machine): ClientZone {
     return `Zone ${matchLine[1]}` as ClientZone;
   }
 
-  // Deterministic fallback based on ID hash so machines are distributed cleanly across the 8 zones
-  const hash = machine.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const zoneIndex = (hash % 8) + 1;
-  return `Zone ${zoneIndex}` as ClientZone;
+  return 'Not recorded';
 }
 
 /**
@@ -94,87 +91,14 @@ export function getMachineZone(machine: Machine): ClientZone {
  */
 export function getMachineLine(machine: Machine): ClientLine {
   const lineStr = machine.currentLine || '';
-  const match = lineStr.match(/Line\s*0?([1-8])/i);
+  const match = lineStr.match(/\bLine\s*0?(\d+)\b/i);
   if (match && match[1]) {
     const num = parseInt(match[1], 10);
     const formatted = num < 10 ? `Line 0${num}` : `Line ${num}`;
-    if (CLIENT_LINES.includes(formatted as any)) {
-      return formatted as ClientLine;
-    }
+    return formatted;
   }
 
-  // Fallback based on station or ID
-  const hash = (machine.stationNo || machine.id).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const lineIndex = (hash % 8) + 1;
-  return `Line 0${lineIndex}` as ClientLine;
-}
-
-/**
- * Generate starter factory machines populated across all 8 Zones x 8 Lines
- */
-export function generateClientFleet(): Machine[] {
-  const brands = ['Juki', 'Yamato', 'Brother', 'Supreme', 'Pegasus', 'Siruba', 'Jack'];
-  const types: { type: any; typeName: string; model: string; class: any }[] = [
-    { type: 'SNLS', typeName: 'Single Needle Lockstitch', model: 'DDL-9000C', class: 'SINGLE_NEEDLE' },
-    { type: 'OVERLOCK_4_THREAD', typeName: '4-Thread High Speed Overlock', model: 'AZ-8000G', class: 'OVERLOCK' },
-    { type: 'FLATLOCK_CYLINDER_BED', typeName: 'Cylinder Bed Interlock Flatlock', model: 'W500PV', class: 'FLATLOCK' },
-    { type: 'SN_BROTHER_KAJA', typeName: 'Electronic Buttonhole Indexer', model: 'HE-800B', class: 'SINGLE_NEEDLE' },
-    { type: 'SN_BROTHER_BARTACK', typeName: 'Electronic Bartack Direct-Drive', model: 'LK3-B430E', class: 'SINGLE_NEEDLE' },
-    { type: 'DNLS', typeName: 'Twin Needle Lockstitch', model: 'LH-3568A', class: 'SINGLE_NEEDLE' },
-  ];
-
-  const fleet: Machine[] = [];
-  let seq = 101;
-
-  CLIENT_ZONES.forEach((zone, zIdx) => {
-    CLIENT_LINES.forEach((line, lIdx) => {
-      // Create 3-5 machines per line for realistic density
-      const machineCount = 3 + ((zIdx + lIdx) % 3);
-      for (let i = 0; i < machineCount; i++) {
-        const specIndex = (zIdx * 8 + lIdx * 3 + i) % types.length;
-        const spec = types[specIndex];
-        const brand = brands[(zIdx + lIdx + i) % brands.length];
-        
-        // Distribution: mostly ACTIVE (70%), some IDLE (20%), few BREAKDOWN (10%)
-        let status: MachineStatus = 'ACTIVE';
-        const rand = (zIdx * 11 + lIdx * 7 + i * 13) % 10;
-        if (rand === 0 || rand === 1) {
-          status = 'IDLE';
-        } else if (rand === 9 && (zIdx + lIdx) % 3 === 0) {
-          status = 'BREAKDOWN';
-        }
-
-        const id = `MC-${zone.replace(' ', '')}-L0${lIdx + 1}-${seq++}`;
-
-        fleet.push({
-          id,
-          name: `${brand} ${spec.typeName} (${spec.model})`,
-          company: 'Sahana Textile Mills',
-          brand,
-          model: spec.model,
-          category: 'MACHINE',
-          department: 'Sewing Floor',
-          machineClass: spec.class,
-          type: spec.type,
-          typeName: spec.typeName,
-          motorType: 'SERVO',
-          purchaseDate: '2023-01-15',
-          cost: 65000,
-          status,
-          zone,
-          currentLine: line as FloorLine,
-          stationNo: `Station 0${i + 1}`,
-          unit: 'Garment Division 1',
-          area: `${zone} • ${line}`,
-          totalDowntimeMinutes: status === 'BREAKDOWN' ? 45 : 0,
-          ageYears: 2.2,
-          specs: 'Integrated direct-drive servo motor with auto-thread trimmer',
-        });
-      }
-    });
-  });
-
-  return fleet;
+  return machine.currentLine || 'Not recorded';
 }
 
 /**
@@ -189,7 +113,7 @@ export function subscribeAssetLogs(callback: (logs: AssetLogEntry[]) => void): (
     try {
       const res = await apiFetch('/api/asset-logs');
       const json = await res.json();
-      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+      if (json.success && Array.isArray(json.data)) {
         setLocal(STORAGE_KEYS.ASSET_LOGS, json.data);
         notifyLogListeners(json.data);
       }
@@ -581,13 +505,13 @@ export function computeAvailabilityReport(machines: Machine[]): PlantAvailabilit
   let plantIdle = 0;
   let plantBreakdown = 0;
 
-  const zoneReports: ZoneAvailabilityReport[] = CLIENT_ZONES.map((zone) => {
+  const zoneReports: ZoneAvailabilityReport[] = [...new Set(machines.map(getMachineZone))].sort().map((zone) => {
     let zoneTotal = 0;
     let zoneActive = 0;
     let zoneIdle = 0;
     let zoneBreakdown = 0;
 
-    const lineReports: LineAvailabilityReport[] = CLIENT_LINES.map((line) => {
+    const lineReports: LineAvailabilityReport[] = [...new Set(machines.filter(machine => getMachineZone(machine) === zone).map(getMachineLine))].sort().map((line) => {
       // Find machines belonging to this zone and line
       const lineMachines = machines.filter((m) => {
         const mZone = getMachineZone(m);

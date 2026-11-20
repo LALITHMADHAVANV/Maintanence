@@ -1,5 +1,6 @@
 
 import { tenantPreferences } from '@/lib/tenantPreferences';
+import { normalizeRole } from '@/lib/constants/roles';
 /**
  * Factory Units configuration and matching helpers for Sahana Garments CMMS
  */
@@ -257,12 +258,16 @@ export function normalizeUnit(val?: string | null): string {
   return val.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+export function hasAllUnitsAccess(unit?: string | null): boolean {
+  return ['allunits', 'all', 'plantwide'].includes(normalizeUnit(unit));
+}
+
 /**
  * Checks if a machine / asset or record belongs to the user's unit.
  * If user has 'All Units', undefined, empty, or 'ALL', it matches everything.
  */
 export function matchesUnit(itemUnit?: string | null, targetUnit?: string | null): boolean {
-  if (!targetUnit || targetUnit === 'All Units' || targetUnit === 'ALL' || targetUnit === 'Plant-wide') {
+  if (!targetUnit || hasAllUnitsAccess(targetUnit)) {
     return true;
   }
   if (!itemUnit) {
@@ -312,8 +317,7 @@ export function getUnitBadgeInfo(unit?: string | null): { label: string; color: 
  */
 export function isUserAdmin(role?: string | null): boolean {
   if (!role) return false;
-  const upper = role.toUpperCase();
-  return upper === 'ADMIN' || upper === 'CEO';
+  return ['ADMIN', 'ASSET_MANAGER', 'HEAD_MECHANIC_MANAGER', 'CEO'].includes(normalizeRole(role));
 }
 
 /**
@@ -327,7 +331,7 @@ export function getUserScopedUnit(
   role?: string | null,
   selectedAdminUnit?: string | null
 ): string {
-  if (isUserAdmin(role)) {
+  if (isUserAdmin(role) || hasAllUnitsAccess(user?.unit)) {
     return selectedAdminUnit || user?.unit || 'All Units';
   }
   // All mechanics, electricians, store persons, etc. are strictly locked to their assigned unit
@@ -346,7 +350,7 @@ export function isUnitAllowedForUser(
   user?: { unit?: string | null } | null,
   role?: string | null
 ): boolean {
-  if (isUserAdmin(role)) return true;
+  if (isUserAdmin(role) || hasAllUnitsAccess(user?.unit)) return true;
   const userUnit = getUserScopedUnit(user, role);
   return matchesUnit(unitToCheck, userUnit);
 }

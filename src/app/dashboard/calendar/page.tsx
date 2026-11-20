@@ -1,5 +1,7 @@
 'use client';
 
+import { isTechnicalRole } from '@/lib/constants/roles';
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CalendarDays,
@@ -143,7 +145,7 @@ export default function CalendarPage() {
 
   // Senior Mechanic and Senior Electrician have authority to schedule new PPM overhauls
   const canSchedulePPM = role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN';
-  const isMechanicRole = role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN' || role === 'SENIOR_ELECTRICIAN';
+  const isMechanicRole = isTechnicalRole(role);
 
   // Resolve Repair modal state
   const [isResolveOpen, setIsResolveOpen] = useState(false);
@@ -162,7 +164,7 @@ export default function CalendarPage() {
   const [newPPMFrequency, setNewPPMFrequency] = useState<'Weekly' | 'Monthly' | '6-Month'>('Monthly');
   const [newPPMDueDate, setNewPPMDueDate] = useState<string>(() => toDateKey(new Date()));
   const [newPPMAssignee, setNewPPMAssignee] = useState(() =>
-    role === 'SENIOR_ELECTRICIAN' ? 'Vijay Kumar' : 'Suresh Babu'
+    role === 'SENIOR_ELECTRICIAN' ? 'Staff' : 'Staff'
   );
   const [isCreatingPPM, setIsCreatingPPM] = useState(false);
 
@@ -177,7 +179,7 @@ export default function CalendarPage() {
   const [inlineMachineId, setInlineMachineId] = useState('');
   const [inlineTaskTitle, setInlineTaskTitle] = useState('');
   const [inlineAssignee, setInlineAssignee] = useState(() =>
-    role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'ROBERT'
+    role === 'SENIOR_ELECTRICIAN' ? 'Staff' : 'ROBERT'
   );
   const [inlineUrgency, setInlineUrgency] = useState<RepairUrgency>('WARNING');
   const [isSubmittingInline, setIsSubmittingInline] = useState(false);
@@ -229,7 +231,7 @@ export default function CalendarPage() {
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
           let techs = data.users.filter((u: any) =>
-            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+            isTechnicalRole(u.role)
           );
           if (!isAdmin) {
             techs = techs.filter((u: any) => matchesUnit(u.unit, effectiveUnit));
@@ -585,7 +587,7 @@ export default function CalendarPage() {
         selectedTicket.id,
         downtimeMinutes,
         actionTaken.trim() || 'Adjusted clearance, cleaned lint, and verified stitch balance.',
-        user?.name || 'Ramesh Kumar',
+        user?.name || 'Staff',
         partsUsedList
       );
 
@@ -612,7 +614,7 @@ export default function CalendarPage() {
   // One-Click Complete PPM Task
   const handleCompletePPM = async (scheduleId: string, taskName: string, machineId: string) => {
     try {
-      await completePPMTask(scheduleId, user?.name || 'Ramesh Kumar');
+      await completePPMTask(scheduleId, user?.name || 'Staff');
       showToast(`PPM Task Completed: ${taskName} for ${machineId}`, 'success');
     } catch (err) {
       console.error(err);
@@ -624,7 +626,7 @@ export default function CalendarPage() {
   const handleDirectMoveTask = async (ticketId: string, targetMechanicName: string) => {
     try {
       const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
-      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
+      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Staff' : 'Staff')} (${assignedByTitle})`;
       await assignRepairTicket(ticketId, targetMechanicName, assignerName);
       showToast(
         `Work Order #${ticketId} dispatched directly to ${targetMechanicName}!`,
@@ -711,7 +713,7 @@ export default function CalendarPage() {
       nextDue: newPPMDueDate,
       status: 'PENDING',
       assignedTo: newPPMAssignee,
-      assignedBy: user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar'),
+      assignedBy: user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Staff' : 'Staff'),
     };
 
     try {
@@ -900,7 +902,7 @@ export default function CalendarPage() {
           repairs={scopedRepairs}
           ppmSchedules={scopedPpmSchedules}
           machines={displayMachines}
-          userName={user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')}
+          userName={user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Staff' : 'Staff')}
           role={role || 'MECHANIC'}
           onOpenResolve={handleOpenResolveModal}
           onCompletePPM={(ppmId, machineId) => handleCompletePPM(ppmId, 'PPM Maintenance', machineId)}
@@ -1389,7 +1391,7 @@ export default function CalendarPage() {
                   <input
                     type="text"
                     readOnly
-                    value={user?.name || 'Ramesh Kumar'}
+                    value={user?.name || 'Staff'}
                     className="w-full px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-xl font-medium text-slate-700 outline-none cursor-not-allowed"
                   />
                 </div>

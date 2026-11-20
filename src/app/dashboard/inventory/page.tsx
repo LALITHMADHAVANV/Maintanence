@@ -399,49 +399,14 @@ export default function InventoryPage() {
   // For Senior Electrician, strictly filter to ONLY junior electricians and their indents
   const displayedRequisitions = useMemo(() => {
     if (role === 'SENIOR_ELECTRICIAN') {
-      return requisitions.filter((r) => {
-        const reqName = (r.requestedBy || '').trim().toLowerCase();
-        const reqRole = (r.requestedByRole || '').trim().toLowerCase();
-        // Matches junior electricians (Rajesh G., Karthik M., or non-senior electrician)
-        return (
-          reqName.includes('rajesh') ||
-          reqName.includes('karthik') ||
-          (reqRole.includes('electrician') && !reqRole.includes('senior') && !reqRole.includes('lead')) ||
-          reqRole.includes('junior')
-        );
+      return requisitions.filter(request => {
+        const requesterRole = (request.requestedByRole || '').toUpperCase().replaceAll(' ', '_');
+        return requesterRole === 'ELECTRICIAN';
       });
     }
-
-    if (role === 'ELECTRICIAN') {
-      const currentUserName = (user?.name || '').trim().toLowerCase();
-      return requisitions.filter((r) => {
-        const reqName = (r.requestedBy || '').trim().toLowerCase();
-        if (currentUserName) {
-          const userParts = currentUserName.split(' ').filter((p) => p.length > 2);
-          const hasMatch = userParts.some((p) => reqName.includes(p));
-          if (hasMatch || reqName.includes(currentUserName) || currentUserName.includes(reqName)) {
-            return true;
-          }
-        }
-        return reqName.includes('rajesh') || reqName.includes('karthik') || reqName.includes('electrician');
-      });
-    }
-
-    if (role === 'MECHANIC' || role === 'SENIOR_MECHANIC') {
-      const currentUserName = (user?.name || '').trim().toLowerCase();
-      return requisitions.filter((r) => {
-        const reqName = (r.requestedBy || '').trim().toLowerCase();
-        if (currentUserName) {
-          const userParts = currentUserName.split(' ').filter((p) => p.length > 2);
-          const hasMatch = userParts.some((p) => reqName.includes(p));
-          if (hasMatch || reqName.includes(currentUserName) || currentUserName.includes(reqName)) {
-            return true;
-          }
-        }
-        if (role === 'MECHANIC' && (reqName.includes('suresh') || reqName.includes('mechanic'))) return true;
-        if (role === 'SENIOR_MECHANIC' && (reqName.includes('ramesh') || reqName.includes('senior') || reqName.includes('lead'))) return true;
-        return false;
-      });
+    if (['MECHANIC', 'SERVICE_MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN'].includes(role || '')) {
+      const currentName = user?.name?.trim().toLowerCase();
+      return requisitions.filter(request => currentName && request.requestedBy?.trim().toLowerCase() === currentName);
     }
     return requisitions;
   }, [requisitions, role, user]);
@@ -823,7 +788,7 @@ export default function InventoryPage() {
           estimatedCost: Math.round(indentTotalCost * 100) / 100,
           urgency: 'ROUTINE',
           requiresCeoApproval: false,
-          requestedBy: user?.name || 'Ramesh Kumar',
+          requestedBy: user?.name || 'Staff',
           requestedByRole: user?.title || 'Lead Sewing Mechanic',
           monthYear: reqMonthYear,
           targetLine: reqTargetLine,
@@ -856,7 +821,7 @@ export default function InventoryPage() {
           estimatedCost,
           urgency: 'CRITICAL_CEO_APPROVAL',
           requiresCeoApproval: true,
-          requestedBy: user?.name || 'Ramesh Kumar',
+          requestedBy: user?.name || 'Staff',
           requestedByRole: user?.title || 'Lead Sewing Mechanic',
           monthYear: reqMonthYear,
           targetLine: reqTargetLine,
@@ -891,7 +856,7 @@ export default function InventoryPage() {
           estimatedCost,
           urgency: 'URGENT_MANAGER',
           requiresCeoApproval: false,
-          requestedBy: user?.name || 'Ramesh Kumar',
+          requestedBy: user?.name || 'Staff',
           requestedByRole: user?.title || 'Lead Sewing Mechanic',
           monthYear: reqMonthYear,
           targetLine: reqTargetLine,
@@ -2038,12 +2003,12 @@ export default function InventoryPage() {
                 {displayedRequisitions.length} Indent{displayedRequisitions.length === 1 ? '' : 's'}
               </span>
             </div>
-          ) : (role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN') ? (
+          ) : (role === 'MECHANIC' || role === 'SERVICE_MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN') ? (
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-indigo-900">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse shrink-0" />
                 <span className="font-bold">Personal Indents Filter:</span>
-                <span>Showing only requisitions and monthly indents raised by {user?.name || (role === 'SENIOR_MECHANIC' ? 'Ramesh Kumar' : role === 'MECHANIC' ? 'Suresh Babu' : 'Staff')}.</span>
+                <span>Showing only requisitions and monthly indents raised by {user?.name || (role === 'SENIOR_MECHANIC' ? 'Staff' : role === 'MECHANIC' ? 'Staff' : 'Staff')}.</span>
               </div>
               <span className="font-mono font-bold bg-white px-2.5 py-0.5 rounded-lg border border-indigo-200 text-indigo-700 shrink-0 self-start sm:self-auto">
                 {displayedRequisitions.length} Indent{displayedRequisitions.length === 1 ? '' : 's'}
@@ -2063,7 +2028,7 @@ export default function InventoryPage() {
               >
                 {role === 'SENIOR_ELECTRICIAN'
                   ? 'Junior Electricians Indents'
-                  : role === 'MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN'
+                  : role === 'MECHANIC' || role === 'SERVICE_MECHANIC' || role === 'SENIOR_MECHANIC' || role === 'ELECTRICIAN'
                   ? 'My Indents'
                   : 'All Requests'}{' '}
                 ({displayedRequisitions.length})

@@ -47,7 +47,6 @@ import {
   ClientLine,
   getMachineZone,
   getMachineLine,
-  generateClientFleet,
   subscribeAssetLogs,
   toggleMachineActiveIdle,
   assignMachineZoneLine,

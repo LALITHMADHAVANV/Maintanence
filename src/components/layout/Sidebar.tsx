@@ -280,7 +280,7 @@ export function Sidebar() {
       }
 
       // 3. MECHANIC & ELECTRICIAN (Floor Technicians)
-      if (currentRole === 'MECHANIC' || currentRole === 'ELECTRICIAN') {
+      if (currentRole === 'MECHANIC' || currentRole === 'SERVICE_MECHANIC' || currentRole === 'ELECTRICIAN') {
         return [
           {
             items: [
@@ -513,7 +513,11 @@ export function Sidebar() {
         },
       ];
     };
-    const sections = buildSections();
+    const sections = buildSections().map(section => ({ ...section, items: section.items.filter(item => canAccessRoute(currentRole, item.href)) }));
+    if (currentRole === 'HEAD_MECHANIC_MANAGER') sections.push({ title: 'TEAM & FLOW', items: [
+      { label: 'Manage Mechanics', href: '/dashboard/users', icon: Users },
+      { label: 'Factory Floor', href: '/dashboard/floor-tracker', icon: LayoutGrid },
+    ] });
     const isVisible = (path: string) => departmentNavigation?.includes(path) && canAccessRoute(currentRole, path);
     const rawSections = departmentNavigation === null ? sections : sections.map(section => ({
       ...section, items: section.items.filter(item => isVisible(item.href)),

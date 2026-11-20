@@ -12,6 +12,7 @@ const company = { slug: 'sahana', name: 'Sahana', databaseName: 'sahana' };
 let session = null, account = { uid: 'u1', role: 'MECHANIC', status: 'ACTIVE' }, connections = 0;
 const client = { connect: async () => { connections++; }, db: () => ({ collection: () => ({ findOne: async () => account }) }) };
 const mongodb = load('src/lib/mongodb.ts', {
+  '@/lib/constants/roles': load('src/lib/constants/roles.ts', {}),
   './companyIdentity': { canonicalCompanySlug: s => String(s || '').toLowerCase() },
   mongodb: { MongoClient: class { constructor() { return client; } }, ObjectId: { isValid: () => false } },
   './registry': { ensureRegistryInitialized: async () => {}, validateActiveCompany: async () => ({ valid: true, company }) },

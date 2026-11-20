@@ -29,7 +29,8 @@ import {
   Activity,
   Package,
 } from 'lucide-react';
-import { RepairTicket, PPMSchedule, Machine } from '@/types/cmms';
+import { RepairTicket, PPMSchedule, Machine, UserProfile } from '@/types/cmms';
+import { isTechnicalRole } from '@/lib/constants/roles';
 import {
   subscribeRepairs,
   subscribePPMSchedules,
@@ -37,6 +38,7 @@ import {
   resolveRepairTicket,
   assignRepairTicket,
   completePPMTask,
+  apiFetch,
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -77,6 +79,16 @@ export default function ActiveTnaPage() {
   const [repairs, setRepairs] = useState<RepairTicket[]>([]);
   const [ppmSchedules, setPpmSchedules] = useState<PPMSchedule[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [technicians, setTechnicians] = useState<UserProfile[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch('/api/users', { signal: controller.signal }).then(async response => {
+      if (!response.ok) throw new Error('Unable to load technicians.');
+      const data = await response.json();
+      if (!controller.signal.aborted) setTechnicians((data.users as UserProfile[]).filter(person => isTechnicalRole(person.role) && person.status !== 'INACTIVE'));
+    }).catch(() => { if (!controller.signal.aborted) showToast('Unable to load technicians.', 'error'); });
+    return () => controller.abort();
+  }, [showToast]);
   const [completedSeedIds, setCompletedSeedIds] = useState<Set<string>>(new Set());
 
   // Filter & Search states
@@ -1013,14 +1025,7 @@ export default function ActiveTnaPage() {
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                 >
                   <option value="">-- Choose Field Technician --</option>
-                  <option value="ROBERT">ROBERT (Line Mechanic)</option>
-                  <option value="Suresh M">Suresh M (Senior Overlock Specialist)</option>
-                  <option value="Anand Kumar">Anand Kumar (Plant Electrician Lead)</option>
-                  <option value="Rajesh M">Rajesh M (Maintenance Electrician)</option>
-                  <option value="Karthik S">Karthik S (Floor Line Mechanic)</option>
-                  <option value="P. Arumugam">P. Arumugam (Floor In-Charge Mechanic)</option>
-                  <option value="Shaju">Shaju (Process Maintenance Lead)</option>
-                  <option value="R.Saravanan">R.Saravanan (PPM Technician)</option>
+                  {technicians.filter(person => matchesUnit(reassigningWork.unit, person.unit)).map(person => <option key={person.uid} value={person.name}>{person.name} ({person.role.replaceAll('_', ' ')})</option>)}
                 </select>
               </div>
             </div>

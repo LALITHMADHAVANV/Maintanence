@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Download, Upload, X, LoaderCircle } from 'lucide-react';
-import { importDefinitions, ImportKind } from '@/lib/imports';
+import { importDefinitions, ImportKind, stockImportTemplate } from '@/lib/imports';
 import { apiFetch, fetchMachinesOnce, fetchPartsOnce, fetchRequisitionsOnce } from '@/lib/services/cmmsService';
 
 interface Preview {
@@ -22,13 +22,14 @@ export function ImportButton({ kind }: { kind: ImportKind }) {
   const requestVersion = useRef(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const definition = importDefinitions[kind];
+  const template = kind === 'parts' ? stockImportTemplate : definition;
 
   useEffect(() => {
     if (open) dialog.current?.showModal();
   }, [open]);
 
   const downloadTemplate = () => {
-    const content = '\uFEFF' + [definition.columns, definition.example].map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const content = '\uFEFF' + [template.columns, template.example].map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url; link.download = `${kind}-import-template.csv`; link.click();
@@ -58,7 +59,9 @@ export function ImportButton({ kind }: { kind: ImportKind }) {
       if (!response.ok || !data.success) throw new Error(data.error || 'Import failed. Retry the file.');
       if (previewOnly) setPreview(data);
       else {
-        setResult(`${data.imported} imported. ${data.skipped} existing records skipped.`);
+        setResult(kind === 'parts'
+          ? `${data.imported} imported. ${data.updated || 0} vendor details updated. ${data.skipped} existing records kept.`
+          : `${data.imported} imported. ${data.skipped} existing records skipped.`);
         setPreview(null); setCsv('');
         const refresh = { assets: fetchMachinesOnce, parts: fetchPartsOnce, indents: fetchRequisitionsOnce }[kind];
         await refresh(true);
@@ -82,7 +85,8 @@ export function ImportButton({ kind }: { kind: ImportKind }) {
               <button type="button" autoFocus disabled={busy} onClick={close} aria-label="Close import" className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-50"><X className="h-5 w-5" /></button>
             </div>
             <p className="mt-3 text-sm text-slate-600">Upload a CSV UTF-8 file with up to 2,000 rows. You can fill the template in Excel and save it as CSV UTF-8. Existing IDs are skipped.</p>
-            <p className="mt-2 text-xs text-slate-500">Required columns — {definition.required.join(', ')}.</p>
+            <p className="mt-2 text-xs text-slate-500">Required columns — {template.required.join(', ')}.</p>
+            {kind === 'parts' && <p className="mt-2 text-sm text-slate-600">Vendor is optional (Vender is also accepted). Cost is the price per item; quantities use pcs by default. Keep the same S.No for the same spare on later imports. Existing stock quantities stay unchanged; provided vendor details can be updated.</p>}
             {kind === 'indents' && <p className="mt-2 text-sm text-slate-600">Use existing part IDs. For monthly indents, repeat the indent ID across its part rows. Request types are MONTHLY_INDENT, URGENT_NEED and CRITICAL_CEO.</p>}
             {kind === 'assets' && <p className="mt-2 text-sm text-slate-600">Use Unit 1 or Unit 2. Purchase dates use YYYY-MM-DD.</p>}
             <button type="button" onClick={downloadTemplate} className="my-4 inline-flex items-center gap-2 text-sm font-semibold text-indigo-700 hover:underline"><Download className="h-4 w-4" /> Download template</button>
@@ -94,11 +98,11 @@ export function ImportButton({ kind }: { kind: ImportKind }) {
             {result && <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{result}</p>}
             {preview && (
               <div className="mt-5">
-                <p className="text-sm font-semibold text-slate-800">{preview.count} records validated. {preview.existing} existing records will be skipped.</p>
+                <p className="text-sm font-semibold text-slate-800">{preview.count} records validated. {preview.existing} existing records {kind === 'parts' ? 'will keep their stock quantities; provided vendors will be saved.' : 'will be skipped.'}</p>
                 <div className="mt-3 max-h-60 overflow-auto rounded-xl border border-slate-200">
                   <table className="min-w-full text-left text-xs">
                     <caption className="p-2 text-left text-slate-500">First {preview.rows.length} data rows</caption>
-                    <thead className="bg-slate-50"><tr>{preview.columns.map(column => <th key={column} className="whitespace-nowrap px-3 py-2 font-semibold">{column}</th>)}</tr></thead>
+                    <thead className="bg-slate-50"><tr>{preview.columns.map(column => <th key={column} className="whitespace-nowrap px-3 py-2 font-semibold">{kind === 'parts' ? ({ sNo: 'S.No', name: 'Spare Name', machineType: 'Machine Type', unitCost: 'Cost', stock: 'Quantity', vendor: 'Vendor' } as Record<string, string>)[column] || column : column}</th>)}</tr></thead>
                     <tbody>{preview.rows.map((row, index) => <tr key={index} className="border-t border-slate-100">{preview.columns.map(column => <td key={column} className="max-w-64 break-words px-3 py-2">{row[column] || '—'}</td>)}</tr>)}</tbody>
                   </table>
                 </div>

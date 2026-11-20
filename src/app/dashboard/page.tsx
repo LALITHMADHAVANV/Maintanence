@@ -10,7 +10,7 @@ import { SeniorMechanicDashboard } from '@/components/dashboard/SeniorMechanicDa
 import { MechanicDeskDashboard } from '@/components/dashboard/MechanicDeskDashboard';
 import { StoreDashboard } from '@/components/dashboard/StoreDashboard';
 import { ExecutiveDashboard } from '@/components/dashboard/ExecutiveDashboard';
-import { FACTORY_UNITS, matchesUnit, getUnitBadgeInfo, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { FACTORY_UNITS, matchesUnit, getUnitBadgeInfo, isUserAdmin, getUserScopedUnit, hasAllUnitsAccess } from '@/lib/constants/units';
 import { normalizeRole } from '@/lib/constants/roles';
 import { Building, ShieldCheck, Layers } from 'lucide-react';
 
@@ -129,7 +129,7 @@ export default function DashboardPage() {
   }, [user, activeRole]);
 
   // Multi-unit authority: ONLY Admin & CEO can access/switch all units
-  const isMultiUnitAuthority = isUserAdmin(activeRole);
+  const isMultiUnitAuthority = isUserAdmin(activeRole) || hasAllUnitsAccess(user?.unit);
   const effectiveUnit = getUserScopedUnit(user, activeRole, selectedUnit);
 
   // Unit machine count aggregates
@@ -239,7 +239,7 @@ export default function DashboardPage() {
           onRefresh={fetchAllData}
           isLoading={dataLoading}
         />
-      ) : activeRole === 'MECHANIC' || activeRole === 'ELECTRICIAN' ? (
+      ) : activeRole === 'MECHANIC' || activeRole === 'SERVICE_MECHANIC' || activeRole === 'ELECTRICIAN' ? (
         <MechanicDeskDashboard
           machines={scopedMachines}
           repairs={scopedRepairs}

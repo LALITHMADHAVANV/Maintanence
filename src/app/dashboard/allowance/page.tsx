@@ -42,6 +42,7 @@ import {
 import { Machine, AssetCategory, RepairTicket, PPMSchedule } from '@/types/cmms';
 import { subscribeMachines, subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
 import { formatAssetLocation } from '@/lib/formatters';
+import { recordedMaintenanceCosts } from '@/lib/recordedMaintenanceCosts';
 
 // Standard 4 categories requested
 type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
@@ -102,7 +103,7 @@ interface AssetItem {
   monthlyAllowance?: number; // in ₹ INR
   spentAmount?: number; // in ₹ INR
   remainingBalance?: number; // in ₹ INR
-  allowanceStatus?: 'WITHIN_BUDGET' | 'NEAR_LIMIT' | 'OVER_BUDGET';
+  allowanceStatus?: 'WITHIN_BUDGET' | 'NEAR_LIMIT' | 'OVER_BUDGET' | 'NOT_CONFIGURED';
 
   // Cost metrics requested by user
   purchasePrice?: number;
@@ -111,476 +112,6 @@ interface AssetItem {
   preventiveMaintenancePrice?: number;
   predictedPreventiveCost?: number;
 }
-
-// Default mixed factory asset catalog items
-const DEFAULT_MIXED_ASSETS: AssetItem[] = [
-  // --- Machines ---
-  {
-    id: 'MC-OVK-101',
-    name: '4-Thread High Speed Overlock (AZ-8000G)',
-    company: 'Yamato',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    machineSubtype: 'OVERLOCK',
-    purchaseDate: '2022-03-15',
-    age: '4.1 yrs',
-    relocation: 'Line 01 • Station 04',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'MC-SNLS-102',
-    name: 'Direct-Drive Single Needle Lockstitch (DDL-8700)',
-    company: 'Juki',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    machineSubtype: 'SINGLE_NEEDLE',
-    purchaseDate: '2021-08-15',
-    age: '4.7 yrs',
-    relocation: 'Line 02 • Station 01',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'MC-BTN-103',
-    name: 'Electronic Buttonhole Indexer Machine (HE-800B)',
-    company: 'Brother',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    machineSubtype: 'SPECIAL_ELECTRONIC',
-    purchaseDate: '2020-11-20',
-    age: '5.4 yrs',
-    relocation: 'Line 01 • Station 09',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'MC-FLK-104',
-    name: 'Cylinder Bed Interlock Flatlock (W500PV)',
-    company: 'Pegasus',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    machineSubtype: 'FLATLOCK',
-    purchaseDate: '2023-01-10',
-    age: '3.3 yrs',
-    relocation: 'Line 03 • Station 03',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'MC-OVK-106',
-    name: 'Rib Thread Attacher Overlock (AZ-8500)',
-    company: 'Supreme',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    machineSubtype: 'OVERLOCK',
-    purchaseDate: '2022-07-19',
-    age: '3.8 yrs',
-    relocation: 'Line 01 • Station 06',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'MC-CUT-105',
-    name: 'Blue Streak II 8-inch Straight Knife Cutter',
-    company: 'Eastman',
-    category: 'MACHINE',
-    categoryLabel: 'Machine',
-    machineSubtype: 'CUTTING_PRESSING',
-    purchaseDate: '2021-05-18',
-    age: '4.9 yrs',
-    relocation: 'Cutting Department • Bay 01',
-    status: 'ACTIVE',
-  },
-
-  // --- Furniture: Tables ---
-  {
-    id: 'FUR-TBL-201',
-    name: 'Fabric Spreading & Cutting Master Table (12ft x 6ft)',
-    company: 'Godrej Interio',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'TABLE',
-    tableSpecificType: 'CUTTING_TABLE',
-    purchaseDate: '2020-02-14',
-    age: '6.2 yrs',
-    relocation: 'Cutting Bay • Station 02',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-TBL-203',
-    name: 'Checker Table (QC Garment Checking Inspection Table)',
-    company: 'SteelCraft Industrial',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'TABLE',
-    tableSpecificType: 'CHECKER_TABLE',
-    purchaseDate: '2022-09-05',
-    age: '3.6 yrs',
-    relocation: 'Quality Bay • Station 01',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-TBL-205',
-    name: 'Ironing Table (Vacuum Suction Steam Pressing Table)',
-    company: 'Ramsons Garment Machinery',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'TABLE',
-    tableSpecificType: 'IRONING_TABLE',
-    purchaseDate: '2021-08-10',
-    age: '4.7 yrs',
-    relocation: 'Finishing Bay • Ironing Bay 02',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-TBL-206',
-    name: 'Work Table (Sewing Line Modular Workstation Assembly Table)',
-    company: 'Godrej Interio',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'TABLE',
-    tableSpecificType: 'WORK_TABLE',
-    purchaseDate: '2022-03-18',
-    age: '4.1 yrs',
-    relocation: 'Line 01 • Staging Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-TBL-207',
-    name: 'Office Table (Supervisor Modular L-Shape Admin Desk)',
-    company: 'Featherlite Workspaces',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'TABLE',
-    tableSpecificType: 'OFFICE_TABLE',
-    purchaseDate: '2021-06-20',
-    age: '4.8 yrs',
-    relocation: 'Line 02 • Supervisor Desk',
-    status: 'ACTIVE',
-  },
-
-  // --- Furniture: Chairs & Operator Chairs ---
-  {
-    id: 'FUR-CHR-202',
-    name: 'Operator Chair (Ergonomic Sewing Machine Swivel Operator Chair)',
-    company: 'Featherlite',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'OPERATOR_CHAIR',
-    chairSpecificType: 'OPERATOR_CHAIR',
-    purchaseDate: '2023-06-22',
-    age: '2.8 yrs',
-    relocation: 'Line 01 • Station 04',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-CHR-204',
-    name: 'Office Chair (High-Back Executive Supervisor Chair)',
-    company: 'Featherlite',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'CHAIR',
-    chairSpecificType: 'OFFICE_CHAIR',
-    purchaseDate: '2021-12-01',
-    age: '4.4 yrs',
-    relocation: 'Admin Office • Cabin 01',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-CHR-208',
-    name: 'Kusan Chair (Padded Cushion Workshop Line Chair)',
-    company: 'Godrej Interio',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'CHAIR',
-    chairSpecificType: 'KUSAN_CHAIR',
-    purchaseDate: '2022-04-18',
-    age: '4.0 yrs',
-    relocation: 'Line 03 • Inspection Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-CHR-209',
-    name: 'Operator Chair (Adjustable Footring High Stool Operator Chair)',
-    company: 'Nilkamal Furniture',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'OPERATOR_CHAIR',
-    chairSpecificType: 'OPERATOR_CHAIR',
-    purchaseDate: '2023-01-15',
-    age: '3.2 yrs',
-    relocation: 'Line 04 • Station 08',
-    status: 'ACTIVE',
-  },
-
-  // --- Furniture: Sofa ---
-  {
-    id: 'FUR-SOF-210',
-    name: 'Sofa (Executive 3-Seater Leatherette Visitor Lounge Sofa)',
-    company: 'Godrej Interio',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'SOFA',
-    purchaseDate: '2021-03-10',
-    age: '5.1 yrs',
-    relocation: 'Floor Reception & Visitor Lounge',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-SOF-211',
-    name: 'Sofa (2-Seater Fabric Restroom & Office Lounge Sofa)',
-    company: 'Durian Furniture',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'SOFA',
-    purchaseDate: '2022-07-22',
-    age: '3.7 yrs',
-    relocation: 'Plant Manager Office',
-    status: 'ACTIVE',
-  },
-
-  // --- Furniture: Door ---
-  {
-    id: 'FUR-DOR-212',
-    name: 'Door (Emergency Fire Exit Acoustic Steel Door)',
-    company: 'Shakti Met-Dor',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'DOOR',
-    purchaseDate: '2019-11-05',
-    age: '6.4 yrs',
-    relocation: 'Line 01 • Exit Gate 02',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'FUR-DOR-213',
-    name: 'Door (Soundproof Workshop Double Leaf Partition Door)',
-    company: 'Tata Steel Pravesh',
-    category: 'FURNITURE',
-    categoryLabel: 'Furniture',
-    furnitureSubtype: 'DOOR',
-    purchaseDate: '2020-05-12',
-    age: '5.9 yrs',
-    relocation: 'Maintenance Workshop Entry',
-    status: 'ACTIVE',
-  },
-
-  // --- Electrical Utilities: AC, Fan, Light, Camera ---
-  {
-    id: 'UTL-AC-301',
-    name: '2.0 Ton Inverter Split Air Conditioner (FTKF60TV)',
-    company: 'Daikin',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'AC',
-    purchaseDate: '2022-04-10',
-    age: '4.0 yrs',
-    relocation: 'Admin & QA Lab • Server Room',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'UTL-AC-302',
-    name: '8.5 Ton Central Ductable Commercial Packaging AC',
-    company: 'Voltas',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'AC',
-    purchaseDate: '2021-03-15',
-    age: '5.1 yrs',
-    relocation: 'Sewing Floor • Central Duct Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'UTL-FAN-303',
-    name: 'Heavy Duty 24-inch Industrial Pedestal Air Fan',
-    company: 'Almonard',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'FAN',
-    purchaseDate: '2021-06-20',
-    age: '4.8 yrs',
-    relocation: 'Line 02 • Station 05',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'UTL-FAN-304',
-    name: 'High-Velocity Wall Exhaust Blower Ventilation Fan (36-inch)',
-    company: 'Havells',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'FAN',
-    purchaseDate: '2020-09-12',
-    age: '5.6 yrs',
-    relocation: 'Sewing Floor • North Wall Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'UTL-LGT-305',
-    name: '120W High-Bay Linear LED Workstation Grid Light',
-    company: 'Philips Industrial',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'LIGHT',
-    purchaseDate: '2022-01-25',
-    age: '4.2 yrs',
-    relocation: 'Line 01 • Overhead Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'UTL-LGT-306',
-    name: '45W Continuous Diffused Shadowless Inspection Light',
-    company: 'Wipro Lighting',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'LIGHT',
-    purchaseDate: '2023-03-18',
-    age: '3.1 yrs',
-    relocation: 'QC Inspection Bay • Station 02',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'UTL-CAM-307',
-    name: '4MP PTZ ColorVu 360° Dome CCTV Camera',
-    company: 'Hikvision',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'CAMERA',
-    purchaseDate: '2022-08-05',
-    age: '3.7 yrs',
-    relocation: 'Main Factory Gate & Dispatch Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'UTL-CAM-308',
-    name: '5MP Outdoor IR Night Vision Bullet Surveillance Camera',
-    company: 'CP Plus',
-    category: 'UTILITY',
-    categoryLabel: 'Electrical Utilities',
-    utilitySubtype: 'CAMERA',
-    purchaseDate: '2021-11-20',
-    age: '4.4 yrs',
-    relocation: 'Raw Material Warehouse • Bay 03',
-    status: 'ACTIVE',
-  },
-
-  // --- Vehicles: Car, Auto, Tempo, Lorry, Bus ---
-  {
-    id: 'VEH-CAR-401',
-    name: 'Swift VXi 1.2L DualJet (Staff Field Pool Car)',
-    company: 'Maruti Suzuki',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'CAR',
-    purchaseDate: '2022-02-14',
-    age: '4.2 yrs',
-    relocation: 'Parking Yard • Bay A-01',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-CAR-402',
-    name: 'Innova Crysta 2.4 VX (Executive Inspection Car)',
-    company: 'Toyota',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'CAR',
-    purchaseDate: '2021-07-28',
-    age: '4.7 yrs',
-    relocation: 'Admin Portico • Bay 01',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-AUT-403',
-    name: 'Compact RE 4-Stroke CNG Passenger Auto Rickshaw',
-    company: 'Bajaj Auto',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'AUTO',
-    purchaseDate: '2022-10-10',
-    age: '3.5 yrs',
-    relocation: 'Factory Internal Transit • Gate 01',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-AUT-404',
-    name: 'Ape City Plus CNG 3-Wheeler Auto',
-    company: 'Piaggio',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'AUTO',
-    purchaseDate: '2023-04-15',
-    age: '3.0 yrs',
-    relocation: 'Staff Transit • Gate 03',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-TMP-405',
-    name: 'Ace Gold Diesel Mini Tempo (Chota Hathi)',
-    company: 'Tata Motors',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'TEMPO',
-    purchaseDate: '2021-05-18',
-    age: '4.9 yrs',
-    relocation: 'Loading Dock 01 • Fabric Dispatch',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-TMP-406',
-    name: 'Bolero Maxi Truck Plus Commercial Cargo Tempo',
-    company: 'Mahindra',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'TEMPO',
-    purchaseDate: '2020-11-22',
-    age: '5.4 yrs',
-    relocation: 'Accessories Receiving Bay • Dock 03',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-LRY-407',
-    name: 'Tata 1618 Heavy Goods Carrier Lorry (6-Wheeler)',
-    company: 'Tata Motors',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'LORRY',
-    purchaseDate: '2022-09-08',
-    age: '3.6 yrs',
-    relocation: 'Packaging & Logistics Dispatch Unit',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-LRY-408',
-    name: 'Ashok Leyland 1920 Long Haul Freight Lorry',
-    company: 'Ashok Leyland',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'LORRY',
-    purchaseDate: '2023-01-20',
-    age: '3.2 yrs',
-    relocation: 'Finished Goods Export Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-BUS-409',
-    name: 'Starbus Ultra 34-Seater Staff Commuter Bus',
-    company: 'Tata Motors',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'BUS',
-    purchaseDate: '2019-12-05',
-    age: '6.3 yrs',
-    relocation: 'Route 01 • Main Plant Bus Bay',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'VEH-BUS-410',
-    name: 'Oyster 40-Seater Worker Transit Bus',
-    company: 'Ashok Leyland',
-    category: 'VEHICLE',
-    categoryLabel: 'Vehicle',
-    vehicleSubtype: 'BUS',
-    purchaseDate: '2020-03-14',
-    age: '6.1 yrs',
-    relocation: 'Route 02 • Sub-Contracting Unit',
-    status: 'ACTIVE',
-  },
-];
 
 // Helper to determine machine subtype from name/type/id
 function detectMachineSubtype(name: string, type: string, id: string): MachineSubtype {
@@ -659,10 +190,10 @@ function detectVehicleSubtype(name: string, type: string, id: string): VehicleSu
 
 // Helper to calculate age in years from date
 function calculateAge(dateStr: string): string {
-  if (!dateStr) return '1.0 yr';
+  if (!dateStr) return 'Not recorded';
   const diffMs = Date.now() - new Date(dateStr).getTime();
   const years = diffMs / (1000 * 60 * 60 * 24 * 365.25);
-  if (isNaN(years) || years < 0) return '0.5 yr';
+  if (isNaN(years) || years < 0) return 'Not recorded';
   return `${years.toFixed(1)} yrs`;
 }
 
@@ -723,9 +254,6 @@ function isItemRelocated(item: AssetItem, liveMachines: Machine[] = []): boolean
     if (m.previousLine && m.previousLine !== m.currentLine) return true;
     if (m.lastMovedReason && m.lastMovedReason.toLowerCase().includes('reloc')) return true;
   }
-  if (item.id.includes('104') || item.id.includes('204') || item.id.includes('304') || item.id.includes('404')) {
-    return true;
-  }
   return false;
 }
 
@@ -736,113 +264,6 @@ function mapToMainCategory(cat?: AssetCategory): MainCategory {
   if (cat === 'FURNITURE' || cat === 'TABLE' || cat === 'CHAIR') return 'FURNITURE';
   if (cat === 'VEHICLE') return 'VEHICLE';
   return 'UTILITY';
-}
-
-// Helper to calculate maintenance allowances and actual occurring lifecycle costs for assets
-function getAllowanceData(
-  id: string,
-  category: MainCategory,
-  actualCost?: number,
-  machineRepairs: RepairTicket[] = [],
-  machinePpm: PPMSchedule[] = []
-): {
-  monthlyAllowance: number;
-  spentAmount: number;
-  remainingBalance: number;
-  allowanceStatus: 'WITHIN_BUDGET' | 'NEAR_LIMIT' | 'OVER_BUDGET';
-  purchasePrice: number;
-  totalRepairCost: number;
-  recentRepairCost: number;
-  preventiveMaintenancePrice: number;
-  predictedPreventiveCost: number;
-} {
-  let seed = 0;
-  for (let i = 0; i < id.length; i++) {
-    seed = (seed * 31 + id.charCodeAt(i)) % 10000;
-  }
-
-  let baseAllowance = 15000;
-  // If actual acquisition cost is provided from Asset Registry, match it exactly!
-  let purchasePrice = typeof actualCost === 'number' && actualCost > 0 ? actualCost : 75000;
-  if (category === 'MACHINE') {
-    baseAllowance = 16000 + (seed % 10) * 1500; // ₹16,000 - ₹29,500
-    if (!(typeof actualCost === 'number' && actualCost > 0)) {
-      purchasePrice = 65000 + (seed % 15) * 8000; // ₹65,000 - ₹1,77,000
-    }
-  } else if (category === 'FURNITURE') {
-    baseAllowance = 3000 + (seed % 6) * 600; // ₹3,000 - ₹6,000
-    if (!(typeof actualCost === 'number' && actualCost > 0)) {
-      purchasePrice = 4500 + (seed % 10) * 1800; // ₹4,500 - ₹20,700
-    }
-  } else if (category === 'UTILITY') {
-    baseAllowance = 7000 + (seed % 8) * 1200; // ₹7,000 - ₹15,400
-    if (!(typeof actualCost === 'number' && actualCost > 0)) {
-      purchasePrice = 14000 + (seed % 12) * 4500; // ₹14,000 - ₹63,500
-    }
-  } else if (category === 'VEHICLE') {
-    baseAllowance = 24000 + (seed % 12) * 2000; // ₹24,000 - ₹46,000
-    if (!(typeof actualCost === 'number' && actualCost > 0)) {
-      purchasePrice = 180000 + (seed % 16) * 75000; // ₹1,80,000 - ₹13,05,000
-    }
-  }
-
-  // 1. Repair costs - ONLY display when repair actually occurs
-  let totalRepairCost = 0;
-  let recentRepairCost = 0;
-
-  if (machineRepairs.length > 0) {
-    totalRepairCost = machineRepairs.reduce((sum, r) => {
-      const cost =
-        typeof r.repairCost === 'number' && r.repairCost >= 0
-          ? r.repairCost
-          : r.partsUsed && r.partsUsed.length > 0
-          ? r.partsUsed.reduce((s, p) => sum + (p.quantity || 1) * 350, 0)
-          : (r.status === 'COMPLETED' ? 450 : 250);
-      return sum + cost;
-    }, 0);
-
-    const sortedRepairs = [...machineRepairs].sort(
-      (a, b) => new Date(b.reportedAt || 0).getTime() - new Date(a.reportedAt || 0).getTime()
-    );
-    const mostRecent = sortedRepairs[0];
-    recentRepairCost =
-      typeof mostRecent.repairCost === 'number' && mostRecent.repairCost >= 0
-        ? mostRecent.repairCost
-        : mostRecent.partsUsed && mostRecent.partsUsed.length > 0
-        ? mostRecent.partsUsed.reduce((s, p) => s + (p.quantity || 1) * 350, 0)
-        : (mostRecent.status === 'COMPLETED' ? 450 : 250);
-  }
-
-  // 2. Preventive maintenance price - ONLY display when completed PPM occurs
-  const completedPpm = machinePpm.filter((p) => p.status === 'COMPLETED' || !!p.lastServiced);
-  const pendingPpm = machinePpm.filter(
-    (p) => p.status === 'PENDING' || p.status === 'DUE_SOON' || p.status === 'OVERDUE' || p.status === 'IN_PROGRESS'
-  );
-
-  const preventiveMaintenancePrice = completedPpm.length > 0 ? completedPpm.length * 450 : 0;
-  const predictedPreventiveCost = pendingPpm.length > 0 ? pendingPpm.length * 450 : (completedPpm.length > 0 ? 450 : 0);
-
-  // 3. Spent Amount and Remaining Balance
-  const spentAmount = totalRepairCost + preventiveMaintenancePrice;
-  const remainingBalance = baseAllowance - spentAmount;
-  let allowanceStatus: 'WITHIN_BUDGET' | 'NEAR_LIMIT' | 'OVER_BUDGET' = 'WITHIN_BUDGET';
-  if (remainingBalance < 0) {
-    allowanceStatus = 'OVER_BUDGET';
-  } else if (baseAllowance > 0 && spentAmount / baseAllowance >= 0.85) {
-    allowanceStatus = 'NEAR_LIMIT';
-  }
-
-  return {
-    monthlyAllowance: baseAllowance,
-    spentAmount,
-    remainingBalance,
-    allowanceStatus,
-    purchasePrice,
-    totalRepairCost,
-    recentRepairCost,
-    preventiveMaintenancePrice,
-    predictedPreventiveCost,
-  };
 }
 
 export type TimeFilterPeriod = 'WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM';
@@ -995,7 +416,7 @@ export default function AllowancePage() {
     };
   }, []);
 
-  // Merge registered machines from MongoDB with the sample catalog
+  // Use only registered machines and recorded financial amounts.
   const allItems: AssetItem[] = useMemo(() => {
     const dbItems: AssetItem[] = machines.map((m) => {
       const cat = mapToMainCategory(m.category);
@@ -1042,11 +463,12 @@ export default function AllowancePage() {
         chairSpecificType: cType,
         utilitySubtype: uSubtype,
         vehicleSubtype: vSubtype,
-        purchaseDate: m.purchaseDate || new Date().toISOString().slice(0, 10),
+        purchaseDate: m.purchaseDate || '',
         age: m.ageYears ? `${m.ageYears.toFixed(1)} yrs` : calculateAge(m.purchaseDate),
         relocation: occupied,
         status: m.status,
         cost: m.cost,
+        monthlyAllowance: typeof Reflect.get(m, 'monthlyAllowance') === 'number' ? Reflect.get(m, 'monthlyAllowance') : undefined,
       };
     });
 
@@ -1059,25 +481,25 @@ export default function AllowancePage() {
       const machinePpm = ppmList.filter(
         (p) => p.machineId?.trim().toLowerCase() === item.id.trim().toLowerCase()
       );
-      const allw = getAllowanceData(item.id, item.category, item.cost, machineRepairs, machinePpm);
+      const allw = recordedMaintenanceCosts(item.cost, machineRepairs, machinePpm, item.monthlyAllowance);
 
       const periodAllowance = Math.round((allw.monthlyAllowance * periodMultiplier) / 50) * 50;
-      const spentAmount = Math.round((allw.spentAmount * periodMultiplier) / 50) * 50;
-      const remainingBalance = periodAllowance - spentAmount;
+      const spentAmount = allw.spentAmount;
+      const remainingBalance = periodAllowance ? periodAllowance - spentAmount : 0;
 
-      let allowanceStatus: 'WITHIN_BUDGET' | 'NEAR_LIMIT' | 'OVER_BUDGET' = 'WITHIN_BUDGET';
-      if (remainingBalance < 0) {
+      let allowanceStatus: AssetItem['allowanceStatus'] = 'WITHIN_BUDGET';
+      if (!periodAllowance) {
+        allowanceStatus = 'NOT_CONFIGURED';
+      } else if (remainingBalance < 0) {
         allowanceStatus = 'OVER_BUDGET';
       } else if (periodAllowance > 0 && spentAmount / periodAllowance >= 0.85) {
         allowanceStatus = 'NEAR_LIMIT';
       }
 
-      const totalRepairCost = Math.round((allw.totalRepairCost * periodMultiplier) / 50) * 50;
-      const recentRepairCost = Math.round(
-        (allw.recentRepairCost * (timePeriod === 'WEEK' ? 0.35 : timePeriod === 'YEAR' ? 2.5 : 1.0)) / 50
-      ) * 50;
-      const preventiveMaintenancePrice = Math.round((allw.preventiveMaintenancePrice * periodMultiplier) / 50) * 50;
-      const predictedPreventiveCost = Math.round((allw.predictedPreventiveCost * periodMultiplier) / 50) * 50;
+      const totalRepairCost = allw.totalRepairCost;
+      const recentRepairCost = allw.recentRepairCost;
+      const preventiveMaintenancePrice = allw.preventiveMaintenancePrice;
+      const predictedPreventiveCost = allw.predictedPreventiveCost;
 
       return {
         ...item,
@@ -1751,7 +1173,7 @@ export default function AllowancePage() {
         const totalAllowance = sItems.reduce((s, i) => s + (i.monthlyAllowance || 0), 0);
         return {
           id: `budget-${stName.toLowerCase()}`,
-          title: isOver
+          title: stName === 'NOT_CONFIGURED' ? 'Budget not configured' : isOver
             ? 'Budget Overrun (Over Budget)'
             : isNear
             ? 'Near Budget Limit (>85% Spent)'
@@ -2880,6 +2302,7 @@ export default function AllowancePage() {
                 className="w-full h-8 px-2 text-[11px] sm:text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 shadow-2xs focus:ring-1 focus:ring-indigo-500 cursor-pointer truncate"
               >
                 <option value="ALL">All Budgets</option>
+                <option value="NOT_CONFIGURED">Budget not configured</option>
                 <option value="WITHIN_BUDGET">Within Budget</option>
                 <option value="NEAR_LIMIT">Near Limit (&gt;85%)</option>
                 <option value="OVER_BUDGET">Over Budget</option>

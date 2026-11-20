@@ -1,5 +1,7 @@
 'use client';
 
+import { isTechnicalRole } from '@/lib/constants/roles';
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -98,7 +100,7 @@ export function WidgetDrilldownDrawer({
         .then((data) => {
           if (data.users && Array.isArray(data.users)) {
             const techs = data.users.filter((u: any) =>
-              ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+              isTechnicalRole(u.role)
             );
             if (techs.length > 0) {
               setLiveRoster(techs.map(userToMechanicDuty));
@@ -548,7 +550,7 @@ export function WidgetDrilldownDrawer({
           line: machines.find((m) => m.id === p.machineId)?.currentLine || 'Floor Line',
           taskTitle: p.task,
           technician: p.assignedTo || 'Technician',
-          durationMinutes: p.actualDurationMinutes || 25,
+          durationMinutes: p.actualDurationMinutes || 0,
           cost: 450,
           completedAt: p.completedAt || p.lastServiced,
           actionTaken: p.technicianNotes || 'PPM inspection & lubrication completed',
@@ -822,7 +824,7 @@ export function WidgetDrilldownDrawer({
 
     // 9. COST & EXPENDITURE ANALYSIS
     if (type === 'cost_analysis') {
-      const totalPlantCost = machines.reduce((sum, m) => sum + (m.cost || 45000), 0);
+      const totalPlantCost = machines.reduce((sum, m) => sum + (m.cost || 0), 0);
       const totalReqCost = requisitions.reduce((sum, r) => sum + (r.estimatedCost || 0), 0);
 
       return {
@@ -843,7 +845,7 @@ export function WidgetDrilldownDrawer({
           col1: m.id,
           col2: `${m.brand} ${m.model}`,
           col3: m.area || m.currentLine,
-          badge1: { text: `₹${(m.cost || 45000).toLocaleString()}`, bg: 'bg-emerald-50 text-emerald-700 font-bold' },
+          badge1: { text: `₹${(m.cost || 0).toLocaleString()}`, bg: 'bg-emerald-50 text-emerald-700 font-bold' },
           badge2: { text: m.status, bg: 'bg-slate-100 text-slate-800' },
           actionText: 'View Valuation',
           actionUrl: `/dashboard/machines?id=${m.id}`,

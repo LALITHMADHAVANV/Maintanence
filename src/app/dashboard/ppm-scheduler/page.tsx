@@ -1,5 +1,7 @@
 'use client';
 
+import { isTechnicalRole } from '@/lib/constants/roles';
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   CalendarCheck,
@@ -119,7 +121,7 @@ export default function PPMSchedulerPage() {
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
           const techs = data.users.filter((u: any) =>
-            ['MECHANIC', 'ELECTRICIAN', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN'].includes((u.role || '').toUpperCase())
+            isTechnicalRole(u.role)
           );
           setTechUsers(techs);
         }

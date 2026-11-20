@@ -2,8 +2,9 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { UserProfile, UserRole } from '@/types/cmms';
+import { normalizeRole } from '@/lib/constants/roles';
 
-export const ROLE_PASSWORDS: Record<UserRole, string> = {
+export const ROLE_PASSWORDS: Partial<Record<UserRole, string>> = {
   CEO: 'ceo123',
   ADMIN: 'admin123',
   ASSET_MANAGER: 'admin123',
@@ -288,7 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        role: user?.role ? (user.role.toString().toUpperCase() as UserRole) : null,
+        role: user?.role ? normalizeRole(user.role) : null,
         companySlug: user?.companySlug || 'sahana',
         companyName: user?.company || (user?.companySlug === 'texplus' ? 'Texplus' : 'Sahana'),
         isLoading,

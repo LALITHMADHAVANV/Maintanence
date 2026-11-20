@@ -12,7 +12,6 @@ import {
   CheckCheck,
   Wrench,
   X,
-  ShieldCheck,
   Truck,
   Play,
   Pause,
@@ -20,6 +19,9 @@ import {
 } from 'lucide-react';
 import type { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER } from '@/lib/constants/mechanics';
+import { isTechnicalRole } from '@/lib/constants/roles';
+import { canFollowServiceRepairs } from '@/lib/serviceRepairs';
+import { ServiceStationMachineList } from './ServiceStationMachineList';
 
 interface MaintenanceMilestonesAndTasksProps {
   repairs: RepairTicket[];
@@ -42,25 +44,6 @@ interface MaintenanceMilestonesAndTasksProps {
   onOpenFullCalendar?: () => void;
 }
 
-export interface MyTaskItem {
-  id: string;
-  rawId: string;
-  title: string;
-  code: string;
-  machineId: string;
-  machineType: string;
-  line: string;
-  stationNo: string;
-  assignedTo: string;
-  dueBadgeText: string;
-  dueBadgeStyle: string;
-  duePriority: number;
-  type: 'TICKET' | 'PPM';
-  stage: string;
-  ticketObj?: RepairTicket;
-  ppmObj?: PPMSchedule;
-}
-
 export interface DeliveryItem {
   id: string;
   type: 'TICKET' | 'PPM';
@@ -73,11 +56,9 @@ export interface DeliveryItem {
   isOverdue: boolean;
   currentStage: string;
   subStage: string;
-  progressPct: number;
   progressText: string;
   riskBadgeText: string;
   riskBadgeStyle: string;
-  progressBarColor: string;
   rawPriority: number;
   assignedTo: string;
   ticketObj?: RepairTicket;
@@ -112,14 +93,13 @@ export function MaintenanceMilestonesAndTasks({
   onOpenFullCalendar,
 }: MaintenanceMilestonesAndTasksProps) {
   const router = useRouter();
-  const isSenior = role === 'SENIOR_MECHANIC' || role === 'SENIOR_ELECTRICIAN' || role === 'ADMIN';
+  const isSenior = canFollowServiceRepairs(role);
   const todayKey = useMemo(() => toDateKey(new Date()), []);
   const [activeTab, setActiveTab] = useState<'schedules' | 'month_grid'>(
     () => defaultTab ?? (isSenior ? 'schedules' : 'month_grid')
   );
   const [selectedGridDate, setSelectedGridDate] = useState<string>(() => toDateKey(new Date()));
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(true);
-  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<{
     id: string;
     title: string;
@@ -145,7 +125,7 @@ export function MaintenanceMilestonesAndTasks({
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
           const techs = data.users.filter((u: any) =>
-            ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+            isTechnicalRole(u.role) && u.status !== 'INACTIVE'
           );
           setLiveTechUsers(techs);
         }
@@ -174,7 +154,6 @@ export function MaintenanceMilestonesAndTasks({
           year: 'numeric',
         });
 
-        const progressPct = t.status === 'IN_PROGRESS' ? 65 : t.status === 'ASSIGNED' ? 35 : 15;
 
         return {
           id: t.id,
@@ -194,13 +173,11 @@ export function MaintenanceMilestonesAndTasks({
           isOverdue: isCritical,
           currentStage: t.faultCategory || t.faultDetails || 'Breakdown Inspection',
           subStage: t.status === 'IN_PROGRESS' ? 'In Progress' : t.status === 'ASSIGNED' ? 'Assigned' : 'Reported',
-          progressPct,
           progressText: t.status === 'IN_PROGRESS' ? 'Active repair' : t.status === 'ASSIGNED' ? 'Dispatched' : 'Reported',
           riskBadgeText: isCritical ? 'Critical' : 'Warning',
           riskBadgeStyle: isCritical
             ? 'bg-rose-50 text-rose-800 border border-rose-200'
             : 'bg-amber-50 text-amber-800 border border-amber-200',
-          progressBarColor: isCritical ? 'bg-rose-500' : 'bg-indigo-600',
           rawPriority: isCritical ? 0 : isReportedToday ? 1 : 2,
           assignedTo: t.attendedBy || 'Unassigned',
           ticketObj: t,
@@ -223,7 +200,6 @@ export function MaintenanceMilestonesAndTasks({
           year: 'numeric',
         });
 
-        const progressPct = isOverdue ? 90 : isDueToday ? 50 : 25;
 
         return {
           id: ppm.id,
@@ -237,13 +213,11 @@ export function MaintenanceMilestonesAndTasks({
           isOverdue,
           currentStage: ppm.task || `${ppm.frequency} Routine Overhaul`,
           subStage: ppm.frequency || 'Preventive',
-          progressPct,
           progressText: `${ppm.frequency} Overhaul`,
           riskBadgeText: isOverdue ? 'Overdue' : 'On Schedule',
           riskBadgeStyle: isOverdue
             ? 'bg-rose-50 text-rose-800 border border-rose-200'
             : 'bg-emerald-50 text-emerald-800 border border-emerald-200',
-          progressBarColor: isOverdue ? 'bg-rose-500' : 'bg-emerald-500',
           rawPriority: isOverdue ? 0 : isDueToday ? 1 : 3,
           assignedTo: 'PPM Team',
           ppmObj: ppm,
@@ -255,99 +229,6 @@ export function MaintenanceMilestonesAndTasks({
   }, [repairs, ppmSchedules, machines, todayKey]);
 
   // ─── 2. DERIVED DATA FOR RIGHT CARD: MY TASKS (SHOW ONLY THEIR WORKS) ─────
-  const myTasksList = useMemo(() => {
-    const userNameClean = (userName || '').trim().toLowerCase();
-    const firstName = userNameClean.split(' ')[0] || '';
-
-    // Filter tickets assigned specifically to this logged-in worker
-    const myTickets = repairs.filter((r) => {
-      if (r.status === 'COMPLETED') return false;
-      if (!r.attendedBy) return false;
-      const attendedClean = r.attendedBy.trim().toLowerCase();
-      return (
-        attendedClean === userNameClean ||
-        (firstName.length > 2 && attendedClean.includes(firstName)) ||
-        (attendedClean.split(' ')[0]?.length > 2 && userNameClean.includes(attendedClean.split(' ')[0]))
-      );
-    });
-
-    const ticketTasks: MyTaskItem[] = myTickets.map((t) => {
-      const isCritical = t.urgency === 'CRITICAL';
-      const mch = machines.find((m) => m.id === t.machineId);
-
-      return {
-        id: t.id,
-        rawId: t.id,
-        title: t.faultCategory || t.faultDetails || 'Breakdown Inspection',
-        code: t.machineId,
-        machineId: t.machineId,
-        machineType: mch?.type || 'Machine Unit',
-        line: t.line || 'Line 01',
-        stationNo: mch?.stationNo || 'Station 01',
-        assignedTo: t.attendedBy || userName,
-        dueBadgeText: isCritical ? 'Critical Due' : 'Due Today',
-        dueBadgeStyle: isCritical
-          ? 'bg-rose-50 text-rose-700 border-rose-200'
-          : 'bg-rose-50 text-rose-700 border-rose-100',
-        duePriority: isCritical ? 0 : 1,
-        type: 'TICKET' as const,
-        stage: t.status,
-        ticketObj: t,
-      };
-    });
-
-    // PPM tasks assigned specifically to this technician (or unassigned for juniors)
-    const myPpms = ppmSchedules.filter((p) => {
-      if (p.status === 'COMPLETED') return false;
-      if (p.assignedTo) {
-        const attendedClean = p.assignedTo.trim().toLowerCase();
-        return (
-          attendedClean === userNameClean ||
-          (firstName.length > 2 && attendedClean.includes(firstName)) ||
-          (attendedClean.split(' ')[0]?.length > 2 && userNameClean.includes(attendedClean.split(' ')[0]))
-        );
-      }
-      return !isSenior; // If unassigned, show to floor technicians
-    });
-
-    const ppmTasks: MyTaskItem[] = myPpms.map((p) => {
-      const mch = machines.find((m) => m.id === p.machineId);
-      const isStarted = !!p.startedAt || p.status === 'IN_PROGRESS';
-      const isOverdue = p.status === 'OVERDUE';
-
-      return {
-        id: p.id,
-        rawId: p.id,
-        title: p.task || `${p.frequency} Routine Overhaul`,
-        code: p.machineId,
-        machineId: p.machineId,
-        machineType: mch?.type || 'Machine Unit',
-        line: mch?.currentLine || 'Line 01',
-        stationNo: mch?.stationNo || 'Station 01',
-        assignedTo: p.assignedTo || userName,
-        dueBadgeText: isStarted
-          ? 'Inspection In Progress'
-          : isOverdue
-          ? 'Overdue PPM'
-          : p.assignedBy
-          ? 'Assigned by Senior'
-          : `${p.frequency} PPM`,
-        dueBadgeStyle: isStarted
-          ? 'bg-amber-50 text-amber-800 border-amber-300'
-          : isOverdue
-          ? 'bg-rose-50 text-rose-700 border-rose-200'
-          : 'bg-indigo-50 text-indigo-700 border-indigo-200',
-        duePriority: isStarted ? 0 : isOverdue ? 1 : 2,
-        type: 'PPM' as const,
-        stage: isStarted ? 'IN_PROGRESS' : 'ASSIGNED',
-        ppmObj: p,
-      };
-    });
-
-    const combined = [...ticketTasks, ...ppmTasks];
-    return combined.sort((a, b) => a.duePriority - b.duePriority);
-  }, [repairs, ppmSchedules, machines, userName, isSenior]);
-
   // ─── 3. MONTH GRID CELLS (CALCULATED DIRECTLY FROM LIVE DATA) ───────────
   const monthGridCells = useMemo(() => {
     const year = currentMonthDate.getFullYear();
@@ -506,7 +387,7 @@ export function MaintenanceMilestonesAndTasks({
         title: r.faultCategory || r.faultDetails || 'Breakdown Work Order',
         stationNo: mch?.stationNo || 'Station 01',
         line: r.line || mch?.currentLine || 'Line 01',
-        downtime: `${r.downtimeMinutes || 30}m downtime`,
+        downtime: `${r.downtimeMinutes || 0}m downtime`,
         urgency: r.urgency,
         status: r.status,
         statusText: isCrit ? 'Critical Action' : r.status === 'IN_PROGRESS' ? 'In Progress' : 'Assigned',
@@ -561,36 +442,19 @@ export function MaintenanceMilestonesAndTasks({
     }
   }, [selectedGridDate]);
 
-  // Handle task click: open task detail popup so technician can inspect details and start/stop/resolve
-  const handleTaskClick = (task: MyTaskItem) => {
-    setSelectedTaskDetail({
-      id: task.id,
-      title: task.title,
-      type: task.type,
-      machineId: task.code,
-      line: task.line,
-      stage: task.stage,
-      dueText: task.dueBadgeText,
-      dueBadgeStyle: task.dueBadgeStyle,
-      ticketObj: task.ticketObj,
-      ppmObj: task.ppmObj,
-    });
-  };
-
-  // ─── 5. LIVE FACTORY ATTENDANCE (MAPPED FROM REGISTERED TECHNICAL USERS) ────
   const attendanceList = useMemo(() => {
     return liveTechUsers.map((m) => ({
       id: m.employeeId || m.uid,
       initial: (m.name || 'T').charAt(0).toUpperCase(),
       name: m.name,
       role: m.title || m.role,
-      status: (m.status === 'INACTIVE' ? ('Absent' as const) : m.status === 'ON_LEAVE' ? ('On Leave' as const) : ('Present' as const)) as 'Present' | 'On Leave' | 'Absent',
+      status: (m.status === 'INACTIVE' ? ('Inactive' as const) : m.status === 'ON_LEAVE' ? ('On Leave' as const) : ('Active' as const)) as 'Active' | 'On Leave' | 'Inactive',
     }));
   }, [liveTechUsers]);
 
   const attendanceStats = useMemo(() => {
     const total = attendanceList.length;
-    const present = attendanceList.filter((m) => m.status === 'Present').length;
+    const present = attendanceList.filter((m) => m.status === 'Active').length;
     const onLeave = attendanceList.filter((m) => m.status === 'On Leave').length;
     const absent = total - present - onLeave;
     const pct = total > 0 ? (present / total) * 100 : 0;
@@ -739,12 +603,6 @@ export function MaintenanceMilestonesAndTasks({
 
                   {/* Bottom Row: Progress Bar + Action Button */}
                   <div className="flex items-center gap-2.5 pt-0.5">
-                    <div className={`${compact ? 'h-1.5' : 'h-2'} flex-1 bg-slate-100 rounded-full overflow-hidden`}>
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${item.progressBarColor}`}
-                        style={{ width: `${item.progressPct}%` }}
-                      />
-                    </div>
                     <span className={`${compact ? 'text-[10px]' : 'text-xs'} font-semibold text-slate-500 font-mono shrink-0`}>
                       {item.progressText}
                     </span>
@@ -1160,7 +1018,7 @@ export function MaintenanceMilestonesAndTasks({
                                 ticketObj: item.ticketObj,
                                 ppmObj: item.ppmObj,
                               });
-                              setIsTaskDrawerOpen(true);
+
                             }}
                             className="px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                           >
@@ -1178,162 +1036,10 @@ export function MaintenanceMilestonesAndTasks({
       </div>
 
       {/* =================================================================== */}
-      {/* CARD 2: MY TASKS (1 COL IF SENIOR, 5 COLS IF JUNIOR)               */}
+      {/* CARD 2: SERVICE STATION MACHINES               */}
       {/* =================================================================== */}
-      <div className={`${isSenior ? 'lg:col-span-1' : 'lg:col-span-5'} bg-white ${compact ? 'rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs h-[385px] min-h-[375px] max-h-[395px]' : 'rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm min-h-[520px]'} flex flex-col justify-between`}>
-        {/* Header: Title, Worker Badge, and Open Button */}
-        <div className={`flex items-center justify-between ${compact ? 'pb-2' : 'pb-3'} border-b border-slate-100 shrink-0 gap-2`}>
-          <div className="flex items-center gap-2">
-            <h2 className={`${compact ? 'text-sm' : 'text-base sm:text-lg'} font-bold text-slate-900 tracking-tight`}>
-              My tasks
-            </h2>
-            {!isSenior && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                {myTasksList.length} Active
-              </span>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsTaskDrawerOpen(true)}
-            className={`${compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-3.5 py-1 text-xs'} rounded-full font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1`}
-          >
-            <span>Open</span>
-            <ChevronRight className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
-          </button>
-        </div>
-
-        {/* List of Tasks */}
-        <div className="divide-y divide-slate-100 flex-1 min-h-0 overflow-y-auto pr-1">
-          {myTasksList.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-400 space-y-1">
-              <p className="font-semibold text-slate-600">No active tasks assigned to you</p>
-              <p className="text-[11px] text-slate-400">
-                You have zero pending work orders. Ready for floor dispatch.
-              </p>
-            </div>
-          ) : (
-            myTasksList.map((task) => (
-              <div
-                key={task.id}
-                onClick={() => handleTaskClick(task)}
-                className={`${compact ? 'py-1.5' : 'py-3'} px-1 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition cursor-pointer group`}
-                title="Click to view and complete this task"
-              >
-                {/* Left: Task Title & Subtitle */}
-                <div className="min-w-0 space-y-0.5">
-                  <div className={`${compact ? 'text-xs' : 'text-xs sm:text-sm'} font-bold text-slate-900 group-hover:text-indigo-600 transition truncate`}>
-                    {task.title}
-                  </div>
-                  <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-slate-400 font-mono truncate`}>
-                    .{task.code} · {task.machineType} · {task.stationNo}
-                  </div>
-                </div>
-
-                {/* Right: Soft Rounded Badge or Action Button */}
-                <div className="shrink-0 flex items-center gap-1.5">
-                  {task.type === 'PPM' && task.ppmObj ? (
-                    !task.ppmObj.startedAt && task.ppmObj.status !== 'IN_PROGRESS' ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onStartPPM) onStartPPM(task.ppmObj!);
-                          else handleTaskClick(task);
-                        }}
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                        title="Click to start PPM timer and inspection"
-                      >
-                        <span>⚡ Start PPM</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onInspectPPM) onInspectPPM(task.ppmObj!);
-                          else handleTaskClick(task);
-                        }}
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                        title="Click to upload proof photo and complete PPM"
-                      >
-                        <span>📷 Inspect &amp; Complete</span>
-                      </button>
-                    )
-                  ) : task.type === 'TICKET' && task.ticketObj ? (
-                    !task.ticketObj.startedAt && task.ticketObj.status !== 'IN_PROGRESS' ? (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onStartRepair) onStartRepair(task.ticketObj!);
-                            else handleTaskClick(task);
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                          title="Click to accept work order and start live downtime tracking"
-                        >
-                          <Play className="w-3 h-3 fill-white" />
-                          <span>Start Work</span>
-                        </button>
-                        {onOpenResolve && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenResolve(task.ticketObj!);
-                            }}
-                            className="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
-                            title="Directly resolve ticket"
-                          >
-                            Resolve
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        {onStopRepair && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onStopRepair(task.ticketObj!);
-                            }}
-                            className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                            title="Click to pause or stop work on this order"
-                          >
-                            <Pause className="w-3 h-3" />
-                            <span>Stop</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onOpenResolve) onOpenResolve(task.ticketObj!);
-                            else handleTaskClick(task);
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                          title="Click to resolve work order and submit downtime proof & costs"
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Resolve</span>
-                        </button>
-                      </div>
-                    )
-                  ) : (
-                    <span
-                      className={`inline-block ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1 text-xs'} rounded-full font-bold border ${task.dueBadgeStyle}`}
-                    >
-                      {task.dueBadgeText}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+      <div className={isSenior ? 'lg:col-span-1' : 'lg:col-span-5'}>
+        <ServiceStationMachineList machines={machines} repairs={repairs} compact={compact} />
       </div>
 
       {/* =================================================================== */}
@@ -1344,7 +1050,7 @@ export function MaintenanceMilestonesAndTasks({
           {/* Header Strip */}
           <div className={`flex items-center justify-between ${compact ? 'pb-2' : 'pb-3'} border-b border-slate-100 shrink-0 gap-2`}>
             <h2 className={`${compact ? 'text-sm' : 'text-base sm:text-lg'} font-bold text-slate-900 tracking-tight`}>
-              Attendance today
+              Team availability
             </h2>
 
             <button
@@ -1357,7 +1063,7 @@ export function MaintenanceMilestonesAndTasks({
             </button>
           </div>
 
-          {/* Top Section: Overall Turnout & Total Team */}
+          {/* Top Section: Active accounts & Total Team */}
           <div className={`${compact ? 'mt-2 p-2.5 rounded-xl gap-2.5' : 'mt-3.5 p-3.5 rounded-2xl gap-3'} bg-slate-50/70 border border-slate-200/80 flex items-center justify-between shrink-0`}>
             {/* Donut Gauge + Turnout Label */}
             <div className={`flex items-center ${compact ? 'gap-2.5' : 'gap-3'}`}>
@@ -1372,7 +1078,7 @@ export function MaintenanceMilestonesAndTasks({
                   />
                   <path
                     className="text-emerald-500"
-                    strokeDasharray="17, 100"
+                    strokeDasharray={`${attendanceStats.pct}, 100`}
                     strokeWidth="3.5"
                     strokeLinecap="round"
                     stroke="currentColor"
@@ -1380,14 +1086,14 @@ export function MaintenanceMilestonesAndTasks({
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                   />
                 </svg>
-                <span className={`absolute ${compact ? 'text-[10px]' : 'text-xs'} font-black text-slate-900 font-mono`}>17%</span>
+                <span className={`absolute ${compact ? 'text-[10px]' : 'text-xs'} font-black text-slate-900 font-mono`}>{attendanceStats.pct.toFixed(0)}%</span>
               </div>
               <div>
                 <div className={`${compact ? 'text-xs' : 'text-xs sm:text-sm'} font-bold text-slate-900 leading-tight`}>
                   Overall Turnout
                 </div>
                 <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} text-slate-500 font-medium`}>
-                  Live workforce attendance
+                  Registered account status
                 </div>
               </div>
             </div>
@@ -1403,7 +1109,7 @@ export function MaintenanceMilestonesAndTasks({
           <div className={`${compact ? 'space-y-1 mt-2' : 'space-y-1.5 mt-3'} shrink-0`}>
             <div className="flex items-center justify-between text-xs">
               <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-slate-600`}>Turnout Ratio</span>
-              <span className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold text-slate-800 font-mono`}>{attendanceStats.present} of {attendanceStats.total} present</span>
+              <span className={`${compact ? 'text-[11px]' : 'text-xs'} font-bold text-slate-800 font-mono`}>{attendanceStats.present} of {attendanceStats.total} active</span>
             </div>
             <div className={`${compact ? 'h-2' : 'h-2.5'} w-full rounded-full overflow-hidden flex bg-rose-500`}>
               <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${attendanceStats.pct.toFixed(1)}%` }} />
@@ -1414,13 +1120,13 @@ export function MaintenanceMilestonesAndTasks({
           <div className={`grid grid-cols-3 ${compact ? 'gap-1.5 mt-2' : 'gap-2 mt-3'} shrink-0`}>
             {/* Present */}
             <div className={`bg-emerald-50/70 border border-emerald-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
-              <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-emerald-700`}>Present</div>
+              <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-emerald-700`}>Active</div>
               <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-emerald-700 font-mono`}>{attendanceStats.present}</div>
             </div>
 
             {/* Absent */}
             <div className={`bg-rose-50/70 border border-rose-200/80 ${compact ? 'rounded-xl p-1.5' : 'rounded-2xl p-2.5'} text-center`}>
-              <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-rose-700`}>Absent</div>
+              <div className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold text-rose-700`}>Inactive</div>
               <div className={`${compact ? 'text-base mt-0' : 'text-xl mt-0.5'} font-black text-rose-700 font-mono`}>{attendanceStats.absent}</div>
             </div>
 
@@ -1449,9 +1155,9 @@ export function MaintenanceMilestonesAndTasks({
                     </div>
                   </div>
                   <span
-                    className={`${compact ? 'px-2 py-0.2 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'} rounded-full font-bold border shrink-0 ${m.status === 'Present'
+                    className={`${compact ? 'px-2 py-0.2 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'} rounded-full font-bold border shrink-0 ${m.status === 'Active'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : m.status === 'Absent'
+                        : m.status === 'Inactive'
                           ? 'bg-rose-50 text-rose-700 border-rose-200'
                           : 'bg-amber-50 text-amber-700 border-amber-200'
                       }`}
@@ -1468,176 +1174,6 @@ export function MaintenanceMilestonesAndTasks({
       {/* =================================================================== */}
       {/* DRAWER: POPUP FOR ALL TASKS ("OPEN >")                             */}
       {/* =================================================================== */}
-      {isTaskDrawerOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 flex flex-col max-h-[85vh] animate-in fade-in duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600" />
-                  <span>My Tasks Queue ({userName})</span>
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Floor breakdown orders and active maintenance jobs assigned to you ({myTasksList.length} items)
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsTaskDrawerOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="divide-y divide-slate-100 flex-1 min-h-0 overflow-y-auto pr-1 my-3">
-              {myTasksList.length === 0 ? (
-                <div className="py-12 text-center text-xs text-slate-400 space-y-1">
-                  <p className="font-semibold text-slate-600">No active tasks in queue</p>
-                  <p className="text-[11px] text-slate-400">All maintenance tasks have been handled.</p>
-                </div>
-              ) : (
-                myTasksList.map((task) => (
-                  <div
-                    key={task.id}
-                    className="py-3 px-1 flex items-center justify-between gap-3 hover:bg-slate-50 rounded-xl transition"
-                  >
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="text-xs sm:text-sm font-bold text-slate-900">
-                        {task.title}
-                      </div>
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        .{task.code} • {task.machineType} • {task.stationNo}
-                        {task.assignedTo && (
-                          <span className="text-indigo-600 font-sans ml-1 font-semibold">({task.assignedTo})</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${task.dueBadgeStyle}`}
-                      >
-                        {task.dueBadgeText}
-                      </span>
-                      {task.type === 'PPM' && task.ppmObj ? (
-                        !task.ppmObj.startedAt && task.ppmObj.status !== 'IN_PROGRESS' ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsTaskDrawerOpen(false);
-                              if (onStartPPM) onStartPPM(task.ppmObj!);
-                              else handleTaskClick(task);
-                            }}
-                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
-                          >
-                            <span>⚡ Start PPM</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsTaskDrawerOpen(false);
-                              if (onInspectPPM) onInspectPPM(task.ppmObj!);
-                              else handleTaskClick(task);
-                            }}
-                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
-                          >
-                            <span>📷 Inspect &amp; Complete</span>
-                          </button>
-                        )
-                      ) : (
-                        task.ticketObj ? (
-                          task.ticketObj.status !== 'IN_PROGRESS' ? (
-                            <div className="flex items-center gap-1.5">
-                              {onStartRepair && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsTaskDrawerOpen(false);
-                                    onStartRepair(task.ticketObj!);
-                                  }}
-                                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
-                                >
-                                  <Play className="w-3 h-3 fill-white" />
-                                  <span>Start</span>
-                                </button>
-                              )}
-                              {onOpenResolve && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsTaskDrawerOpen(false);
-                                    onOpenResolve(task.ticketObj!);
-                                  }}
-                                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                                >
-                                  Resolve
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              {onStopRepair && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsTaskDrawerOpen(false);
-                                    onStopRepair(task.ticketObj!);
-                                  }}
-                                  className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
-                                >
-                                  <Pause className="w-3 h-3" />
-                                  <span>Stop</span>
-                                </button>
-                              )}
-                              {onOpenResolve && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsTaskDrawerOpen(false);
-                                    onOpenResolve(task.ticketObj!);
-                                  }}
-                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1"
-                                >
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>Resolve</span>
-                                </button>
-                              )}
-                            </div>
-                          )
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsTaskDrawerOpen(false);
-                              handleTaskClick(task);
-                            }}
-                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                          >
-                            Inspect
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-end shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsTaskDrawerOpen(false)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* TASK DETAIL POPUP INSPECTOR */}
       {selectedTaskDetail && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">

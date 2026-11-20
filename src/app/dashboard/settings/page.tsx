@@ -1,7 +1,7 @@
 'use client';
 
 import { tenantPreferences } from '@/lib/tenantPreferences';
-import { departmentNavigationChanged } from '@/lib/departmentNavigation';
+import { departmentNavigationChanged, departmentDefaultNavigation } from '@/lib/departmentNavigation';
 import { DepartmentNavigationChecklist } from '@/components/layout/DepartmentNavigationChecklist';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -85,40 +85,11 @@ export interface FactoryUnitItem {
   zones?: FactoryUnitZoneItem[];
 }
 
-const INITIAL_FACTORY_UNITS: FactoryUnitItem[] = [
-  {
-    id: 'UNIT - 1',
-    code: 'UNIT - 1',
-    name: 'Plant Unit 1 — Nethaji Campus',
-    campus: 'Nethaji Apparel Park, Avinashi Road, Tirupur',
-    description: 'Primary garment manufacturing campus housing sewing lines 01–08, cutting tables, and boiler utilities.',
-    status: 'ACTIVE',
-    totalMachines: 246,
-    totalLines: 8,
-    headOfMaintenance: 'P. Arumugam (Sr. Maintenance Engr)',
-    contactPhone: '+91 98421 22345',
-    zones: [
-      { id: 'NETHAJI', name: 'NETHAJI (Main Sewing Complex)', linesCount: 8, description: 'Sewing lines 01–08' },
-      { id: 'NETHAJI - Cutting Bay', name: 'NETHAJI - Cutting & Fusing Bay', linesCount: 4, description: 'Cutting spreading tables' },
-      { id: 'NETHAJI - Finishing', name: 'NETHAJI - Finishing & Packing', linesCount: 4, description: 'Ironing & packing lines' },
-    ],
-  },
-  {
-    id: 'UNIT-2',
-    code: 'UNIT-2',
-    name: 'Plant Unit 2 — Perundurai Campus',
-    campus: 'SIPCOT Industrial Growth Estate, Perundurai',
-    description: 'High-volume export manufacturing facility with specialized JUKI and Pegasus flatbed/cylinder machines.',
-    status: 'ACTIVE',
-    totalMachines: 249,
-    totalLines: 10,
-    headOfMaintenance: 'K. Balakrishnan (Sr. Maintenance Engr)',
-    contactPhone: '+91 98422 67890',
-    zones: [
-      { id: 'PEACOCK', name: 'PEACOCK (Main Sewing Floor)', linesCount: 8, description: 'Sewing lines 01–08' },
-    ],
-  },
-];
+const INITIAL_FACTORY_UNITS: FactoryUnitItem[] = FACTORY_UNITS.filter(unit => unit.id !== 'All Units').map(unit => ({
+  id: unit.id, code: unit.id, name: unit.name, campus: '', description: '', status: 'ACTIVE',
+  totalMachines: 0, totalLines: 0, headOfMaintenance: '', contactPhone: '',
+  zones: getZonesForUnit(unit.id).map(zone => ({ id: zone.id, name: zone.name })),
+}));
 
 // ─── DEPARTMENT DATA MODEL ───
 export interface DepartmentItem {
@@ -456,7 +427,7 @@ function SettingsContent() {
   const [newUnitCampus, setNewUnitCampus] = useState('');
   const [newUnitDesc, setNewUnitDesc] = useState('');
   const [newUnitStatus, setNewUnitStatus] = useState<'ACTIVE' | 'MAINTENANCE' | 'EXPANSION' | 'INACTIVE'>('ACTIVE');
-  const [newUnitMachines, setNewUnitMachines] = useState<number>(100);
+  const [newUnitMachines, setNewUnitMachines] = useState<number>(0);
   const [newUnitLines, setNewUnitLines] = useState<number>(6);
   const [newUnitHead, setNewUnitHead] = useState('');
   const [newUnitPhone, setNewUnitPhone] = useState('');
@@ -996,8 +967,8 @@ function SettingsContent() {
     }
 
     const isMech = isMechanicRole(newRole, newDepartment, newTitle);
-    if (isMech) {
-      if (!newUnit || newUnit === 'All Units') {
+    if (isMech && newUnit !== 'All Units') {
+      if (!newUnit) {
         showToast('Please select a specific plant unit for the mechanic', 'error');
         return;
       }
@@ -1023,7 +994,7 @@ function SettingsContent() {
           employeeId: newEmployeeId.trim(),
           password: newPassword.trim(),
           unit: newUnit,
-          zones: isMech ? newZones : [],
+          zones: isMech && newUnit !== 'All Units' ? newZones : [],
         }),
       });
 
@@ -1071,8 +1042,8 @@ function SettingsContent() {
     if (!editingUser) return;
 
     const isMech = isMechanicRole(editRole, editDepartment, editTitle);
-    if (isMech) {
-      if (!editUnit || editUnit === 'All Units') {
+    if (isMech && editUnit !== 'All Units') {
+      if (!editUnit) {
         showToast('Please select a specific plant unit for the mechanic', 'error');
         return;
       }
@@ -1093,7 +1064,7 @@ function SettingsContent() {
         employeeId: editEmployeeId.trim(),
         username: editUsername.trim(),
         unit: editUnit,
-        zones: isMech ? editZones : [],
+        zones: isMech && editUnit !== 'All Units' ? editZones : [],
         status: editStatus,
       };
 
@@ -1627,7 +1598,7 @@ function SettingsContent() {
         // If a unit is selected, show Drilldown: Unit Details + Zones
         if (selectedUnit) {
           const unitMachines = machines.filter((m) => matchesUnit(m.unit, selectedUnit.code) || matchesUnit(m.unit, selectedUnit.id));
-          const machineCount = unitMachines.length > 0 ? unitMachines.length : (selectedUnit.totalMachines || 0);
+          const machineCount = unitMachines.length;
           const olCount = unitMachines.filter((m) => {
             const combined = `${m.type || ''} ${m.name || ''} ${m.subType || ''}`.toLowerCase();
             return combined.includes('o/l') || combined.includes('overlock');
@@ -1948,7 +1919,7 @@ function SettingsContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {factoryUnits.map((u) => {
                 const unitMachines = machines.filter((m) => matchesUnit(m.unit, u.code) || matchesUnit(m.unit, u.id));
-                const machineCount = unitMachines.length > 0 ? unitMachines.length : (u.totalMachines || 0);
+                const machineCount = unitMachines.length;
                 const olCount = unitMachines.filter((m) => {
                   const combined = `${m.type || ''} ${m.name || ''} ${m.subType || ''}`.toLowerCase();
                   return combined.includes('o/l') || combined.includes('overlock');
@@ -2085,13 +2056,13 @@ function SettingsContent() {
                         <div className="p-2 bg-slate-50/70 rounded-xl text-center">
                           <span className="text-slate-400 text-[10px] block font-medium">Overlocks</span>
                           <span className="font-bold text-slate-800 text-sm">
-                            {olCount > 0 ? olCount : (u.code === 'UNIT - 1' ? 95 : u.code === 'UNIT-2' ? 89 : '—')}
+                            {olCount}
                           </span>
                         </div>
                         <div className="p-2 bg-slate-50/70 rounded-xl text-center">
                           <span className="text-slate-400 text-[10px] block font-medium">Flatlocks</span>
                           <span className="font-bold text-slate-800 text-sm">
-                            {flCount > 0 ? flCount : (u.code === 'UNIT - 1' ? 28 : u.code === 'UNIT-2' ? 43 : '—')}
+                            {flCount}
                           </span>
                         </div>
                       </div>
@@ -2719,7 +2690,7 @@ function SettingsContent() {
                   type="text"
                   required
                   value={newDeptName}
-                  onChange={(e) => setNewDeptName(e.target.value)}
+                  onChange={(e) => { setNewDeptName(e.target.value); setNewDeptNavigation(departmentDefaultNavigation(e.target.value)); }}
                   placeholder="e.g. Sewing Assembly Line 1"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#059669] outline-none"
                   autoFocus
@@ -2778,7 +2749,7 @@ function SettingsContent() {
                 </div>
               </div>
 
-              <DepartmentNavigationChecklist selected={newDeptNavigation} onChange={setNewDeptNavigation} />
+              <DepartmentNavigationChecklist departmentName={newDeptName} selected={newDeptNavigation} onChange={setNewDeptNavigation} />
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
@@ -2828,7 +2799,7 @@ function SettingsContent() {
                   type="text"
                   required
                   value={editingDept.name}
-                  onChange={(e) => setEditingDept({ ...editingDept, name: e.target.value })}
+                  onChange={(e) => setEditingDept({ ...editingDept, name: e.target.value, navigation: departmentDefaultNavigation(e.target.value) })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#059669] outline-none"
                 />
               </div>
@@ -2854,7 +2825,7 @@ function SettingsContent() {
                 />
               </div>
 
-              <DepartmentNavigationChecklist selected={editingDept.navigation ?? []} onChange={navigation => setEditingDept({ ...editingDept, navigation })} />
+              <DepartmentNavigationChecklist departmentName={editingDept.name} selected={editingDept.navigation ?? departmentDefaultNavigation(editingDept.name)} onChange={navigation => setEditingDept({ ...editingDept, navigation })} />
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
@@ -3425,13 +3396,14 @@ function SettingsContent() {
                     onChange={(e) => {
                       const uVal = e.target.value;
                       setNewUnit(uVal);
+                      if (uVal === 'All Units') { setNewZones([]); setIsNewZoneDropdownOpen(false); return; }
                       const avail = getAvailableZonesForUnit(uVal);
                       setNewZones((prev) => prev.filter((z) => avail.some((a) => (a.id || a.name) === z)));
                     }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#059669] outline-none"
                   >
                     <option value="All Units">
-                      {isMechanicRole(newRole, newDepartment, newTitle) ? '-- Select Plant Unit --' : 'All Factory Units'}
+                      All Units
                     </option>
                     {factoryUnits.map((fu) => (
                       <option key={fu.id} value={fu.code}>
@@ -3443,7 +3415,7 @@ function SettingsContent() {
               </div>
 
               {/* ─── DYNAMIC MULTI-SELECT ZONE CHECKLIST (FOR MECHANICS) ─── */}
-              {isMechanicRole(newRole, newDepartment, newTitle) && (
+              {isMechanicRole(newRole, newDepartment, newTitle) && newUnit !== 'All Units' && (
                 <div
                   ref={newZoneDropdownRef}
                   className="p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-2xl space-y-2 relative"
@@ -3738,13 +3710,14 @@ function SettingsContent() {
                     onChange={(e) => {
                       const uVal = e.target.value;
                       setEditUnit(uVal);
+                      if (uVal === 'All Units') { setEditZones([]); setIsEditZoneDropdownOpen(false); return; }
                       const avail = getAvailableZonesForUnit(uVal);
                       setEditZones((prev) => prev.filter((z) => avail.some((a) => (a.id || a.name) === z)));
                     }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#059669] outline-none"
                   >
                     <option value="All Units">
-                      {isMechanicRole(editRole, editDepartment, editTitle) ? '-- Select Plant Unit --' : 'All Factory Units'}
+                      All Units
                     </option>
                     {factoryUnits.map((fu) => (
                       <option key={fu.id} value={fu.code}>
@@ -3767,7 +3740,7 @@ function SettingsContent() {
               </div>
 
               {/* ─── DYNAMIC MULTI-SELECT ZONE CHECKLIST (FOR MECHANICS) ─── */}
-              {isMechanicRole(editRole, editDepartment, editTitle) && (
+              {isMechanicRole(editRole, editDepartment, editTitle) && editUnit !== 'All Units' && (
                 <div
                   ref={editZoneDropdownRef}
                   className="p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-2xl space-y-2 relative"

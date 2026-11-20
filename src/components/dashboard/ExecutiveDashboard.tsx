@@ -357,14 +357,14 @@ export function ExecutiveDashboard({
         acc +
         (r.partsUsed || []).reduce((pAcc, pu) => {
           const part = parts.find((sp) => sp.partId === pu.partId || sp.sku === pu.sku);
-          return pAcc + (part ? part.unitCost * pu.quantity : pu.quantity * 250);
+          return pAcc + (part ? part.unitCost * pu.quantity : 0);
         }, 0)
       );
     }, 0);
 
     // 2. Technician labor cost (approx ₹300/hr)
     const totalLabor = repairs.reduce((acc, r) => {
-      return acc + Math.round(((r.downtimeMinutes || 0) / 60) * 300);
+      return acc + (r.laborCost || 0);
     }, 0);
 
     // 3. Requisitions / External contract procurement
@@ -375,7 +375,7 @@ export function ExecutiveDashboard({
     // 4. Replacement Capex of decommissioned/scrap units
     const replacementCapex = machines
       .filter((m) => m.status === 'SCRAP')
-      .reduce((acc, m) => acc + (m.cost || 40000), 0);
+      .reduce((acc, m) => acc + (m.cost || 0), 0);
 
     const totalCost = partsFromRepairs + totalLabor + externalSpares + replacementCapex;
 

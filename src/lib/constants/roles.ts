@@ -8,6 +8,10 @@ export function normalizeRole(role?: string | null): UserRole {
   if (!role) return 'MECHANIC';
   const clean = role.trim().toUpperCase().replace(/[\s-]+/g, '_');
 
+  if ((clean.includes('HEAD') || clean.includes('MANAGER')) && clean.includes('MECH')) return 'HEAD_MECHANIC_MANAGER';
+  if (clean.includes('SERVICE') && clean.includes('MECH')) return 'SERVICE_MECHANIC';
+  if (clean === 'ASSET_MANAGER') return 'ASSET_MANAGER';
+
   if (clean.includes('CEO') || clean.includes('EXECUTIVE') || clean.includes('DIRECTOR')) {
     return 'CEO';
   }
@@ -40,6 +44,10 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
   const role = normalizeRole(rawRole);
   // Strip any company prefix (e.g. /sahana/dashboard/inventory -> /dashboard/inventory)
   const cleanPath = pathname.replace(/^\/[^/]+(?=\/dashboard)/, '');
+
+  if (role === 'HEAD_MECHANIC_MANAGER') {
+    return cleanPath === '/dashboard' || (cleanPath.startsWith('/dashboard/') && !/^\/dashboard\/settings(?:\/|$)/.test(cleanPath));
+  }
 
   // Admin & Asset Manager have full unrestricted access to all pages
   if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
@@ -79,7 +87,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
   }
 
   // 3. MECHANIC & ELECTRICIAN permissions (Floor Technicians)
-  if (role === 'MECHANIC' || role === 'ELECTRICIAN') {
+  if (role === 'MECHANIC' || role === 'SERVICE_MECHANIC' || role === 'ELECTRICIAN') {
     const mechanicAllowed = [
       '/dashboard/calendar',
       '/dashboard/inventory',
@@ -105,4 +113,16 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
   }
 
   return false;
+}
+
+export function isTechnicalRole(role?: string | null): boolean {
+  return ['MECHANIC', 'SERVICE_MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(normalizeRole(role));
+}
+
+export function canManageOperations(role?: string | null): boolean {
+  return ['ADMIN', 'ASSET_MANAGER', 'HEAD_MECHANIC_MANAGER'].includes(normalizeRole(role));
+}
+
+export function canManageStaffAccount(actorRole: string, targetRole: string): boolean {
+  return normalizeRole(actorRole) !== 'HEAD_MECHANIC_MANAGER' || isTechnicalRole(targetRole);
 }

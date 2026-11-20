@@ -143,7 +143,7 @@ export default function UserKpiPage() {
         assignedLines: m.assignedLines || 'Lines 01 - 04',
         phone: m.phone || '+91 98421 00000',
         status: m.status || 'ON_DUTY',
-        experienceYears: m.experienceYears || 5,
+        experienceYears: m.experienceYears || 0,
       });
     });
 
@@ -168,7 +168,7 @@ export default function UserKpiPage() {
           assignedLines: 'All Floor Lines',
           phone: u.phone || '+91 98420 11223',
           status: 'ON_DUTY',
-          experienceYears: 6,
+          experienceYears: 0,
         });
       }
     });

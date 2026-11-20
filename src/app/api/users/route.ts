@@ -5,6 +5,8 @@ import { getDatabase, TenantError } from '@/lib/mongodb';
 import { UserProfile, UserRole } from '@/types/cmms';
 import { hashPassword } from '@/lib/auth';
 import { randomUUID } from 'node:crypto';
+import { canManageStaffAccount } from '@/lib/constants/roles';
+import { hasAllUnitsAccess } from '@/lib/constants/units';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
     const db = await getDatabase(req);
     const body = await req.json();
     const { name, email, role, title, password, phone, department, employeeId, unit, zones, username } = body;
+    if (!canManageStaffAccount(db.sessionUser!.role, String(role || ''))) return NextResponse.json({ error: 'You can manage technical staff only.' }, { status: 403 });
 
     if (!name || !email || !role) {
       return NextResponse.json(
@@ -98,7 +101,7 @@ export async function POST(req: Request) {
 
     const finalTitle = title?.trim() || getDefaultTitle(cleanRole, db.companyName);
     const finalUnit = unit?.trim() || 'All Units';
-    const finalZones = Array.isArray(zones) ? zones : (zones ? [zones] : []);
+    const finalZones = hasAllUnitsAccess(finalUnit) ? [] : Array.isArray(zones) ? zones : (zones ? [zones] : []);
     const finalEmpId = employeeId?.trim() || `EMP-${randomUUID()}`;
     const uid = `USR-${randomUUID()}`;
 
@@ -207,6 +210,10 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'User not found in company workspace' }, { status: 404 });
     }
 
+    if (!canManageStaffAccount(db.sessionUser!.role, existing.role) || (role !== undefined && !canManageStaffAccount(db.sessionUser!.role, role))) {
+      return NextResponse.json({ error: 'You can manage technical staff only.' }, { status: 403 });
+    }
+
     const requestedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
     if ((username !== undefined && typeof username !== 'string') || (requestedUsername && requestedUsername !== existing.username && !usernamePattern.test(requestedUsername))) {
       return NextResponse.json({ error: 'Username must be 3–40 characters using letters, numbers, dots, underscores, or hyphens.' }, { status: 400 });
@@ -235,6 +242,7 @@ export async function PUT(req: Request) {
     if (employeeId !== undefined) updateDoc.employeeId = employeeId.trim();
     if (unit !== undefined) updateDoc.unit = unit.trim();
     if (zones !== undefined) updateDoc.zones = Array.isArray(zones) ? zones : [zones];
+    if (hasAllUnitsAccess(updateDoc.unit || existing.unit)) updateDoc.zones = [];
     if (status !== undefined) updateDoc.status = status;
 
     if (password !== undefined && password !== '') {
@@ -292,6 +300,7 @@ export async function DELETE(req: Request) {
     }
 
     // Never delete primary admin
+    if (!canManageStaffAccount(db.sessionUser!.role, existing.role)) return NextResponse.json({ error: 'You can manage technical staff only.' }, { status: 403 });
     if (existing.role === 'ADMIN' && (existing.email?.startsWith('admin@') || existing.uid?.includes('ADM-01'))) {
       return NextResponse.json({ error: 'Cannot delete the primary System Administrator account' }, { status: 403 });
     }

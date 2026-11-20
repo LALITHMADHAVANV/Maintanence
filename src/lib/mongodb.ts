@@ -1,4 +1,5 @@
 import { canonicalCompanySlug } from './companyIdentity';
+import { canManageOperations } from '@/lib/constants/roles';
 import { MongoClient, Db, Collection, Document, ObjectId } from 'mongodb';
 import { validateActiveCompany, getCompanyBySlug, CompanyRecord, ensureRegistryInitialized } from './registry';
 import { verifySessionToken, extractSessionToken, SessionPayload } from './auth';
@@ -277,8 +278,9 @@ export async function resolveTenantFromRequest(req: Request): Promise<{
     }
     sessionUser.role = account.role;
     sessionUser.email = account.email;
+    sessionUser.name = account.name;
     const path = new URL(req.url).pathname;
-    if (req.method !== 'GET' && /\/api\/users$/.test(path) && !['ADMIN', 'ASSET_MANAGER'].includes(String(account.role).toUpperCase())) {
+    if (req.method !== 'GET' && /\/api\/users$/.test(path) && !canManageOperations(account.role)) {
       throw new TenantError('Administrator access required.', 403, 'FORBIDDEN');
     }
     return { db, company, sessionUser };

@@ -21,6 +21,18 @@ export const importDefinitions = {
   },
 } as const;
 
+export const stockImportTemplate = {
+  columns: ['S.No', 'Spare Name', 'Machine Type', 'Cost', 'Quantity', 'Vendor'],
+  required: ['S.No', 'Spare Name', 'Machine Type', 'Cost', 'Quantity'],
+  example: ['1', 'Sewing needle', 'SNLS', '10', '100', ''],
+};
+
+const stockHeaderAliases: Record<string, string> = {
+  sno: 'sNo',
+  sparename: 'name', sparesname: 'name', cost: 'unitCost', quantity: 'stock', qty: 'stock',
+  vender: 'vendor', serialno: 'sNo', serialnumber: 'sNo', slno: 'sNo',
+};
+
 export type ImportKind = keyof typeof importDefinitions;
 export type ImportRecord = Machine | SparePart | PartRequisition;
 
@@ -58,19 +70,32 @@ export function parseImportCsv(text: string, kind: ImportKind): Record<string, s
   if (row.some(Boolean)) table.push(row);
   if (table.length < 2) throw new ImportValidationError('Include a header and at least one data row.');
   if (table.length > 2001) throw new ImportValidationError('Import up to 2,000 data rows at a time.');
-  const normalize = (value: string) => value.toLowerCase().replace(/[\s_-]/g, '');
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
   const definition = importDefinitions[kind];
-  const headers = table[0].map(value => definition.columns.find(column => normalize(column) === normalize(value)) || '');
+  const headers = table[0].map(value => (kind === 'parts' && Object.hasOwn(stockHeaderAliases, normalize(value)) ? stockHeaderAliases[normalize(value)] : undefined)
+    || definition.columns.find(column => normalize(column) === normalize(value)) || '');
   if (headers.some(header => !header)) throw new ImportValidationError('Unknown column found. Use the downloadable template headers.');
   if (new Set(headers).size !== headers.length) throw new ImportValidationError('The file contains duplicate column headers.');
-  for (const required of definition.required) {
+  const simpleStock = kind === 'parts' && headers.includes('sNo');
+  const requiredColumns = simpleStock ? ['sNo', 'name', 'machineType', 'unitCost', 'stock'] : definition.required;
+  for (const required of requiredColumns) {
     if (!headers.includes(required)) throw new ImportValidationError(`Missing required column ${required}.`);
   }
   return table.slice(1).map((values, index) => {
     if (values.length !== headers.length) throw new ImportValidationError(`Data row ${index + 1} has ${values.length} cells. Expected ${headers.length}.`);
     const record = Object.fromEntries(headers.map((header, i) => [header, values[i]]));
-    for (const required of definition.required) {
+    for (const required of requiredColumns) {
       if (!record[required]) throw new ImportValidationError(`Data row ${index + 1} requires ${required}.`);
+    }
+    if (kind === 'parts' && record.sNo) {
+      const serial = Number(record.sNo);
+      if (!/^\d+$/.test(record.sNo) || !Number.isSafeInteger(serial) || serial < 1) {
+        throw new ImportValidationError(`Data row ${index + 1}: S.No must be a positive whole number.`);
+      }
+      record.sNo = String(serial);
+      record.partId ||= `SP-IMPORT-${serial}`;
+      record.sku ||= `SKU-IMPORT-${serial}`;
+      record.unit ||= 'pcs';
     }
     return record;
   });
@@ -118,7 +143,7 @@ export function buildImportRecords(kind: ImportKind, rows: Record<string, string
           stationNo: row.stationNo || '', purchaseDate: row.purchaseDate || '', cost: numberValue(row, 'cost'),
           status: status as Machine['status'], totalDowntimeMinutes: 0 });
       } else if (kind === 'parts') {
-        records.push({ partId: id, sku: row.sku, name: row.name, category: row.category || 'General',
+        records.push({ ...(row.sNo ? { sNo: Number(row.sNo) } : {}), partId: id, sku: row.sku, name: row.name, category: row.category || 'General',
           stock: numberValue(row, 'stock'), minStock: numberValue(row, 'minStock'), monthlyAllowance: numberValue(row, 'monthlyAllowance'),
           unitCost: numberValue(row, 'unitCost'), unit: row.unit, compat: row.compat || '', machineType: row.machineType || 'GENERAL',
           compatibleTypes: row.machineType ? [row.machineType] : [], shelfLocation: row.shelfLocation || '', vendor: row.vendor || '' });

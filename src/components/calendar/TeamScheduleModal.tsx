@@ -174,12 +174,7 @@ export function TeamScheduleModal({
       (r) => r.attendedBy && r.attendedBy.toLowerCase().includes(mech.name.toLowerCase())
     );
 
-    // PPM tasks: M. Selvam gets PPM tasks by default, or Senior Mechanic Ramesh oversees
-    const assignedPpm = dayPpms.filter((p) => {
-      if (mech.id === 'MEC-04') return true; // M. Selvam is dedicated PPM tech
-      if (mech.id === 'MEC-01' && dayPpms.length > 2) return true; // Ramesh oversees heavy overhauls
-      return false;
-    });
+    const assignedPpm = dayPpms.filter(p => p.assignedTo?.trim().toLowerCase() === mech.name.trim().toLowerCase());
 
     const totalDowntime = assignedTickets.reduce(
       (acc, t) => acc + (t.downtimeMinutes || 0),
@@ -205,7 +200,7 @@ export function TeamScheduleModal({
   const handleReassign = async (ticketId: string, targetMechanicName: string) => {
     try {
       const assignedByTitle = role === 'SENIOR_ELECTRICIAN' ? 'Senior Electrician' : 'Senior Mechanic';
-      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Anand Kumar' : 'Ramesh Kumar')} (${assignedByTitle})`;
+      const assignerName = `${user?.name || (role === 'SENIOR_ELECTRICIAN' ? 'Staff' : 'Staff')} (${assignedByTitle})`;
       await assignRepairTicket(ticketId, targetMechanicName, assignerName);
       showToast(`Work ticket ${ticketId} assigned to ${targetMechanicName}!`, 'success');
     } catch (e) {
@@ -217,7 +212,7 @@ export function TeamScheduleModal({
   // Complete PPM task directly
   const handlePpmComplete = async (ppmId: string, task: string, machineId: string) => {
     try {
-      await completePPMTask(ppmId, user?.name || 'Ramesh Kumar');
+      await completePPMTask(ppmId, user?.name || 'Staff');
       showToast(`Completed PPM service for ${machineId}: ${task}`, 'success');
     } catch (e) {
       console.error(e);

@@ -34,7 +34,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { ImportButton } from '@/components/import/ImportButton';
-import { normalizeRole } from '@/lib/constants/roles';
+import { normalizeRole, isTechnicalRole } from '@/lib/constants/roles';
 import { PartRequisition, SparePart, RequisitionStatus } from '@/types/cmms';
 import {
   subscribeRequisitions,
@@ -114,7 +114,7 @@ function StoreInboxContent() {
         if (data.users && Array.isArray(data.users)) {
           const staff = data.users.filter((u: any) => {
             const nr = normalizeRole(u.role);
-            return ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(nr);
+            return isTechnicalRole(nr);
           });
           if (staff.length > 0) {
             setRegisteredStaff(staff.map(userToMechanicDuty));
@@ -603,7 +603,7 @@ function StoreInboxContent() {
             const matchedPart = parts.find(
               (p) => p.partId === indent.partId || p.sku === indent.sku
             );
-            const stockQty = matchedPart?.stock ?? 15;
+            const stockQty = matchedPart?.stock ?? 0;
             const hasSufficientStock = stockQty >= (indent.quantity || 1);
 
             return (

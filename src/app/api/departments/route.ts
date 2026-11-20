@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getDatabase, TenantError } from '@/lib/mongodb';
-import { departmentMenuPaths } from '@/lib/departmentNavigation';
+import { departmentMenuPaths, departmentDefaultNavigation } from '@/lib/departmentNavigation';
 import { normalizeRole } from '@/lib/constants/roles';
 
 const normalizeName = (value: string) => value.trim().toLowerCase();
@@ -46,7 +46,8 @@ export async function PUT(request: Request) {
     const db = await getDatabase(request);
     if (!canManage(db.sessionUser?.role)) return forbidden();
     const input = await request.json();
-    const { id, name, navigation } = input;
+    const { id, name } = input;
+    const navigation = input.navigation ?? (typeof name === 'string' ? departmentDefaultNavigation(name) : []);
     if (typeof id !== 'string' || !/^dept-[a-z0-9-]+$/i.test(id) || typeof name !== 'string' || !name.trim()
       || !Array.isArray(navigation) || navigation.some(path => !departmentMenuPaths.has(path))) {
       return NextResponse.json({ error: 'A department name and valid menu selections are required.' }, { status: 400 });
@@ -57,7 +58,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'A department with this name already exists.' }, { status: 409 });
     }
     const department = {
-      id, name: name.trim(), nameKey, navigation: [...new Set<string>(navigation)],
+      id, name: name.trim(), nameKey, navigation: [...new Set<string>(navigation)].filter(path => departmentDefaultNavigation(name).includes(path)),
       description: String(input.description || ''), userCount: Number(input.userCount) || 0,
       kpi1Name: String(input.kpi1Name || ''), kpi1Type: String(input.kpi1Type || ''), kpi1Weight: Number(input.kpi1Weight) || 0,
       kpi2Name: String(input.kpi2Name || ''), kpi2Type: String(input.kpi2Type || ''), kpi2Weight: Number(input.kpi2Weight) || 0,

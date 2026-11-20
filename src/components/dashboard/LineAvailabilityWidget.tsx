@@ -18,8 +18,6 @@ import {
 } from 'lucide-react';
 import { Machine } from '@/types/cmms';
 import {
-  CLIENT_ZONES,
-  CLIENT_LINES,
   ClientZone,
   ClientLine,
   computeAvailabilityReport,
@@ -39,20 +37,21 @@ interface LineAvailabilityWidgetProps {
 
 export function LineAvailabilityWidget({
   machines,
-  selectedZone: propZone = 'Zone 1',
+  selectedZone: propZone = 'ALL',
   selectedLine: propLine = 'ALL',
   onSelectZoneLine,
   onAddExtraMachine,
 }: LineAvailabilityWidgetProps) {
-  const [activeZone, setActiveZone] = useState<ClientZone | 'ALL'>(
-    propZone === 'ALL' ? 'Zone 1' : propZone
-  );
+  const [requestedZone, setActiveZone] = useState<ClientZone | 'ALL'>(propZone);
   const [viewMode, setViewMode] = useState<'CARDS' | 'MATRIX'>('CARDS');
 
   // Compute 8-zone x 8-line report
   const report: PlantAvailabilityReport = useMemo(() => {
     return computeAvailabilityReport(machines);
   }, [machines]);
+  const activeZone = report.zones.some(zone => zone.zone === requestedZone) ? requestedZone : report.zones[0]?.zone || 'ALL';
+  const lineCount = report.zones.reduce((count, zone) => count + zone.lines.length, 0);
+  const lines = [...new Set(report.zones.flatMap(zone => zone.lines.map(line => line.line)))].sort();
 
   const currentZoneReport: ZoneAvailabilityReport | undefined = useMemo(() => {
     if (activeZone === 'ALL') return undefined;
@@ -68,7 +67,7 @@ export function LineAvailabilityWidget({
 
   const handleLineClick = (line: ClientLine) => {
     if (onSelectZoneLine) {
-      onSelectZoneLine(activeZone === 'ALL' ? 'Zone 1' : activeZone, line);
+      onSelectZoneLine(activeZone, line);
     }
   };
 
@@ -87,7 +86,7 @@ export function LineAvailabilityWidget({
                   Line-Wise Machine Availability Report
                 </h2>
                 <span className="px-2 py-0.5 text-[11px] font-extrabold bg-indigo-100 text-indigo-800 rounded-md">
-                  8 Zones • 8 Lines (64 Total)
+                  {report.zones.length} zones · {lineCount} lines
                 </span>
               </div>
               <p className="text-xs text-slate-500">
@@ -139,7 +138,7 @@ export function LineAvailabilityWidget({
             </div>
             <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
               <Factory className="w-3 h-3 text-indigo-500" />
-              64 Production Lines
+              {lineCount} production lines
             </div>
           </div>
 
@@ -202,7 +201,7 @@ export function LineAvailabilityWidget({
           <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1 shrink-0">
             <Filter className="w-3.5 h-3.5 text-indigo-600" /> Select Zone:
           </span>
-          {CLIENT_ZONES.map((zone) => {
+          {report.zones.map(({ zone }) => {
             const zData = report.zones.find((z) => z.zone === zone);
             const isSelected = activeZone === zone;
             const rate = zData?.availabilityRate || 0;
@@ -398,7 +397,7 @@ export function LineAvailabilityWidget({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="font-bold text-sm text-slate-900">
-                  Full Plant Fleet Matrix (8 Zones × 8 Lines = 64 Production Units)
+                  Full Plant Fleet Matrix ({report.zones.length} zones · {lineCount} lines)
                 </h3>
                 <p className="text-xs text-slate-500">
                   Click any cell in the matrix to immediately focus on that specific Zone & Line
@@ -427,7 +426,7 @@ export function LineAvailabilityWidget({
                 <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                   <tr>
                     <th className="py-2.5 px-3 whitespace-nowrap">Zone \ Line</th>
-                    {CLIENT_LINES.map((line) => (
+                    {lines.map((line) => (
                       <th key={line} className="py-2.5 px-2 text-center whitespace-nowrap font-mono">
                         {line.replace('Line ', 'L')}
                       </th>
@@ -443,7 +442,9 @@ export function LineAvailabilityWidget({
                         <td className="py-2 px-3 font-bold text-slate-800 whitespace-nowrap">
                           {zoneData.zone}
                         </td>
-                        {zoneData.lines.map((lineData) => {
+                        {lines.map((line) => {
+                          const lineData = zoneData.lines.find(item => item.line === line);
+                          if (!lineData) return <td key={line} className="px-1 py-2 text-center text-slate-400">—</td>;
                           const rate = lineData.availabilityRate;
                           const hasBreakdown = lineData.breakdown > 0;
                           return (

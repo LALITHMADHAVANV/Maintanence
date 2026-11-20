@@ -1,5 +1,7 @@
 'use client';
 
+import { isTechnicalRole } from '@/lib/constants/roles';
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
@@ -177,10 +179,7 @@ export default function MechanicRosterPage() {
   const registeredRoster = React.useMemo(() => {
     let technicalStaff = techUsers.filter(
       (u) =>
-        u.role === 'MECHANIC' ||
-        u.role === 'SENIOR_MECHANIC' ||
-        u.role === 'ELECTRICIAN' ||
-        u.role === 'SENIOR_ELECTRICIAN'
+        isTechnicalRole(u.role)
     );
     if (!isAdmin) {
       technicalStaff = technicalStaff.filter((u) => matchesUnit(u.unit, effectiveUnit));

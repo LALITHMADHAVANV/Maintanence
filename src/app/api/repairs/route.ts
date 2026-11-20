@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { RepairTicket } from '@/types/cmms';
 import { sendTelegramAlert } from '@/lib/services/telegramService';
+import { transferRepairToService } from '@/lib/services/serviceRepairService';
+import { canFollowServiceRepairs } from '@/lib/serviceRepairs';
+import { normalizeRole } from '@/lib/constants/roles';
 
 export async function GET(req: Request) {
   try {
@@ -116,6 +119,39 @@ export async function PATCH(req: Request) {
     const existingTicket = await db.rawCollection('repair_tickets').findOne({
       $or: [{ id }, { ticketId: id }],
     });
+
+    if (!updates.transferToService && updates.status === 'ASSIGNED' && typeof updates.attendedBy === 'string') {
+      const matches = await db.rawCollection('users').find({ name: updates.attendedBy }).limit(2).toArray();
+      if (matches.length === 1 && normalizeRole(matches[0].role) === 'SERVICE_MECHANIC') {
+        updates.transferToService = true;
+        updates.serviceMechanicId = matches[0].uid;
+      }
+    }
+    if (updates.transferToService === true) {
+      if (!existingTicket) throw new TenantError('Repair not found.', 404);
+      const { serviceMechanic, machine, dueDate } = await transferRepairToService(db, existingTicket, updates);
+      try {
+        await sendTelegramAlert({
+          companySlug: db.tenant, appUrl: new URL(req.url).origin, category: 'DISPATCH',
+          ticketId: id, title: 'Machine transferred to service station', machineId: machine.id,
+          machineName: machine.model, unit: machine.unit, line: 'Service Station', assignedTo: serviceMechanic.name,
+          issue: `${existingTicket.faultDetails || existingTicket.faultCategory}. Repair due: ${dueDate}. Senior mechanic follow-up required.`,
+        });
+      } catch (error) { console.warn('Service transfer Telegram alert failed:', error); }
+      return NextResponse.json({ success: true, message: 'Machine transferred to service station.', repairDueDate: dueDate });
+    }
+
+    if (updates.serviceFollowUpNote !== undefined) {
+      if (!existingTicket?.serviceTransferredAt) throw new TenantError('Service repair not found.', 404);
+      if (!canFollowServiceRepairs(db.sessionUser?.role)) throw new TenantError('Supervisor access required.', 403);
+      if (typeof updates.serviceFollowUpNote !== 'string' || !updates.serviceFollowUpNote.trim() || updates.serviceFollowUpNote.length > 1000) throw new TenantError('Enter a follow-up note under 1,000 characters.', 400);
+      await db.rawCollection('repair_tickets').updateOne({ _id: existingTicket._id }, { $set: {
+        serviceFollowUpNote: updates.serviceFollowUpNote.trim(), serviceFollowedUpAt: new Date().toISOString(), serviceFollowedUpBy: db.sessionUser!.name,
+      } });
+      return NextResponse.json({ success: true });
+    }
+    // Service transfer fields are authored only by the checked transfer operation.
+    for (const key of ['serviceMechanicId', 'serviceStation', 'serviceTransferredAt', 'repairDueDate', 'serviceHandoverNote', 'serviceFollowedUpAt', 'serviceFollowedUpBy']) delete updates[key];
 
     if (Array.isArray(updates.partsUsed) && updates.partsUsed.length) {
       if (!existingTicket?.machineId) {
