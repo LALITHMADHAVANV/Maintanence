@@ -27,13 +27,6 @@ export function MechanicCustodySection({ staff }: { staff: MechanicDuty[] }) {
 
   const visibleMechanics = useMemo(() => {
     let mechanics = [...roster];
-    repairs.forEach((repair) => {
-      const name = (repair.attendedBy || '').trim();
-      if (!name) return;
-      if (!mechanics.some((mechanic) => mechanic.name.toLowerCase() === name.toLowerCase() || mechanic.id.toLowerCase() === name.toLowerCase())) {
-        mechanics.push(userToMechanicDuty({ name, role: 'Line Sewing Mechanic', uid: `repair-history:${name.toLowerCase()}`, department: repair.line || 'Sewing Floor' }));
-      }
-    });
 
     if (currentRole === 'SENIOR_ELECTRICIAN') {
       mechanics = mechanics.filter((mechanic) => mechanic.trade === 'ELECTRICIAN' && !mechanic.role.toLowerCase().includes('senior'));
