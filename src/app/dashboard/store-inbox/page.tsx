@@ -33,8 +33,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
 import { ImportButton } from '@/components/import/ImportButton';
-import { normalizeRole, isTechnicalRole } from '@/lib/constants/roles';
+import { normalizeRole } from '@/lib/constants/roles';
 import { PartRequisition, SparePart, RequisitionStatus } from '@/types/cmms';
 import {
   subscribeRequisitions,
@@ -46,6 +47,7 @@ import {
   adjustPartStock,
 } from '@/lib/services/cmmsService';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
+import { MechanicCustodySection } from '@/components/mechanic/MechanicCustodySection';
 
 interface GatePassData {
   slipNo: string;
@@ -69,6 +71,8 @@ function StoreInboxContent() {
   const { user, role } = useAuth();
   const { showToast } = useToast();
   const searchParams = useSearchParams();
+  const currentRole = normalizeRole(user?.role || role);
+  const isStoreUser = currentRole === 'STORE_PERSON';
 
   const [requisitions, setRequisitions] = useState<PartRequisition[]>([]);
   const [parts, setParts] = useState<SparePart[]>([]);
@@ -113,8 +117,10 @@ function StoreInboxContent() {
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
           const staff = data.users.filter((u: any) => {
-            const nr = normalizeRole(u.role);
-            return isTechnicalRole(nr);
+            const normalizedRole = normalizeRole(u.role);
+            const mechanicDepartment = String(u.department || '').toLowerCase().includes('mechanic');
+            const mechanicRole = ['MECHANIC', 'SERVICE_MECHANIC', 'SENIOR_MECHANIC'].includes(normalizedRole);
+            return (mechanicRole || mechanicDepartment) && !['ADMIN', 'ASSET_MANAGER', 'STORE_PERSON', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(normalizedRole);
           });
           if (staff.length > 0) {
             setRegisteredStaff(staff.map(userToMechanicDuty));
@@ -211,6 +217,10 @@ function StoreInboxContent() {
 
   // Open Issue Confirmation Modal
   const handleOpenIssueModal = (req: PartRequisition) => {
+    if (!isStoreUser) {
+      showToast('Only Store users can issue parts.', 'error');
+      return;
+    }
     setActiveIssueReq(req);
     setIssueQty(req.quantity || 1);
     setOldPartReturned(true);
@@ -219,6 +229,10 @@ function StoreInboxContent() {
 
   // Execute Issue & Dispatch
   const handleConfirmIssue = async () => {
+    if (!isStoreUser) {
+      showToast('Only Store users can issue parts.', 'error');
+      return;
+    }
     if (!activeIssueReq) return;
     setIsSubmittingIssue(true);
 
@@ -270,12 +284,20 @@ function StoreInboxContent() {
 
   // Open Reject Modal
   const handleOpenRejectModal = (req: PartRequisition) => {
+    if (!isStoreUser) {
+      showToast('Only Store users can process indent actions.', 'error');
+      return;
+    }
     setActiveRejectReq(req);
     setRejectReason('Insufficient crib stock / duplicate request for same line stoppage.');
   };
 
   // Confirm Reject
   const handleConfirmReject = async () => {
+    if (!isStoreUser) {
+      showToast('Only Store users can process indent actions.', 'error');
+      return;
+    }
     if (!activeRejectReq) return;
     setIsSubmittingReject(true);
 
@@ -304,6 +326,17 @@ function StoreInboxContent() {
   // Submit Walk-In Urgent Indent & Immediate Issue
   const handleCreateWalkInIndent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isStoreUser) {
+      showToast('Only Store users can issue parts from the crib.', 'error');
+      return;
+    }
+    const requestingMechanic = activeStaffRoster.find(
+      (mechanic) => mechanic.name === walkInMechId || mechanic.id === walkInMechId
+    );
+    if (!requestingMechanic) {
+      showToast('Only a mechanic department user can be selected for a spare issue.', 'error');
+      return;
+    }
     if (!walkInPartId) {
       showToast('Please select a spare part from the catalog', 'error');
       return;
@@ -382,41 +415,16 @@ function StoreInboxContent() {
 
   return (
     <div className="space-y-6">
-      {/* ─── 1. TOP HERO HEADER ─────────────────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
-              <PackageCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-                  Mechanic Indent Receiving Desk
-                </h1>
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse flex items-center gap-1">
-                  <Zap className="w-3 h-3" />
-                  <span>Urgent Floor Indents</span>
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Live queue of urgent spare part orders placed by floor mechanics. Verify crib stock, validate scrap returns, and issue replacement parts directly.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap self-start md:self-auto shrink-0">
-          {['ADMIN', 'ASSET_MANAGER', 'STORE_PERSON'].includes(normalizeRole(user?.role || role)) && <ImportButton kind="indents" />}
-          <button
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+          {isStoreUser && <ImportButton kind="indents" />}
+          {isStoreUser && <button
             type="button"
             onClick={() => setIsWalkInModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Walk-In Issue / Urgent Indent</span>
-          </button>
-        </div>
+          </button>}
       </div>
 
       {/* ─── 2. KPI METRICS STRIP ─────────────────────────────────────────────── */}
@@ -481,6 +489,8 @@ function StoreInboxContent() {
           </div>
         </div>
       </div>
+
+      <MechanicCustodySection staff={registeredStaff.length > 0 ? registeredStaff : FACTORY_MECHANICS_ROSTER} />
 
       {/* ─── 4. SEARCH & STATUS CONTROLS BAR ───────────────────────────────────── */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
@@ -774,7 +784,7 @@ function StoreInboxContent() {
 
                 {/* Card Footer Actions */}
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  {isPending ? (
+                  {isPending && isStoreUser ? (
                     <>
                       <button
                         type="button"
@@ -793,6 +803,8 @@ function StoreInboxContent() {
                         <span>Issue &amp; Dispatch Part</span>
                       </button>
                     </>
+                  ) : isPending ? (
+                    <div className="text-[11px] text-slate-500">Awaiting Store processing</div>
                   ) : (
                     <>
                       <div className="text-[11px] text-slate-400">
@@ -1278,12 +1290,7 @@ function StoreInboxContent() {
 export default function StoreInboxPage() {
   return (
     <Suspense
-      fallback={
-        <div className="p-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-          <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <span>Loading mechanic indents queue...</span>
-        </div>
-      }
+      fallback={<PageLoadingIndicator label="Loading mechanic indents queue…" />}
     >
       <StoreInboxContent />
     </Suspense>

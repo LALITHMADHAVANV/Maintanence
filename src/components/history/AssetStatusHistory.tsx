@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/services/cmmsService';
 import type { AssetLogEntry } from '@/types/cmms';
 import { AssetStatusActivityList } from './AssetStatusActivityList';
+import { LoadingWaveMark } from '@/components/layout/PageLoadingIndicator';
 
 export function AssetStatusHistory({ machineId }: { machineId: string }) {
   const [logs, setLogs] = useState<AssetLogEntry[] | null>(null);
@@ -40,7 +41,7 @@ export function AssetStatusHistory({ machineId }: { machineId: string }) {
         )}
       </div>
       {failed ? <p role="alert" className="text-xs text-rose-700">Unable to load the asset activity log.</p>
-        : !statusChanges ? <p className="text-xs text-slate-500">Loading status changes…</p>
+        : !statusChanges ? <div role="status" aria-label="Please wait" className="flex justify-center py-3"><LoadingWaveMark size="xl" /></div>
         : statusChanges.length === 0 ? <p className="text-xs text-slate-500">No status changes have been recorded for this asset.</p>
         : <AssetStatusActivityList logs={statusChanges} />}
     </section>

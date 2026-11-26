@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDatabase, TenantError } from '@/lib/mongodb';
+import { normalizeRole } from '@/lib/constants/roles';
 import { SparePart } from '@/types/cmms';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,9 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
+    if (normalizeRole(db.sessionUser?.role) !== 'STORE_PERSON') {
+      throw new TenantError('Only Store users can create or manage stock records.', 403);
+    }
     part.company = db.companyName;
     part.companySlug = db.tenant;
 
@@ -63,6 +67,9 @@ export async function PATCH(req: Request) {
     }
 
     const db = await getDatabase(req);
+    if (normalizeRole(db.sessionUser?.role) !== 'STORE_PERSON') {
+      throw new TenantError('Only Store users can receive, issue, or adjust stock.', 403);
+    }
     const updatePayload = updates || {};
     if (typeof stock === 'number') {
       updatePayload.stock = stock;
@@ -95,6 +102,9 @@ export async function DELETE(req: Request) {
     }
 
     const db = await getDatabase(req);
+    if (normalizeRole(db.sessionUser?.role) !== 'STORE_PERSON') {
+      throw new TenantError('Only Store users can remove stock records.', 403);
+    }
     await db.collection('spare_parts').deleteOne({
       $or: [{ id: key }, { partId: key }],
     });

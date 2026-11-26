@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { assetHistoryHref } from '@/lib/historyNavigation';
 import {
   Wrench,
   ShieldAlert,
@@ -49,6 +48,7 @@ import {
 } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 import {
+  apiFetch,
   createBreakdownTicket,
   assignRepairTicket,
   resolveRepairTicket,
@@ -62,6 +62,7 @@ import { matchesUnit } from '@/lib/constants/units';
 import { WidgetDrilldownDrawer, DrillDownType, DrillDownMeta } from './WidgetDrilldownDrawer';
 import { MaintenanceMilestonesAndTasks } from './MaintenanceMilestonesAndTasks';
 import { LineAvailabilityWidget } from './LineAvailabilityWidget';
+import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
 
 interface SeniorMechanicDashboardProps {
   machines: Machine[];
@@ -88,6 +89,7 @@ export function SeniorMechanicDashboard({
   const { user, role } = useAuth();
   const { showToast } = useToast();
   const companySlug = (user?.companySlug || 'sahana').toLowerCase();
+  const [historyMachine, setHistoryMachine] = useState<Machine | null>(null);
 
   const isElectrician = role === 'SENIOR_ELECTRICIAN';
   const tradeFilter = isElectrician ? 'ELECTRICIAN' : 'MECHANIC';
@@ -151,7 +153,7 @@ export function SeniorMechanicDashboard({
   const [registeredTechs, setRegisteredTechs] = useState<MechanicDuty[]>([]);
 
   useEffect(() => {
-    fetch('/api/users')
+    apiFetch('/api/users')
       .then((r) => r.json())
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
@@ -168,21 +170,26 @@ export function SeniorMechanicDashboard({
 
   const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
 
-  // Floor technicians available for task dispatch (supervisor assigns floor technicians, NEVER himself)
+  // Floor technicians available for task dispatch (prioritizes floor technicians, falls back to all registered staff if none)
   const assignableTechnicians = useMemo(() => {
     const currentName = (user?.name || '').trim().toLowerCase();
-    return activeStaffRoster.filter((m) => {
-      const lower = m.role.toLowerCase();
+    const isSelf = (m: MechanicDuty) => {
       const mName = m.name.trim().toLowerCase();
-      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
+      return Boolean(currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName)));
+    };
+    const floorOnly = activeStaffRoster.filter((m) => {
+      const lower = m.role.toLowerCase();
       const isSeniorOrAdmin =
         lower.includes('senior') ||
         lower.includes('admin') ||
         lower.includes('supervisor') ||
         lower.includes('director') ||
         lower.includes('manager');
-      return !isSelf && !isSeniorOrAdmin;
+      return !isSelf(m) && !isSeniorOrAdmin;
     });
+    if (floorOnly.length > 0) return floorOnly;
+    const nonSelf = activeStaffRoster.filter((m) => !isSelf(m));
+    return nonSelf.length > 0 ? nonSelf : activeStaffRoster;
   }, [activeStaffRoster, user?.name]);
   const roster = useMemo(() => {
     return activeStaffRoster.filter((m) => {
@@ -983,7 +990,7 @@ export function SeniorMechanicDashboard({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => router.push(assetHistoryHref(companySlug, t.machineId || ''))}
+                                onClick={() => setHistoryMachine(machines.find((machine) => machine.id.toLowerCase() === (t.machineId || '').toLowerCase()) || null)}
                                 title="View Asset History"
                                 aria-label="View Asset History"
                                 className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
@@ -1620,6 +1627,11 @@ export function SeniorMechanicDashboard({
         ppmSchedules={ppmSchedules}
         parts={parts}
         requisitions={requisitions}
+      />
+      <AssetHistoryModal
+        machine={historyMachine}
+        isOpen={Boolean(historyMachine)}
+        onClose={() => setHistoryMachine(null)}
       />
     </div>
   );

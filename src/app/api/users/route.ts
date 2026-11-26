@@ -7,9 +7,16 @@ import { hashPassword } from '@/lib/auth';
 import { randomUUID } from 'node:crypto';
 import { canManageStaffAccount } from '@/lib/constants/roles';
 import { hasAllUnitsAccess } from '@/lib/constants/units';
+import { normalizeStaffLocation } from '@/lib/machineZone';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+function assignmentList(value: unknown, label: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 40 || value.some(item => typeof item !== 'string' || !item.trim() || item.length > 120)) throw new TenantError(`Select valid ${label}.`, 400);
+  return [...new Set(value.map(item => item.trim()))];
+}
 
 function getDefaultTitle(role: UserRole, companyName: string): string {
   switch (role) {
@@ -42,7 +49,7 @@ export async function GET(req: Request) {
 
     const fetchedUsers: UserProfile[] = users.map(({ _id, password, passwordHash, ...data }: any) => {
       const rawRole = (data.role || 'MECHANIC').toString().trim().toUpperCase() as UserRole;
-      return {
+      return normalizeStaffLocation({
         uid: data.uid || String(_id),
         name: data.name || 'Factory Staff',
         email: data.email || '',
@@ -54,12 +61,14 @@ export async function GET(req: Request) {
         employeeId: data.employeeId || '',
         unit: data.unit || 'All Units',
         zones: Array.isArray(data.zones) ? data.zones : (data.zone ? [data.zone] : []),
+        lines: Array.isArray(data.lines) ? data.lines : [],
+        teams: Array.isArray(data.teams) ? data.teams : data.department ? [data.department] : [],
         company: db.companyName,
         companySlug: db.tenant,
         status: data.status || 'ACTIVE',
         createdAt: data.createdAt,
         updatedAt: data.updatedAt,
-      };
+      }, db.tenant);
     });
 
     return NextResponse.json({ success: true, users: fetchedUsers, count: fetchedUsers.length });
@@ -77,7 +86,9 @@ export async function POST(req: Request) {
   try {
     const db = await getDatabase(req);
     const body = await req.json();
-    const { name, email, role, title, password, phone, department, employeeId, unit, zones, username } = body;
+    const { name, email, role, title, password, phone, department, employeeId, unit, zones, username, teams, lines } = body;
+    const teamAssignments = assignmentList(teams, 'teams');
+    const lineAssignments = assignmentList(lines, 'lines');
     if (!canManageStaffAccount(db.sessionUser!.role, String(role || ''))) return NextResponse.json({ error: 'You can manage technical staff only.' }, { status: 403 });
 
     if (!name || !email || !role) {
@@ -101,7 +112,8 @@ export async function POST(req: Request) {
 
     const finalTitle = title?.trim() || getDefaultTitle(cleanRole, db.companyName);
     const finalUnit = unit?.trim() || 'All Units';
-    const finalZones = hasAllUnitsAccess(finalUnit) ? [] : Array.isArray(zones) ? zones : (zones ? [zones] : []);
+    const staffLocation = normalizeStaffLocation({ unit: finalUnit, zones: hasAllUnitsAccess(finalUnit) ? [] : Array.isArray(zones) ? zones : (zones ? [zones] : []), ...(lineAssignments ? { lines: hasAllUnitsAccess(finalUnit) ? [] : lineAssignments } : {}) }, db.tenant);
+    const finalZones = staffLocation.zones;
     const finalEmpId = employeeId?.trim() || `EMP-${randomUUID()}`;
     const uid = `USR-${randomUUID()}`;
 
@@ -128,6 +140,8 @@ export async function POST(req: Request) {
             employeeId: finalEmpId,
             unit: finalUnit,
             zones: finalZones,
+            ...(teamAssignments ? { teams: teamAssignments } : {}),
+            ...(staffLocation.lines ? { lines: staffLocation.lines } : {}),
             company: db.companyName,
             companySlug: db.tenant,
             updatedAt: new Date().toISOString(),
@@ -155,6 +169,8 @@ export async function POST(req: Request) {
       employeeId: finalEmpId,
       unit: finalUnit,
       zones: finalZones,
+      teams: teamAssignments || (department?.trim() ? [department.trim()] : []),
+      ...(staffLocation.lines ? { lines: staffLocation.lines } : {}),
       company: db.companyName,
       companySlug: db.tenant,
       status: 'ACTIVE',
@@ -193,7 +209,9 @@ export async function PUT(req: Request) {
   try {
     const db = await getDatabase(req);
     const body = await req.json();
-    const { uid, email, name, role, title, department, phone, employeeId, unit, zones, status, password, username } = body;
+    const { uid, email, name, role, title, department, phone, employeeId, unit, zones, status, password, username, teams, lines } = body;
+    const teamAssignments = assignmentList(teams, 'teams');
+    const lineAssignments = assignmentList(lines, 'lines');
 
     if (!uid && !email) {
       return NextResponse.json({ error: 'User UID or email is required to update' }, { status: 400 });
@@ -238,11 +256,16 @@ export async function PUT(req: Request) {
     if (role !== undefined) updateDoc.role = (role as string).toUpperCase();
     if (title !== undefined) updateDoc.title = title.trim();
     if (department !== undefined) updateDoc.department = department.trim();
+    if (teamAssignments) updateDoc.teams = teamAssignments;
+    else if (department !== undefined) updateDoc.teams = [...new Set([department.trim(), ...(Array.isArray(existing.teams) ? existing.teams.filter((team: string) => team !== existing.department) : [])])].filter(Boolean);
     if (phone !== undefined) updateDoc.phone = phone.trim();
     if (employeeId !== undefined) updateDoc.employeeId = employeeId.trim();
     if (unit !== undefined) updateDoc.unit = unit.trim();
     if (zones !== undefined) updateDoc.zones = Array.isArray(zones) ? zones : [zones];
     if (hasAllUnitsAccess(updateDoc.unit || existing.unit)) updateDoc.zones = [];
+    const staffLocation = normalizeStaffLocation({ unit: updateDoc.unit || existing.unit, zones: updateDoc.zones || existing.zones || (existing.zone ? [existing.zone] : []), lines: lineAssignments || existing.lines || [] }, db.tenant);
+    if (staffLocation.zones) updateDoc.zones = staffLocation.zones;
+    if (staffLocation.lines) updateDoc.lines = staffLocation.lines;
     if (status !== undefined) updateDoc.status = status;
 
     if (password !== undefined && password !== '') {

@@ -10,9 +10,9 @@ const SeniorMechanicDashboard = dynamic(() => import('@/components/dashboard/Sen
 const MechanicDeskDashboard = dynamic(() => import('@/components/dashboard/MechanicDeskDashboard').then((module) => module.MechanicDeskDashboard));
 const StoreDashboard = dynamic(() => import('@/components/dashboard/StoreDashboard').then((module) => module.StoreDashboard));
 const ExecutiveDashboard = dynamic(() => import('@/components/dashboard/ExecutiveDashboard').then((module) => module.ExecutiveDashboard));
-import { matchesUnit, isUserAdmin, getUserScopedUnit, hasAllUnitsAccess } from '@/lib/constants/units';
+import { matchesUnit, getUserScopedUnit } from '@/lib/constants/units';
 import { normalizeRole } from '@/lib/constants/roles';
-import { Building } from 'lucide-react';
+import { useNav } from '@/context/NavContext';
 
 import {
   subscribeMachines,
@@ -42,8 +42,7 @@ export default function DashboardPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   // ─── Scoped Unit State ───────────────────────────────────────────────
-  const [unitSelection, setSelectedUnit] = useState<string | null>(null);
-  const selectedUnit = unitSelection ?? user?.unit ?? 'All Units';
+  const { selectedUnit } = useNav();
 
   // ─── Immediate local reactive subscriptions ─────────────────────────
   useEffect(() => {
@@ -104,13 +103,7 @@ export default function DashboardPage() {
   }, [user, activeRole]);
 
   // Multi-unit authority: ONLY Admin & CEO can access/switch all units
-  const isMultiUnitAuthority = isUserAdmin(activeRole) || hasAllUnitsAccess(user?.unit);
   const effectiveUnit = getUserScopedUnit(user, activeRole, selectedUnit);
-
-  // Unit machine count aggregates
-  const unit1Count = useMemo(() => machines.filter((m) => matchesUnit(m.unit, 'UNIT - 1')).length, [machines]);
-  const unit2Count = useMemo(() => machines.filter((m) => matchesUnit(m.unit, 'UNIT-2')).length, [machines]);
-  const allUnitsCount = machines.length;
 
   // Scoped data by unit - strictly categorized based on what unit they handle for all mechanics & personnel except admin
   const scopedMachines = useMemo(() => {
@@ -143,65 +136,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      {/* ─── UNIT DATA SCOPE BAR ────────────────────────────────────── */}
-      {isMultiUnitAuthority ? (
-        <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-              <Building className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-900">Plant Unit Filter:</span>
-                <span className="text-xs font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                  {selectedUnit === 'All Units' ? 'Entire Plant (All Units)' : selectedUnit}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-                  • {scopedMachines.length} Assets Loaded
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Switch unit views to inspect line telemetry, active breakdowns, and scheduled servicing per plant.
-              </p>
-            </div>
-          </div>
-
-          {/* Unit Dropdown Switcher */}
-          <div className="flex items-center gap-1.5 shrink-0 self-start md:self-auto">
-            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Switch:</span>
-            <select
-              value={selectedUnit}
-              onChange={(e) => setSelectedUnit(e.target.value)}
-              className="text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition shadow-2xs"
-              title="Switch Unit Filter"
-            >
-              <option value="All Units">All Units ({allUnitsCount})</option>
-              <option value="UNIT - 1">UNIT - 1 ({unit1Count})</option>
-              <option value="UNIT-2">UNIT-2 ({unit2Count})</option>
-            </select>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gradient-to-r from-indigo-50/90 via-blue-50/60 to-white border border-indigo-200 rounded-2xl p-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Building className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-black text-slate-900 flex items-center gap-2">
-                <span>Logged In Unit: {user?.unit || selectedUnit}</span>
-                <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.2 rounded-full font-bold">
-                  Unit Scoped Session
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Dashboard telemetry, breakdown tickets, and PPM tasks are filtered exclusively for your assigned facility ({scopedMachines.length} machinery assets).
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ─── DYNAMIC ROLE-BASED DASHBOARD RENDER ───────────────────────── */}
       {activeRole === 'SENIOR_MECHANIC' || activeRole === 'SENIOR_ELECTRICIAN' ? (
         <SeniorMechanicDashboard

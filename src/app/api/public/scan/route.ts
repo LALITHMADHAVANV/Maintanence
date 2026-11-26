@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCompanyDatabase, TenantError } from '@/lib/mongodb';
-import { Machine } from '@/types/cmms';
+import { Machine, RepairTicket } from '@/types/cmms';
 import { randomUUID } from 'node:crypto';
 import { sendTelegramAlert } from '@/lib/services/telegramService';
 
@@ -28,7 +28,15 @@ export async function GET(request: Request) {
       { projection: assetLabel }
     );
     if (!machine) return NextResponse.json({ error: 'Asset not found.' }, { status: 404 });
-    return NextResponse.json({ success: true, data: machine }, { headers: { 'Cache-Control': 'no-store' } });
+    const escapedMachineId = String(machine.id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const lastRepair = await db.collection<RepairTicket>('repair_tickets').findOne(
+      { machineId: { $regex: `^${escapedMachineId}$`, $options: 'i' } },
+      {
+        projection: { _id: 0, id: 1, machineId: 1, faultCategory: 1, faultDetails: 1, status: 1, reportedAt: 1, attendedBy: 1, actionTaken: 1, completedAt: 1, resolvedAt: 1 },
+        sort: { reportedAt: -1, _id: -1 },
+      },
+    );
+    return NextResponse.json({ success: true, data: machine, lastRepair }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (error instanceof TenantError) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });
@@ -108,6 +116,7 @@ export async function POST(request: Request) {
 async function reportBreakdown(companySlug: string, id: string, input: Record<string, unknown>) {
   const faultCategory = typeof input.faultCategory === 'string' ? input.faultCategory.trim() : '';
   const notes = typeof input.notes === 'string' ? input.notes.trim() : '';
+  const attendedBy = typeof input.attendedBy === 'string' && input.attendedBy.trim() ? input.attendedBy.trim().slice(0, 120) : null;
   const { urgency } = input;
   if (!faultCategory || faultCategory.length > 160 || notes.length > 1000 || (urgency !== 'CRITICAL' && urgency !== 'WARNING')) {
     return NextResponse.json({ error: 'Select a defect and severity, and keep notes under 1,000 characters.' }, { status: 400 });
@@ -127,7 +136,8 @@ async function reportBreakdown(companySlug: string, id: string, input: Record<st
       id: ticketId, machineId: machine.id, machineType: machine.typeName || machine.type,
       line: machine.currentLine, unit: machine.unit, company: company.name, companySlug: company.slug,
       reportedAt, reportedBy: 'Guest QR scan', faultCategory, faultDetails, urgency,
-      status: 'PENDING', attendedBy: null,
+      status: attendedBy ? 'ASSIGNED' : 'PENDING', attendedBy,
+      ...(attendedBy ? { assignedBy: 'QR Call Booking' } : {}),
     });
 
     try {

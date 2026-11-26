@@ -166,7 +166,12 @@ export function Navbar() {
             icon: Boxes,
           },
           {
-            label: 'Audit History',
+            label: 'Lease Assets',
+            href: '/dashboard/lease-assets',
+            icon: Package,
+          },
+          {
+            label: 'T&A',
             href: '/dashboard/history',
             icon: History,
           },
@@ -209,7 +214,12 @@ export function Navbar() {
             icon: Boxes,
           },
           {
-            label: 'Dispatch History',
+            label: 'Lease Assets',
+            href: '/dashboard/lease-assets',
+            icon: Package,
+          },
+          {
+            label: 'T&A',
             href: '/dashboard/history',
             icon: History,
           },
@@ -244,7 +254,7 @@ export function Navbar() {
             icon: Package,
           },
           {
-            label: 'Task History',
+            label: 'T&A',
             href: '/dashboard/history',
             icon: History,
           },
@@ -272,13 +282,6 @@ export function Navbar() {
             icon: LayoutGrid,
           },
           {
-            label: 'Pending Actions',
-            href: '/dashboard/pending-actions',
-            icon: Clock,
-            badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
-            badgeColor: 'bg-emerald-500 text-white',
-          },
-          {
             label: 'Process In-Charges',
             href: '/dashboard/mechanic-roster',
             icon: Activity,
@@ -298,6 +301,11 @@ export function Navbar() {
             icon: Boxes,
           },
           {
+            label: 'Lease Assets',
+            href: '/dashboard/lease-assets',
+            icon: Package,
+          },
+          {
             label: 'Asset Log',
             href: '/dashboard/asset-log',
             icon: ClipboardList,
@@ -310,7 +318,7 @@ export function Navbar() {
             badgeColor: 'bg-amber-100 text-amber-800',
           },
           {
-            label: 'Work History',
+            label: 'T&A',
             href: '/dashboard/history',
             icon: History,
           },
@@ -337,13 +345,6 @@ export function Navbar() {
           icon: LayoutGrid,
         },
         {
-          label: 'Pending Actions',
-          href: '/dashboard/pending-actions',
-          icon: Clock,
-          badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
-          badgeColor: 'bg-emerald-500 text-white',
-        },
-        {
           label: 'Process In-Charges',
           href: '/dashboard/mechanic-roster',
           icon: Activity,
@@ -357,15 +358,16 @@ export function Navbar() {
           badge: pendingPpmCount > 0 ? pendingPpmCount : null,
           badgeColor: 'bg-amber-100 text-amber-800',
         },
-        {
-          label: 'Active TNAs',
-          href: '/dashboard/active-tna',
-          icon: Layers,
-        },
+        { label: 'T&A', href: '/dashboard/history', icon: Layers },
         {
           label: 'Asset Master',
           href: '/dashboard/asset-types',
           icon: Boxes,
+        },
+        {
+          label: 'Lease Assets',
+          href: '/dashboard/lease-assets',
+          icon: Package,
         },
         {
           label: 'Asset Registration',

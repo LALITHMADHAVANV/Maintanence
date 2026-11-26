@@ -3,7 +3,8 @@ import { MongoBulkWriteError } from 'mongodb';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { normalizeRole } from '@/lib/constants/roles';
 import { buildImportRecords, importDefinitions, ImportKind, ImportValidationError, parseImportCsv } from '@/lib/imports';
-import type { SparePart } from '@/types/cmms';
+import type { Machine, SparePart } from '@/types/cmms';
+import { normalizeMachineLocation } from '@/lib/machineZone';
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
     if (typeof body.kind !== 'string' || !Object.hasOwn(importDefinitions, body.kind)) throw new ImportValidationError('Select a valid import type.');
     const kind = body.kind as ImportKind;
     const role = normalizeRole(db.sessionUser?.role);
-    const allowed = kind === 'assets' ? ['ADMIN', 'ASSET_MANAGER', 'HEAD_MECHANIC_MANAGER'] : ['ADMIN', 'ASSET_MANAGER', 'HEAD_MECHANIC_MANAGER', 'STORE_PERSON'];
+    const allowed = kind === 'assets' ? ['ADMIN', 'ASSET_MANAGER', 'HEAD_MECHANIC_MANAGER'] : ['STORE_PERSON'];
     if (!allowed.includes(role)) throw new TenantError('Your role cannot import these records.', 403);
     if (typeof body.csv !== 'string' || Buffer.byteLength(body.csv, 'utf8') > 2 * 1024 * 1024) throw new ImportValidationError('Choose a CSV file up to 2 MB.');
     const rows = parseImportCsv(body.csv, kind);
@@ -20,7 +21,14 @@ export async function POST(req: Request) {
     const parts = storedParts.map(part => ({ ...part, partId: part.partId || part.id || '' }));
     const records = buildImportRecords(kind, rows, parts, role);
     const definition = importDefinitions[kind];
-    const documents = records.map(record => ({ ...record, company: db.companyName, companySlug: db.tenant }));
+    const documents = records.map((record, index) => {
+      if (kind === 'assets') {
+        const asset = record as Machine;
+        const location = normalizeMachineLocation({ ...asset, currentLine: rows[index].currentLine || '' }, db.tenant);
+        return { ...location, currentLine: location.currentLine || asset.currentLine, company: db.companyName, companySlug: db.tenant };
+      }
+      return { ...record, company: db.companyName, companySlug: db.tenant };
+    });
     const collection = db.collection(definition.collection);
     const ids = documents.map(document => String(Reflect.get(document, definition.key)));
     const collation = { locale: 'en', strength: 2 };
@@ -38,7 +46,7 @@ export async function POST(req: Request) {
         }
       }
     }
-    const columns = kind === 'parts' && rows[0].sNo ? ['sNo', 'name', 'machineType', 'unitCost', 'stock', ...(rows.some(row => 'vendor' in row) ? ['vendor'] : [])] : Object.keys(rows[0]);
+    const columns = kind === 'parts' && rows[0].sNo ? ['sNo', 'name', 'machineType', 'unitCost', 'stock', ...(rows.some(row => 'vendor' in row) ? ['vendor'] : []), ...(rows.some(row => 'purchaseDate' in row) ? ['purchaseDate'] : [])] : Object.keys(rows[0]);
     if (body.preview === true) return NextResponse.json({ success: true, count: records.length, existing, columns, rows: rows.slice(0, 5) });
     // A unique identity makes repeated files and concurrent imports safe.
     await collection.createIndex({ [definition.key]: 1 }, {
@@ -46,9 +54,16 @@ export async function POST(req: Request) {
     });
     const result = await collection.bulkWrite(documents.map(document => {
       const update: { $setOnInsert: Record<string, unknown>; $set?: Record<string, unknown> } = { $setOnInsert: { ...document } };
-      if (kind === 'parts' && Reflect.get(document, 'vendor')) {
-        delete update.$setOnInsert.vendor;
-        update.$set = { vendor: Reflect.get(document, 'vendor') };
+      if (kind === 'parts') {
+        const updates: Record<string, unknown> = {};
+        for (const key of ['vendor', 'purchaseDate']) {
+          const value = Reflect.get(document, key);
+          if (typeof value === 'string' && value.trim()) {
+            delete update.$setOnInsert[key];
+            updates[key] = value.trim();
+          }
+        }
+        if (Object.keys(updates).length) update.$set = updates;
       }
       return { updateOne: {
         filter: identityFilter([String(Reflect.get(document, definition.key))]), update, upsert: true, collation,

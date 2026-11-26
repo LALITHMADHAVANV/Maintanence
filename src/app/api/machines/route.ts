@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { Machine } from '@/types/cmms';
+import { normalizeMachineLocation } from '@/lib/machineZone';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const withoutMongoId = (document: object) => Object.fromEntries(Object.entries(document).filter(([key]) => key !== '_id'));
+const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export async function GET(req: Request) {
   try {
@@ -17,16 +21,16 @@ export async function GET(req: Request) {
         id: { $regex: new RegExp(`^${escapedId}$`, 'i') },
       });
       if (single) {
-        const { _id, ...clean } = single as any;
+        const clean = withoutMongoId(normalizeMachineLocation(single, db.tenant));
         return NextResponse.json({ success: true, data: clean });
       }
       return NextResponse.json({ success: false, error: 'Machine not found' }, { status: 404 });
     }
 
     const machines = await db.collection<Machine>('machines').find({}).toArray();
-    const cleanMachines = (machines || []).map(({ _id, ...m }: any) => ({
-      ...m,
-      company: m.company || db.companyName,
+    const cleanMachines = (machines || []).map(machine => ({
+      ...withoutMongoId(normalizeMachineLocation(machine, db.tenant)),
+      company: machine.company || db.companyName,
       companySlug: db.tenant,
     }));
 
@@ -36,20 +40,21 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
     }
     console.error('API /machines GET error:', err);
-    return NextResponse.json({ error: (err as any)?.message || 'Failed to fetch machines' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(err, 'Failed to fetch machines') }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const machine: Machine = await req.json();
+    let machine: Machine = await req.json();
     if (!machine.id) {
       return NextResponse.json({ error: 'Machine ID is required' }, { status: 400 });
     }
 
     const db = await getDatabase(req);
     machine.company = db.companyName;
-    (machine as any).companySlug = db.tenant;
+    machine.companySlug = db.tenant;
+    machine = normalizeMachineLocation(machine, db.tenant);
 
     await db.collection('machines').updateOne(
       { id: machine.id },
@@ -67,7 +72,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
     }
     console.error('API /machines POST error:', err);
-    return NextResponse.json({ error: (err as any)?.message || 'Failed to save machine' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(err, 'Failed to save machine') }, { status: 500 });
   }
 }
 
@@ -78,8 +83,17 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Machine ID and updates are required' }, { status: 400 });
     }
 
-    const { _id, ...safeUpdates } = updates;
+    const safeUpdates = { ...updates };
+    delete safeUpdates._id;
     const db = await getDatabase(req);
+    const existing = await db.collection<Machine>('machines').findOne({ id });
+    if (existing) {
+      const location = normalizeMachineLocation({ ...existing, ...safeUpdates }, db.tenant);
+      if (location.zone !== undefined) safeUpdates.zone = location.zone;
+      if (location.currentLine !== existing.currentLine || 'currentLine' in safeUpdates) safeUpdates.currentLine = location.currentLine;
+      if (location.area !== existing.area) safeUpdates.area = location.area;
+      if (location.location !== existing.location) safeUpdates.location = location.location;
+    }
 
     const result = await db.collection('machines').updateOne(
       { id },
@@ -96,7 +110,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
     }
     console.error('API /machines PATCH error:', err);
-    return NextResponse.json({ error: (err as any)?.message || 'Failed to update machine' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(err, 'Failed to update machine') }, { status: 500 });
   }
 }
 
@@ -120,6 +134,6 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
     }
     console.error('API /machines DELETE error:', err);
-    return NextResponse.json({ error: (err as any)?.message || 'Failed to delete machine' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(err, 'Failed to delete machine') }, { status: 500 });
   }
 }

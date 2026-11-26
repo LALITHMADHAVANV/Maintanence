@@ -30,6 +30,7 @@ export interface BulkQrAsset {
   model?: string;
   type?: string;
   typeName?: string;
+  category?: string;
   unit?: string;
   zone?: string;
   currentLine?: string;
@@ -103,6 +104,7 @@ export function BulkQrPrintModal({
   const [rangeEnd, setRangeEnd] = useState<number>(() => Math.min(assets.length, 34));
 
   // Filters
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [unitFilter, setUnitFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
   const [lineFilter, setLineFilter] = useState<string>('ALL');
@@ -144,8 +146,23 @@ export function BulkQrPrintModal({
     };
   }, [isOpen]);
 
-  const availableUnits = useMemo(() => locationChoices(assets, 'unit'), [assets]);
-  const unitAssets = useMemo(() => assets.filter((asset) => !unitFilter || normalizeUnit(asset.unit) === unitFilter), [assets, unitFilter]);
+  const availableCategories = useMemo(() => {
+    const categories = new Map<string, string>();
+    assets.forEach((asset) => {
+      const value = asset.category?.trim();
+      if (!value) return;
+      const key = value.toUpperCase();
+      const label = ({ MACHINE: 'Machines', FURNITURE: 'Furniture', UTILITY: 'Utilities', VEHICLE: 'Vehicles', APPLIANCE: 'Appliances' } as Record<string, string>)[key] || value;
+      if (!categories.has(key)) categories.set(key, label);
+    });
+    return [...categories].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [assets]);
+  const categoryAssets = useMemo(
+    () => assets.filter((asset) => categoryFilter === 'ALL' || (asset.category || '').trim().toUpperCase() === categoryFilter),
+    [assets, categoryFilter],
+  );
+  const availableUnits = useMemo(() => locationChoices(categoryAssets, 'unit'), [categoryAssets]);
+  const unitAssets = useMemo(() => categoryAssets.filter((asset) => !unitFilter || normalizeUnit(asset.unit) === unitFilter), [categoryAssets, unitFilter]);
   const availableZones = useMemo(() => locationChoices(unitAssets, 'zone'), [unitAssets]);
   const locationAssets = useMemo(() => unitAssets.filter((asset) => !zoneFilter || normalizeUnit(asset.zone) === zoneFilter), [unitAssets, zoneFilter]);
 
@@ -645,7 +662,7 @@ export function BulkQrPrintModal({
 
             </div>
 
-            {/* Row 2: Sticker Format Selector + Density + Line Filter */}
+            {/* Row 2: Sticker Format Selector + Category / Location Filters */}
             <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-200/80">
               
               {/* Left: Sticker Format Pill Buttons */}
@@ -689,6 +706,27 @@ export function BulkQrPrintModal({
                     QR + Asset Tag
                   </button>
                 </div>
+
+                <label className="ml-2 flex items-center gap-1 text-[11px] font-bold text-slate-600">
+                  Category:
+                  <select
+                    value={categoryFilter}
+                    onChange={(event) => {
+                      setCategoryFilter(event.target.value);
+                      setUnitFilter('');
+                      setZoneFilter('');
+                      setLineFilter('ALL');
+                    }}
+                    className="h-7 max-w-40 cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-slate-800 shadow-2xs"
+                  >
+                    <option value="ALL">All Categories ({assets.length})</option>
+                    {availableCategories.map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label} ({assets.filter((asset) => (asset.category || '').trim().toUpperCase() === key).length})
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
                 <label className="ml-2 flex items-center gap-1 text-[11px] font-bold text-slate-600">
                   Unit:

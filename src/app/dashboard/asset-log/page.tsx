@@ -1,6 +1,7 @@
 'use client';
 
 import { AssetStatusActivityList } from '@/components/history/AssetStatusActivityList';
+import { PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -41,7 +42,6 @@ import {
   updateMachineStatus,
 } from '@/lib/services/cmmsService';
 import {
-  CLIENT_ZONES,
   CLIENT_LINES,
   ClientZone,
   ClientLine,
@@ -57,7 +57,7 @@ import { LineAvailabilityWidget } from '@/components/dashboard/LineAvailabilityW
 import { CameraScannerModal } from '@/components/scan/CameraScannerModal';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { matchesUnit, isUserAdmin, getUserScopedUnit, getZonesForUnit } from '@/lib/constants/units';
 
 function AssetLogContent() {
   const { user, role } = useAuth();
@@ -110,6 +110,8 @@ function AssetLogContent() {
     return machines.filter((m) => matchesUnit(m.unit, effectiveUnit));
   }, [machines, isAdmin, selectedUnit, effectiveUnit]);
 
+  const availableZones = [...new Set([...baseMachines.map(getMachineZone), ...getZonesForUnit(effectiveUnit, user?.companySlug).map(zone => zone.id)])].sort();
+
   // Scoped asset logs filtered by unit scope
   const scopedAssetLogs = useMemo(() => {
     if (isAdmin && selectedUnit === 'ALL') return assetLogs;
@@ -127,7 +129,7 @@ function AssetLogContent() {
   // Reassign Zone/Line Modal State
   const [isReassignModalOpen, setIsReassignModalOpen] = useState<boolean>(false);
   const [targetMachineForReassign, setTargetMachineForReassign] = useState<Machine | null>(null);
-  const [reassignZone, setReassignZone] = useState<ClientZone>('Zone 1');
+  const [reassignZone, setReassignZone] = useState<ClientZone>(getZonesForUnit(user?.unit, user?.companySlug)[0]?.id || 'NETHAJI');
   const [reassignLine, setReassignLine] = useState<ClientLine>('Line 01');
   const [reassignStation, setReassignStation] = useState<string>('Station 01');
 
@@ -137,7 +139,7 @@ function AssetLogContent() {
 
   // Add Extra Machine Modal State
   const [isAddExtraModalOpen, setIsAddExtraModalOpen] = useState<boolean>(false);
-  const [extraZone, setExtraZone] = useState<ClientZone>('Zone 1');
+  const [extraZone, setExtraZone] = useState<ClientZone>(getZonesForUnit(user?.unit, user?.companySlug)[0]?.id || 'NETHAJI');
   const [extraLine, setExtraLine] = useState<ClientLine>('Line 01');
   const [extraMachineId, setExtraMachineId] = useState<string>('');
   const [extraMachineBrand, setExtraMachineBrand] = useState<string>('Juki');
@@ -332,7 +334,7 @@ function AssetLogContent() {
       zone: extraZone,
       line: extraLine,
       status: extraMachineStatus,
-      unit: selectedUnit !== 'ALL' ? selectedUnit : user?.unit || 'Unit 1',
+      unit: user?.companySlug === 'sahana' && extraZone === 'PEACOCK' ? 'UNIT-2' : selectedUnit !== 'ALL' ? selectedUnit : user?.unit || 'UNIT - 1',
       changedBy: changedByName,
     });
 
@@ -432,77 +434,10 @@ function AssetLogContent() {
     });
   }, [baseMachines, selectedZone, selectedLine, selectedStatus, searchQuery]);
 
-  // Overall counts
-  const totalCount = baseMachines.length;
-  const activeCount = baseMachines.filter((m) => m.status === 'ACTIVE').length;
-  const idleCount = baseMachines.filter((m) => m.status === 'IDLE' || m.status === 'BUFFER').length;
-  const breakdownCount = baseMachines.filter(
-    (m) => m.status === 'BREAKDOWN' || m.status === 'UNDER_MAINTENANCE'
-  ).length;
-
   return (
     <div className="space-y-6 pb-16 animate-fade-in">
-      {/* ─── 1. TOP HEADER & QUICK STATS ─── */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-700 to-teal-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20">
-            <Layers className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Senior Mechanic Asset Log
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 flex items-center gap-1">
-                <Radio className="w-2.5 h-2.5 text-indigo-600 animate-pulse" />
-                Live Machine Dispatch
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Change machine Active ⇋ Idle status instantly on Enter &amp; monitor the 8 Zones × 8 Lines availability report
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setSoundEnabled((prev) => !prev)}
-            title={soundEnabled ? 'Mute audio feedback chime' : 'Enable audio feedback chime'}
-            className={`p-2 rounded-xl text-xs font-semibold transition border cursor-pointer flex items-center gap-1.5 ${
-              soundEnabled
-                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                : 'bg-slate-100 border-slate-200 text-slate-500'
-            }`}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            <span className="hidden sm:inline">{soundEnabled ? 'Sound On' : 'Muted'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedZone !== 'ALL') setExtraZone(selectedZone);
-              if (selectedLine !== 'ALL') setExtraLine(selectedLine);
-              setIsAddExtraModalOpen(true);
-            }}
-            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Extra Machine</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsCameraModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <Camera className="w-3.5 h-3.5" />
-            <span>Camera Scanner</span>
-          </button>
-        </div>
-      </div>
-
+      {!isAdmin && (
+      <>
       {/* ─── 2. INSTANT MACHINE DISPATCH STATION (REPLACED TOGGLE WITH DUAL DISPATCH & ACTION SELECTOR) ─── */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 text-white shadow-xl shadow-indigo-950/25 border border-indigo-500/20">
         <div className="relative z-10 space-y-3.5">
@@ -672,25 +607,27 @@ function AssetLogContent() {
           )}
         </div>
       </div>
+      </>
+      )}
 
       {/* ─── 3. THE 8-ZONE × 8-LINE AVAILABILITY REPORT WIDGET ─── */}
       <LineAvailabilityWidget
         machines={baseMachines}
-        selectedZone={selectedZone === 'ALL' ? 'Zone 1' : selectedZone}
+        selectedZone={selectedZone}
         selectedLine={selectedLine}
         onSelectZoneLine={(zone, line) => {
           setSelectedZone(zone);
           setSelectedLine(line);
         }}
-        onQuickToggleMachine={(id) => {
+        onQuickToggleMachine={!isAdmin ? (id) => {
           const mach = baseMachines.find((m) => m.id === id);
           if (mach) handleRowToggle(mach);
-        }}
-        onAddExtraMachine={(zone) => {
+        } : undefined}
+        onAddExtraMachine={!isAdmin ? (zone) => {
           setExtraZone(zone);
           if (selectedLine !== 'ALL') setExtraLine(selectedLine);
           setIsAddExtraModalOpen(true);
-        }}
+        } : undefined}
       />
 
       {/* ─── 4. ASSET LOG TABS & CONTROLS ─── */}
@@ -754,8 +691,8 @@ function AssetLogContent() {
               onChange={(e) => setSelectedZone(e.target.value as any)}
               className="px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
-              <option value="ALL">All 8 Zones</option>
-              {CLIENT_ZONES.map((z) => (
+              <option value="ALL">All Zones</option>
+              {availableZones.map((z) => (
                 <option key={z} value={z}>
                   {z}
                 </option>
@@ -803,7 +740,7 @@ function AssetLogContent() {
         </div>
 
         {/* ─── BATCH ACTION BAR (if rows selected) ─── */}
-        {selectedMachineIds.length > 0 && (
+        {!isAdmin && selectedMachineIds.length > 0 && (
           <div className="p-3 bg-indigo-50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-3 text-xs">
             <span className="font-bold text-indigo-900">
               {selectedMachineIds.length} machines selected:
@@ -840,7 +777,7 @@ function AssetLogContent() {
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-3 w-10 text-center">
+                  {!isAdmin && <th className="py-3 px-3 w-10 text-center">
                     <button
                       type="button"
                       onClick={() => {
@@ -859,19 +796,19 @@ function AssetLogContent() {
                         <Square className="w-4 h-4" />
                       )}
                     </button>
-                  </th>
+                  </th>}
                   <th className="py-3 px-3">Machine / Asset ID</th>
                   <th className="py-3 px-3">Zone &amp; Line</th>
                   <th className="py-3 px-3">Brand &amp; Type</th>
                   <th className="py-3 px-3">Current Status</th>
-                  <th className="py-3 px-3 text-center">Status Action (Idle / Move to active)</th>
+                  {!isAdmin && <th className="py-3 px-3 text-center">Status Action (Idle / Move to active)</th>}
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredMachines.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={isAdmin ? 5 : 7} className="py-12 text-center text-slate-400">
                       No machines match the selected filter criteria.
                     </td>
                   </tr>
@@ -893,7 +830,7 @@ function AssetLogContent() {
                         }`}
                       >
                         {/* Checkbox */}
-                        <td className="py-3 px-3 text-center">
+                        {!isAdmin && <td className="py-3 px-3 text-center">
                           <button
                             type="button"
                             onClick={() => {
@@ -911,11 +848,11 @@ function AssetLogContent() {
                               <Square className="w-4 h-4" />
                             )}
                           </button>
-                        </td>
+                        </td>}
 
                         {/* ID & Name */}
                         <td className="py-3 px-3">
-                          <div className="font-mono font-bold text-slate-900 text-sm">
+                          <div className="block font-mono font-bold text-slate-900 text-sm">
                             {machine.id}
                           </div>
                           <div className="text-[11px] text-slate-500 line-clamp-1">
@@ -972,7 +909,7 @@ function AssetLogContent() {
                         </td>
 
                         {/* Status Dropdown: "idle" and "Move to active" */}
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                        {!isAdmin && <td className="py-3 px-3 text-center whitespace-nowrap">
                           <div className="inline-flex items-center justify-center">
                             <div className="relative inline-block text-left">
                               <select
@@ -1007,7 +944,7 @@ function AssetLogContent() {
                               </div>
                             </div>
                           </div>
-                        </td>
+                        </td>}
 
                         {/* Row Actions */}
                         <td className="py-3 px-3 text-right whitespace-nowrap">
@@ -1100,14 +1037,14 @@ function AssetLogContent() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Destination Zone (Client Facility 1–8) *
+                  Destination Zone *
                 </label>
                 <select
                   value={reassignZone}
                   onChange={(e) => setReassignZone(e.target.value as ClientZone)}
                   className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {CLIENT_ZONES.map((z) => (
+                  {availableZones.map((z) => (
                     <option key={z} value={z}>
                       {z}
                     </option>
@@ -1179,6 +1116,7 @@ function AssetLogContent() {
           setMachineToEdit(null);
         }}
         asset={machineToEdit}
+        canChangeStatus={!isAdmin}
         onSave={(updated) => {
           setMachines((prev) =>
             prev.map((m) => (m.id === updated.id || m.id === machineToEdit?.id ? updated : m))
@@ -1231,7 +1169,7 @@ function AssetLogContent() {
                     onChange={(e) => setExtraZone(e.target.value as ClientZone)}
                     className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    {CLIENT_ZONES.map((z) => (
+                    {availableZones.map((z) => (
                       <option key={z} value={z}>
                         {z}
                       </option>
@@ -1368,14 +1306,7 @@ function AssetLogContent() {
 export default function AssetLogPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center space-y-3">
-            <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs font-semibold text-slate-600">Loading Asset Log...</p>
-          </div>
-        </div>
-      }
+      fallback={<PageLoadingIndicator label="Loading Asset Log…" />}
     >
       <AssetLogContent />
     </Suspense>

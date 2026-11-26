@@ -15,13 +15,10 @@ import {
   MapPin,
   Tag,
   ShieldCheck,
-  Loader2,
   History,
-  Pencil,
   UserCheck,
 } from 'lucide-react';
-import { EditAssetModal } from '@/components/asset/EditAssetModal';
-import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
+import { Machine, FloorLine, RepairTicket, RepairUrgency } from '@/types/cmms';
 import {
   apiFetch,
   createBreakdownTicket,
@@ -33,14 +30,16 @@ import { useAuth } from '@/context/AuthContext';
 import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
 import { formatAssetLocation } from '@/lib/formatters';
 import { matchesUnit } from '@/lib/constants/units';
+import { isTechnicalRole } from '@/lib/constants/roles';
 import { canonicalCompanySlug } from '@/lib/companyIdentity';
+import { LoadingWaveMark, PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
 
 function MobileScanContent() {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const expected = (typeof window !== 'undefined' ? window.location.pathname : pathname).match(/^\/([^/]+)\/scan\//)?.[1]?.toLowerCase() || searchParams.get('company');
-  if (isLoading) return <p className="p-8">Opening asset scanner...</p>;
+  if (isLoading) return <PageLoadingIndicator />;
   if (user && expected && canonicalCompanySlug(expected) !== canonicalCompanySlug(user.companySlug)) return <div className="p-8"><h1>Different company workspace</h1><p>Sign in with an account belonging to this asset’s company.</p><Link href="/login">Go to sign in</Link></div>;
   return <ScanContent companySlug={canonicalCompanySlug(expected || user?.companySlug)} />;
 }
@@ -54,10 +53,10 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   const { user, role } = useAuth();
 
   const [machine, setMachine] = useState<Machine | null>(null);
+  const [lastRepair, setLastRepair] = useState<RepairTicket | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'report' | 'relocate'>('report');
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [assetHistoryCount, setAssetHistoryCount] = useState<number>(0);
 
   // Breakdown Form
@@ -91,12 +90,12 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   // Fetch registered mechanics / technicians
   useEffect(() => {
     if (!user) return;
-    fetch('/api/users')
+    apiFetch('/api/users')
       .then((r) => r.json())
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
           const techs = data.users.filter((u: any) =>
-            ['MECHANIC', 'ELECTRICIAN', 'SENIOR_MECHANIC', 'SENIOR_ELECTRICIAN'].includes((u.role || '').toUpperCase())
+            isTechnicalRole(u.role) && u.status !== 'INACTIVE'
           );
           setRegisteredTechs(techs);
         }
@@ -132,6 +131,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
     const controller = new AbortController();
     setIsLoading(true);
     setMachine(null);
+    setLastRepair(null);
     setLoadError('');
     if (!companySlug) {
       setLoadError('This QR code is missing its company. Sign in to your company workspace and scan again.');
@@ -152,6 +152,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
         if (!data.data) throw new Error('The server returned no asset details. Please try again.');
         if (controller.signal.aborted) return;
         setMachine(data.data);
+        if (data.lastRepair) setLastRepair(data.lastRepair);
         setTargetLine(data.data.currentLine);
         setTargetStation(data.data.stationNo);
       })
@@ -164,13 +165,17 @@ function ScanContent({ companySlug }: { companySlug: string }) {
 
   useEffect(() => {
     setAssetHistoryCount(0);
-    if (!user) return;
+    setLastRepair(null);
+    if (!user || !machine) return;
     return subscribeRepairs((repairs) => {
-      setAssetHistoryCount(repairs.filter(
+      const machineRepairs = repairs.filter(
         (r) => r.machineId?.toLowerCase() === machineId.toLowerCase()
-      ).length);
+      );
+      machineRepairs.sort((a, b) => new Date(b.reportedAt || 0).getTime() - new Date(a.reportedAt || 0).getTime());
+      setAssetHistoryCount(machineRepairs.length);
+      setLastRepair(machineRepairs[0] || null);
     });
-  }, [machineId, user]);
+  }, [machine?.id, machineId, user]);
 
   const handleBreakdownSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,11 +267,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
 
       showToast(`Machine ${machine.id} relocated to ${targetLine} (${targetStation})`, 'success');
       setRelocateReason('');
-      if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
-        router.push('/dashboard/floor-tracker');
-      } else {
-        router.push('/dashboard');
-      }
+      router.push('/dashboard');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to relocate machine', 'error');
       console.error(err);
@@ -278,10 +279,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center p-4">
-        <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Scanning Asset Tag...</p>
-        </div>
+        <div className="text-center"><LoadingWaveMark size="xl" /></div>
       </div>
     );
   }
@@ -310,7 +308,6 @@ function ScanContent({ companySlug }: { companySlug: string }) {
   }
 
   const isDown = machine.status === 'BREAKDOWN';
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col p-4 sm:p-6 antialiased selection:bg-indigo-500 selection:text-white">
       {/* Mobile Top Header with Prominent History Button */}
@@ -323,18 +320,8 @@ function ScanContent({ companySlug }: { companySlug: string }) {
           <span>{!user ? 'Sign in' : role === 'CEO' ? 'Executive Dashboard' : 'Maintenance Dashboard'}</span>
         </Link>
 
-        {/* Top Actions: Edit Button + History Button + Live Status */}
+        {/* Top Actions: History Button + Live Status */}
         {user && <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsEditModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
-            title="Edit this asset's specifications, location, and operational details"
-          >
-            <Pencil className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Edit Asset</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setIsHistoryModalOpen(true)}
@@ -393,22 +380,14 @@ function ScanContent({ companySlug }: { companySlug: string }) {
               >
                 {machine.status}
               </span>
-              {user && <><button
-                type="button"
-                onClick={() => setIsEditModalOpen(true)}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Pencil className="w-3 h-3" />
-                <span>Edit Details</span>
-              </button>
-              <button
+              {user && <button
                 type="button"
                 onClick={() => setIsHistoryModalOpen(true)}
                 className="text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <History className="w-3 h-3" />
                 <span>Timeline ({assetHistoryCount})</span>
-              </button></>}
+              </button>}
             </div>
           </div>
 
@@ -444,6 +423,45 @@ function ScanContent({ companySlug }: { companySlug: string }) {
             </div>
           )}
         </div>
+
+        {/* Latest repair shown directly from the scanned asset QR */}
+        <section className="border-b border-slate-200 bg-white p-4 sm:p-5" aria-labelledby="qr-repair-title">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
+              <Wrench className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 id="qr-repair-title" className="text-sm font-bold text-slate-900">Last repair history</h2>
+              <p className="text-[11px] text-slate-500">Most recent repair record linked to {machine.id}</p>
+            </div>
+          </div>
+          {lastRepair ? (
+            <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">{lastRepair.faultCategory || 'Repair work order'}</h3>
+                  <p className="mt-1 text-[11px] text-slate-600">{lastRepair.faultDetails || 'No issue details recorded.'}</p>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                  {lastRepair.status?.replaceAll('_', ' ') || 'RECORDED'}
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-200 pt-2 text-[11px] sm:grid-cols-2">
+                <div>
+                  <span className="text-slate-500">Repaired by</span>
+                  <p className="font-semibold text-slate-800">{lastRepair.attendedBy || 'Not recorded'}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500">Repair date</span>
+                  <p className="font-semibold text-slate-800">{lastRepair.completedAt || lastRepair.resolvedAt || lastRepair.reportedAt ? new Date(lastRepair.completedAt || lastRepair.resolvedAt || lastRepair.reportedAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' }) : 'Not recorded'}</p>
+                </div>
+                {lastRepair.actionTaken && <div className="sm:col-span-2"><span className="text-slate-500">Work performed</span><p className="font-semibold text-slate-800">{lastRepair.actionTaken}</p></div>}
+              </div>
+            </article>
+          ) : (
+            <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">No repair history is recorded for this asset.</p>
+          )}
+        </section>
 
         {/* Action Tabs: Report vs Relocate */}
         <div className="flex border-b border-slate-200 text-xs font-bold bg-slate-50">
@@ -742,15 +760,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
         onClose={() => setIsHistoryModalOpen(false)}
       />
 
-      {/* Edit Asset Information Modal */}
-      <EditAssetModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        asset={machine}
-        onSave={(updated) => {
-          setMachine(updated);
-        }}
-      /></>}
+      </>}
     </div>
   );
 }
@@ -758,14 +768,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
 export default function MobileScanPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-600">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-          <div className="text-sm font-semibold text-slate-800">
-            Loading Asset QR Record...
-          </div>
-        </div>
-      }
+      fallback={<PageLoadingIndicator label="Loading Asset QR Record…" />}
     >
       <MobileScanContent />
     </Suspense>

@@ -1,15 +1,10 @@
 import { Machine, MachineStatus, AssetLogEntry, FloorLine } from '@/types/cmms';
 import { updateMachineStatus, apiFetch } from './cmmsService';
+import { normalizeMachineLocation, resolveMachineZone } from '@/lib/machineZone';
 
 export const CLIENT_ZONES = [
-  'Zone 1',
-  'Zone 2',
-  'Zone 3',
-  'Zone 4',
-  'Zone 5',
-  'Zone 6',
-  'Zone 7',
-  'Zone 8',
+  'NETHAJI',
+  'PEACOCK',
 ] as const;
 
 export const CLIENT_LINES = [
@@ -67,8 +62,9 @@ function notifyLogListeners(logs: AssetLogEntry[]) {
  * Extracts normalized Zone (Zone 1 .. Zone 8) from a Machine object
  */
 export function getMachineZone(machine: Machine): ClientZone {
-  if (machine.zone) {
-    return machine.zone as ClientZone;
+  const zone = resolveMachineZone(machine);
+  if (zone) {
+    return zone;
   }
   const matchArea = (machine.area || '').match(/Zone\s*([1-8])/i);
   if (matchArea && matchArea[1]) {
@@ -90,7 +86,7 @@ export function getMachineZone(machine: Machine): ClientZone {
  * Extracts normalized Line (Line 01 .. Line 08) from a Machine object
  */
 export function getMachineLine(machine: Machine): ClientLine {
-  const lineStr = machine.currentLine || '';
+  const lineStr = normalizeMachineLocation(machine).currentLine || '';
   const match = lineStr.match(/\bLine\s*0?(\d+)\b/i);
   if (match && match[1]) {
     const num = parseInt(match[1], 10);

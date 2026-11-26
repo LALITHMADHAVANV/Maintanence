@@ -1,4 +1,5 @@
 import { canonicalCompanySlug } from './companyIdentity';
+import { normalizeStaffLocation } from './machineZone';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserProfile, UserRole } from '@/types/cmms';
@@ -94,7 +95,7 @@ export function extractSessionToken(req: Request): string | null {
 export function sanitizeUserProfile(dbUser: any, companySlug: string, companyName: string): UserProfile {
   const rawRole = (dbUser.role || 'MECHANIC').toString().trim().toUpperCase() as UserRole;
   
-  return {
+  return normalizeStaffLocation({
     uid: dbUser.uid || String(dbUser._id || 'USR-01'),
     name: dbUser.name || 'Factory Staff',
     email: (dbUser.email || '').toLowerCase().trim(),
@@ -106,8 +107,10 @@ export function sanitizeUserProfile(dbUser: any, companySlug: string, companyNam
     employeeId: dbUser.employeeId || '',
     unit: dbUser.unit || 'All Units',
     zones: Array.isArray(dbUser.zones) ? dbUser.zones : (dbUser.zone ? [dbUser.zone] : []),
+    lines: Array.isArray(dbUser.lines) ? dbUser.lines : [],
+    teams: Array.isArray(dbUser.teams) ? dbUser.teams : dbUser.department ? [dbUser.department] : [],
     company: companyName,
     companySlug: companySlug,
     status: dbUser.status || 'ACTIVE',
-  };
+  }, companySlug);
 }

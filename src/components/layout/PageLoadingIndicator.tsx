@@ -1,8 +1,21 @@
+import { Package } from 'lucide-react';
+
+export function LoadingWaveMark({ size = 'xl' }: { size?: 'sm' | 'md' | 'lg' | 'xl' }) {
+  return (
+    <span aria-hidden="true" className={`loading-wave-mark loading-wave-mark-${size}`}>
+      <span className="loading-wave-cube"><Package /></span>
+    </span>
+  );
+}
+
+export function LoadingWaveIcon({ className = '' }: { className?: string }) {
+  return <Package aria-hidden="true" className={`loading-wave-inline ${className}`} />;
+}
+
 export function PageLoadingIndicator({ label = 'Loading page…' }: { label?: string }) {
   return (
-    <div role="status" className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-sm font-semibold text-slate-600">
-      <span aria-hidden="true" className="h-8 w-8 rounded-full border-[3px] border-emerald-100 border-t-emerald-700 motion-safe:animate-spin" />
-      <span>{label}</span>
+    <div role="status" aria-label={label} className="flex min-h-[50vh] items-center justify-center">
+      <LoadingWaveMark size="xl" />
     </div>
   );
 }

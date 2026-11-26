@@ -1,0 +1,36 @@
+<div id="maintenance-loading-preview" aria-label="Preview of the dashboard data loading indicator">
+  <header><strong>T&amp;A</strong><span>All Units</span></header>
+  <div class="preview-content">
+    <div class="preview-table" aria-hidden="true">
+      <div class="preview-heading">TICKET # <span>MACHINE &amp; LOCATION</span><span>CURRENT STATUS</span></div>
+      <div class="preview-row"><i></i><i></i><i></i></div>
+      <div class="preview-row"><i></i><i></i><i></i></div>
+      <div class="preview-row"><i></i><i></i><i></i></div>
+      <div class="preview-row"><i></i><i></i><i></i></div>
+    </div>
+    <div class="preview-overlay">
+      <div class="preview-loading" role="status" aria-live="polite">
+        <span class="preview-spinner" aria-hidden="true"></span>
+        <strong>Loading page data...</strong>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  #maintenance-loading-preview {font-family:Arial,sans-serif;color:#334155;background:#e5e9f0;border-radius:18px;overflow:hidden}
+  #maintenance-loading-preview header {display:flex;justify-content:space-between;align-items:center;padding:20px 24px;background:#fff;border-bottom:1px solid #e2e8f0}
+  #maintenance-loading-preview header strong {font-size:20px}
+  #maintenance-loading-preview header span {font-size:13px;color:#64748b}
+  #maintenance-loading-preview .preview-content {position:relative;min-height:330px;padding:20px}
+  #maintenance-loading-preview .preview-table {background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden}
+  #maintenance-loading-preview .preview-heading,#maintenance-loading-preview .preview-row {display:grid;grid-template-columns:1fr 2fr 1fr;gap:16px;padding:18px;border-bottom:1px solid #e2e8f0}
+  #maintenance-loading-preview .preview-heading {font-size:10px;letter-spacing:.06em;background:#f8fafc}
+  #maintenance-loading-preview .preview-row i {height:12px;width:70%;border-radius:4px;background:#cbd5e1}
+  #maintenance-loading-preview .preview-overlay {position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:85px;background:#f8fafccc;backdrop-filter:blur(2px)}
+  #maintenance-loading-preview .preview-loading {display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px 32px;background:white;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 1px 3px #0000000d}
+  #maintenance-loading-preview .preview-loading strong {font-size:14px;font-weight:600}
+  #maintenance-loading-preview .preview-spinner {box-sizing:border-box;width:40px;height:40px;border:4px solid #d1fae5;border-top-color:#059669;border-radius:50%;animation:maintenance-preview-spin 1s linear infinite}
+  @keyframes maintenance-preview-spin {to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){#maintenance-loading-preview .preview-spinner{animation:none}}
+  @media(max-width:420px){#maintenance-loading-preview .preview-heading{grid-template-columns:1fr 1fr}#maintenance-loading-preview .preview-heading span:last-child{display:none}}
+</style>

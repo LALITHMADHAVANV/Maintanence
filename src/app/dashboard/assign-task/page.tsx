@@ -2,6 +2,7 @@
 
 import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
 
 function AssignTaskRedirectContent() {
   const router = useRouter();
@@ -13,27 +14,13 @@ function AssignTaskRedirectContent() {
     router.replace(`/dashboard/calendar?${params.toString()}`);
   }, [router, searchParams]);
 
-  return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="text-center space-y-3">
-        <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-xs font-semibold text-slate-600">Opening Assign / Move Task Desk...</p>
-      </div>
-    </div>
-  );
+  return <PageLoadingIndicator label="Opening Assign / Move Task Desk…" />;
 }
 
 export default function AssignTaskPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center space-y-3">
-            <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs font-semibold text-slate-600">Loading Assign / Move Task Desk...</p>
-          </div>
-        </div>
-      }
+      fallback={<PageLoadingIndicator label="Loading Assign / Move Task Desk…" />}
     >
       <AssignTaskRedirectContent />
     </Suspense>

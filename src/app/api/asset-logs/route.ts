@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { AssetLogEntry } from '@/types/cmms';
+import { normalizeMachineLocation } from '@/lib/machineZone';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -37,6 +38,12 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
+    const machine = await db.collection('machines').findOne({ id: entry.machineId });
+    if (machine) {
+      const location = normalizeMachineLocation({ ...machine, zone: entry.zone || machine.zone, currentLine: entry.line || machine.currentLine }, db.tenant);
+      if (location.zone) entry.zone = location.zone;
+      if (location.currentLine) entry.line = location.currentLine;
+    }
     (entry as any).company = db.companyName;
     (entry as any).companySlug = db.tenant;
     await db.collection('asset_logs').insertOne(entry);

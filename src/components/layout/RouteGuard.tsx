@@ -5,19 +5,40 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { canAccessRoute, normalizeRole } from '@/lib/constants/roles';
+import { useNav } from '@/context/NavContext';
 import { PageLoadingIndicator } from './PageLoadingIndicator';
+import { useState } from 'react';
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
+  const { departmentNavigation, departmentNavigationReady } = useNav();
   const { showToast } = useToast();
+  const [visibleNavItems, setVisibleNavItems] = useState<string[]>([]);
+  const [navFailed, setNavFailed] = useState(false);
+  const [navLoadedFor, setNavLoadedFor] = useState('');
+  useEffect(() => {
+    if (!user?.uid) return;
+    let active = true;
+    void fetch('/api/user-navigation', { cache: 'no-store', credentials: 'include' }).then(response => response.ok ? response.json() : null)
+      .then(data => { if (active) { setVisibleNavItems(Array.isArray(data?.items) ? data.items : []); setNavFailed(!Array.isArray(data?.items)); setNavLoadedFor(user.uid); } })
+      .catch(() => { if (active) { setVisibleNavItems([]); setNavFailed(true); setNavLoadedFor(user.uid); } });
+    return () => { active = false; };
+  }, [user?.uid]);
 
   const userRole = normalizeRole(user?.role || role);
-  const isAuthorized = canAccessRoute(userRole, pathname);
+  const cleanPath = pathname.replace(/^\/[^/]+(?=\/dashboard)/, '').replace(/\/$/, '') || '/';
+  const isInDepartmentMenu = departmentNavigation === null || departmentNavigation.some((path) =>
+    cleanPath === path || (path !== '/dashboard' && cleanPath.startsWith(`${path}/`))
+  );
+  const navPath = visibleNavItems.find(path => cleanPath === path || (path !== '/dashboard' && cleanPath.startsWith(`${path}/`)));
+  const hasConfiguredNav = !navFailed && navPath !== undefined;
+  const navReady = !user || navLoadedFor === user.uid;
+  const isAuthorized = canAccessRoute(userRole, pathname) && isInDepartmentMenu && hasConfiguredNav;
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || (user && (!departmentNavigationReady || !navReady))) return;
 
     if (!user) {
       const scopedSlug = pathname.match(/^\/([a-z0-9_-]+)\/dashboard(?:\/|$)/i)?.[1];
@@ -44,12 +65,12 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
 
     // 3. Permission check
     if (!isAuthorized) {
-      showToast('Access restricted: Your account credentials do not have permissions for this page.', 'warning');
+      showToast('Access restricted: Your role or department navigation settings do not allow this page.', 'warning');
       router.replace(`/${userSlug}/dashboard`);
     }
-  }, [user, userRole, isLoading, pathname, router, showToast, isAuthorized]);
+  }, [user, userRole, isLoading, departmentNavigationReady, navReady, pathname, router, showToast, isAuthorized]);
 
-  if (isLoading) return <PageLoadingIndicator label="Opening workspace…" />;
+  if (isLoading || (user && (!departmentNavigationReady || !navReady))) return <PageLoadingIndicator label="Opening workspace…" />;
   if (!user) return <PageLoadingIndicator label="Opening sign-in…" />;
 
   const browserUrl = typeof window !== 'undefined' ? window.location.pathname : pathname;

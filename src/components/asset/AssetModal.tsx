@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { Machine, FloorLine, AssetCategory, MachineStatus, RepairUrgency } from '@/types/cmms';
-import { createBreakdownTicket, relocateMachine, updateMachineStatus } from '@/lib/services/cmmsService';
+import { apiFetch, createBreakdownTicket, relocateMachine, updateMachineStatus } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { getCategoryForType, SUBTYPE_LOOKUP } from '@/lib/machineCatalog';
@@ -597,7 +597,7 @@ export function AssetModal({
 
   // Fetch registered mechanics
   useEffect(() => {
-    fetch('/api/users')
+    apiFetch('/api/users')
       .then((r) => r.json())
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {

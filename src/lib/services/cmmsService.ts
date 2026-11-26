@@ -1,3 +1,4 @@
+import { normalizeMachineLocation } from '@/lib/machineZone';
 import {
   Machine,
   MachineStatus,
@@ -112,8 +113,10 @@ export function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   }
 
   const isRead = !init?.method || ['GET', 'HEAD'].includes(init.method.toUpperCase());
+  // Allow development route compilation to finish before falling back.
+  const readTimeoutMs = process.env.NODE_ENV === 'development' ? 60000 : 20000;
   const signal = isRead
-    ? (init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000))
+    ? (init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(readTimeoutMs)]) : AbortSignal.timeout(readTimeoutMs))
     : init?.signal;
   return fetch(target, { credentials: 'include', ...init, headers, signal });
 }
@@ -174,9 +177,10 @@ let lastFetchMachinesTime = 0;
 let inFlightMachines: Promise<void> | null = null;
 
 export async function fetchMachinesOnce(force = false): Promise<void> {
+  // Reuse pending reads even when a refresh is forced.
+  if (inFlightMachines) return inFlightMachines;
   const now = Date.now();
   if (!force && now - lastFetchMachinesTime < 3000) {
-    if (inFlightMachines) return inFlightMachines;
     return;
   }
   lastFetchMachinesTime = now;
@@ -185,8 +189,9 @@ export async function fetchMachinesOnce(force = false): Promise<void> {
       const res = await apiFetch('/api/machines');
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        setLocal(STORAGE_KEYS.MACHINES, json.data);
-        notifyLocal('machines', json.data);
+        const machines = json.data.map((machine: Machine) => normalizeMachineLocation(machine, getActiveTenant()));
+        setLocal(STORAGE_KEYS.MACHINES, machines);
+        notifyLocal('machines', machines);
       }
     } catch (err) {
       console.warn('MongoDB fetch machines fallback:', err);
@@ -199,7 +204,7 @@ export async function fetchMachinesOnce(force = false): Promise<void> {
 
 export function subscribeMachines(callback: (machines: Machine[]) => void): () => void {
   initLocalSeedData();
-  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []).map(machine => normalizeMachineLocation(machine, getActiveTenant()));
   callback(current);
   listeners.machines.add(callback);
 
@@ -211,6 +216,7 @@ export function subscribeMachines(callback: (machines: Machine[]) => void): () =
 }
 
 export async function createMachine(machine: Machine): Promise<void> {
+  machine = normalizeMachineLocation(machine, getActiveTenant());
   const current = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
   const existsIndex = current.findIndex((m) => m.id.toLowerCase() === machine.id.toLowerCase());
   let updated: Machine[];
@@ -366,6 +372,11 @@ export async function updateMachine(
   updates: Partial<Machine>
 ): Promise<void> {
   const currentMachines = getLocal<Machine[]>(STORAGE_KEYS.MACHINES, []);
+  const originalMachine = currentMachines.find(machine => machine.id === machineId);
+  if (originalMachine) {
+    const location = normalizeMachineLocation({ ...originalMachine, ...updates }, getActiveTenant());
+    updates = { ...updates, zone: location.zone, currentLine: location.currentLine, ...(location.area !== undefined ? { area: location.area } : {}), ...(location.location !== undefined ? { location: location.location } : {}) };
+  }
   const updatedMachines = currentMachines.map((m) =>
     m.id === machineId ? { ...m, ...updates } : m
   );
@@ -408,9 +419,10 @@ let lastFetchPartsTime = 0;
 let inFlightParts: Promise<void> | null = null;
 
 export async function fetchPartsOnce(force = false): Promise<void> {
+  // Reuse pending reads even when a refresh is forced.
+  if (inFlightParts) return inFlightParts;
   const now = Date.now();
   if (!force && now - lastFetchPartsTime < 3000) {
-    if (inFlightParts) return inFlightParts;
     return;
   }
   lastFetchPartsTime = now;
@@ -467,15 +479,18 @@ export async function adjustPartStock(partId: string, delta: number): Promise<vo
   }
 }
 
-export async function restockPart(partId: string, quantity: number, poRef?: string): Promise<void> {
+export async function restockPart(partId: string, quantity: number, poRef?: string, vendor?: string, purchaseDate?: string): Promise<void> {
   if (quantity <= 0) return;
   const currentParts = getLocal<SparePart[]>(STORAGE_KEYS.PARTS, []);
   const target = currentParts.find((p) => p.partId === partId);
   if (!target) return;
 
   const newStock = target.stock + quantity;
+  const updates: Partial<SparePart> = { stock: newStock };
+  if (vendor?.trim()) updates.vendor = vendor.trim();
+  if (purchaseDate?.trim()) updates.purchaseDate = purchaseDate.trim();
   const updatedParts = currentParts.map((p) =>
-    p.partId === partId ? { ...p, stock: newStock } : p
+    p.partId === partId ? { ...p, ...updates } : p
   );
   setLocal(STORAGE_KEYS.PARTS, updatedParts);
   notifyLocal('parts', updatedParts);
@@ -484,7 +499,7 @@ export async function restockPart(partId: string, quantity: number, poRef?: stri
     await apiFetch('/api/parts', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ partId, updates: { stock: newStock } }),
+      body: JSON.stringify({ partId, updates }),
     });
   } catch (e) {
     console.error('MongoDB restockPart error:', e);
@@ -499,9 +514,10 @@ let lastFetchRepairsTime = 0;
 let inFlightRepairs: Promise<void> | null = null;
 
 export async function fetchRepairsOnce(force = false): Promise<void> {
+  // Reuse pending reads even when a refresh is forced.
+  if (inFlightRepairs) return inFlightRepairs;
   const now = Date.now();
   if (!force && now - lastFetchRepairsTime < 3000) {
-    if (inFlightRepairs) return inFlightRepairs;
     return;
   }
   lastFetchRepairsTime = now;
@@ -666,38 +682,6 @@ export async function startRepairTicket(
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
   notifyLocal('repairs', updatedRepairs);
 
-  // Decrement parts stock immediately when reserved/used
-  if (resolvedPartsUsed.length > 0) {
-    const updatedParts = currentParts.map((part) => {
-      const used = resolvedPartsUsed.find((u) => u.partId === part.partId);
-      if (!used) return part;
-      return {
-        ...part,
-        stock: Math.max(0, part.stock - used.quantity),
-      };
-    });
-    setLocal(STORAGE_KEYS.PARTS, updatedParts);
-    notifyLocal('parts', updatedParts);
-  }
-
-  try {
-    // Persist stock deduction to MongoDB so store inventory stays in sync
-    for (const pu of resolvedPartsUsed) {
-      const partDoc = currentParts.find((cp) => cp.partId === pu.partId);
-      if (partDoc) {
-        await apiFetch('/api/parts', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            partId: pu.partId,
-            updates: { stock: Math.max(0, partDoc.stock - pu.quantity) },
-          }),
-        }).catch((e) => console.warn('startRepairTicket parts stock patch warning:', e));
-      }
-    }
-  } catch (e) {
-    console.error('MongoDB startRepairTicket error:', e);
-  }
 }
 
 export async function stopRepairTicket(ticketId: string, notes?: string): Promise<void> {
@@ -937,28 +921,7 @@ export async function resolveRepairTicket(
     });
   }
 
-  // 2. Decrement parts stock — but skip parts already deducted when work was started
-  //    Compare resolvedPartsUsed against what was already on the ticket from startRepairTicket
-  const alreadyDeducted = (ticket.partsUsed || []);
-  const newPartsToDeduct = resolvedPartsUsed
-    .map((pu) => {
-      const prev = alreadyDeducted.find((a) => a.partId === pu.partId);
-      const alreadyQty = prev ? prev.quantity : 0;
-      const remaining = pu.quantity - alreadyQty;
-      return remaining > 0 ? { ...pu, quantity: remaining } : null;
-    })
-    .filter((p): p is NonNullable<typeof p> => p !== null);
-
-  const updatedParts = currentParts.map((part) => {
-    const used = newPartsToDeduct.find((u) => u.partId === part.partId);
-    if (!used) return part;
-    return {
-      ...part,
-      stock: Math.max(0, part.stock - used.quantity),
-    };
-  });
-
-  // 3. Set machine status to ACTIVE and increment totalDowntimeMinutes
+  // 2. Set machine status to ACTIVE and increment totalDowntimeMinutes
   const updatedMachines = currentMachines.map((m) => {
     if (m.id !== ticket.machineId) return m;
     return {
@@ -969,11 +932,9 @@ export async function resolveRepairTicket(
   });
 
   setLocal(STORAGE_KEYS.REPAIRS, updatedRepairs);
-  setLocal(STORAGE_KEYS.PARTS, updatedParts);
   setLocal(STORAGE_KEYS.MACHINES, updatedMachines);
 
   notifyLocal('repairs', updatedRepairs);
-  notifyLocal('parts', updatedParts);
   notifyLocal('machines', updatedMachines);
 
   try {
@@ -1002,20 +963,6 @@ export async function resolveRepairTicket(
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
       console.warn(`apiFetch PATCH /api/repairs status ${res.status}:`, errJson);
-    }
-
-    for (const p of newPartsToDeduct) {
-      const partDoc = currentParts.find((cp) => cp.partId === p.partId);
-      if (partDoc) {
-        await apiFetch('/api/parts', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            partId: p.partId,
-            updates: { stock: Math.max(0, partDoc.stock - p.quantity) },
-          }),
-        }).catch((e) => console.warn('parts stock patch warning:', e));
-      }
     }
 
     if (ticket.machineId) {
@@ -1242,9 +1189,10 @@ let lastFetchPPMTime = 0;
 let inFlightPPM: Promise<void> | null = null;
 
 export async function fetchPPMSchedulesOnce(force = false): Promise<void> {
+  // Reuse pending reads even when a refresh is forced.
+  if (inFlightPPM) return inFlightPPM;
   const now = Date.now();
   if (!force && now - lastFetchPPMTime < 3000) {
-    if (inFlightPPM) return inFlightPPM;
     return;
   }
   lastFetchPPMTime = now;
@@ -1442,7 +1390,9 @@ export async function completePPMTask(
 
 export async function createPPMSchedule(schedule: PPMSchedule): Promise<void> {
   const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
-  const updatedSchedules = [schedule, ...currentSchedules];
+  const updatedSchedules = currentSchedules.some((item) => item.id === schedule.id)
+    ? currentSchedules.map((item) => item.id === schedule.id ? schedule : item)
+    : [schedule, ...currentSchedules];
   setLocal(STORAGE_KEYS.PPM, updatedSchedules);
   notifyLocal('ppm', updatedSchedules);
 
@@ -1457,6 +1407,27 @@ export async function createPPMSchedule(schedule: PPMSchedule): Promise<void> {
   }
 }
 
+export async function createBulkPPMSchedules(schedules: PPMSchedule[]): Promise<void> {
+  if (schedules.length === 0) return;
+
+  const res = await apiFetch('/api/ppm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(schedules),
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || 'Failed to bulk schedule PPM');
+  }
+
+  const currentSchedules = getLocal<PPMSchedule[]>(STORAGE_KEYS.PPM, []);
+  const byId = new Map(currentSchedules.map((item) => [item.id, item]));
+  schedules.forEach((schedule) => byId.set(schedule.id, schedule));
+  const updatedSchedules = Array.from(byId.values());
+  setLocal(STORAGE_KEYS.PPM, updatedSchedules);
+  notifyLocal('ppm', updatedSchedules);
+}
+
 /* ======================================================================
    MONTHLY INDENTS & CRITICAL CEO REQUISITIONS (MongoDB via /api/requisitions)
    ====================================================================== */
@@ -1465,9 +1436,10 @@ let lastFetchRequisitionsTime = 0;
 let inFlightRequisitions: Promise<void> | null = null;
 
 export async function fetchRequisitionsOnce(force = false): Promise<void> {
+  // Reuse pending reads even when a refresh is forced.
+  if (inFlightRequisitions) return inFlightRequisitions;
   const now = Date.now();
   if (!force && now - lastFetchRequisitionsTime < 3000) {
-    if (inFlightRequisitions) return inFlightRequisitions;
     return;
   }
   lastFetchRequisitionsTime = now;

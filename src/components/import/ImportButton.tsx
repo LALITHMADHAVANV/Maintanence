@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Download, Upload, X, LoaderCircle } from 'lucide-react';
+import { Download, Upload, X } from 'lucide-react';
+import { LoadingWaveIcon } from '@/components/layout/PageLoadingIndicator';
 import { importDefinitions, ImportKind, stockImportTemplate } from '@/lib/imports';
 import { apiFetch, fetchMachinesOnce, fetchPartsOnce, fetchRequisitionsOnce } from '@/lib/services/cmmsService';
 
@@ -102,7 +103,7 @@ export function ImportButton({ kind }: { kind: ImportKind }) {
                 <div className="mt-3 max-h-60 overflow-auto rounded-xl border border-slate-200">
                   <table className="min-w-full text-left text-xs">
                     <caption className="p-2 text-left text-slate-500">First {preview.rows.length} data rows</caption>
-                    <thead className="bg-slate-50"><tr>{preview.columns.map(column => <th key={column} className="whitespace-nowrap px-3 py-2 font-semibold">{kind === 'parts' ? ({ sNo: 'S.No', name: 'Spare Name', machineType: 'Machine Type', unitCost: 'Cost', stock: 'Quantity', vendor: 'Vendor' } as Record<string, string>)[column] || column : column}</th>)}</tr></thead>
+                    <thead className="bg-slate-50"><tr>{preview.columns.map(column => <th key={column} className="whitespace-nowrap px-3 py-2 font-semibold">{kind === 'parts' ? ({ sNo: 'S.No', name: 'Spare Name', machineType: 'Machine Type', unitCost: 'Cost', stock: 'Quantity', vendor: 'Vendor', purchaseDate: 'Purchase Date' } as Record<string, string>)[column] || column : column}</th>)}</tr></thead>
                     <tbody>{preview.rows.map((row, index) => <tr key={index} className="border-t border-slate-100">{preview.columns.map(column => <td key={column} className="max-w-64 break-words px-3 py-2">{row[column] || '—'}</td>)}</tr>)}</tbody>
                   </table>
                 </div>
@@ -110,7 +111,7 @@ export function ImportButton({ kind }: { kind: ImportKind }) {
             )}
             <div className="mt-5 flex justify-end gap-3">
               <button type="button" disabled={busy} onClick={close} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50">{result ? 'Done' : 'Cancel'}</button>
-              {!result && <button type="button" disabled={busy || !csv} onClick={() => void submit(!preview)} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">{busy && <LoaderCircle className="h-4 w-4 animate-spin" />}{busy ? 'Processing…' : preview ? 'Import records' : 'Validate & preview'}</button>}
+              {!result && <button type="button" disabled={busy || !csv} onClick={() => void submit(!preview)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">{busy ? <LoadingWaveIcon className="h-6 w-6" /> : preview ? 'Import records' : 'Validate & preview'}</button>}
             </div>
           </section>
         </dialog>

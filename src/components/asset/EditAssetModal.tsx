@@ -15,6 +15,9 @@ import {
   Cpu,
   Save,
   RotateCcw,
+  Upload,
+  Image as ImageIcon,
+  FileText,
 } from 'lucide-react';
 import { Machine, MachineStatus, MotorType, FloorLine, AssetCategory } from '@/types/cmms';
 import { updateMachine } from '@/lib/services/cmmsService';
@@ -25,6 +28,7 @@ interface EditAssetModalProps {
   onClose: () => void;
   asset: Machine | null;
   onSave?: (updated: Machine) => void;
+  canChangeStatus?: boolean;
 }
 
 const COMMON_MACHINE_TYPES = [
@@ -85,12 +89,13 @@ const FLOOR_LINES: FloorLine[] = [
   'Scrap Bay',
 ];
 
-export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModalProps) {
+export function EditAssetModal({ isOpen, onClose, asset, onSave, canChangeStatus = true }: EditAssetModalProps) {
   const { showToast } = useToast();
 
   const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState<AssetCategory>('MACHINE');
+  const [ownershipType, setOwnershipType] = useState<'OWNED' | 'LEASED'>('OWNED');
   const [type, setType] = useState('');
   const [brand, setBrand] = useState('');
   const [model, setModel] = useState('');
@@ -106,6 +111,11 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
   const [cost, setCost] = useState<number | ''>(45000);
   const [motorType, setMotorType] = useState<MotorType>('SERVO');
   const [specs, setSpecs] = useState('');
+  const [assetImageUrl, setAssetImageUrl] = useState('');
+  const [assetImageName, setAssetImageName] = useState('');
+  const [invoiceUrl, setInvoiceUrl] = useState('');
+  const [invoiceFileName, setInvoiceFileName] = useState('');
+  const [invoiceMimeType, setInvoiceMimeType] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -114,6 +124,7 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
       setId(asset.id || '');
       setName(asset.name || `${asset.brand} ${asset.typeName || asset.type || ''}`);
       setCategory(asset.category || 'MACHINE');
+      setOwnershipType(asset.ownershipType || 'OWNED');
       setType(asset.typeName || asset.type || '');
       setBrand(asset.brand || '');
       setModel(asset.model || '');
@@ -133,10 +144,51 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
       setCost(asset.cost ?? 45000);
       setMotorType(asset.motorType || 'SERVO');
       setSpecs(asset.specs || '');
+      const media = asset as Machine & Record<string, unknown>;
+      setAssetImageUrl(String(media.assetImageUrl || media.machineImageUrl || media.imageUrl || media.photoUrl || ''));
+      setAssetImageName(String(media.assetImageName || media.machineImageName || ''));
+      setInvoiceUrl(String(media.invoiceUrl || media.purchaseInvoiceUrl || media.invoiceImageUrl || ''));
+      setInvoiceFileName(String(media.invoiceFileName || media.purchaseInvoiceName || ''));
+      setInvoiceMimeType(String(media.invoiceMimeType || media.purchaseInvoiceMimeType || ''));
     }
   }, [asset, isOpen]);
 
   if (!isOpen || !asset) return null;
+
+  const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Unable to read file.'));
+    reader.onerror = () => reject(new Error('Unable to read file.'));
+    reader.readAsDataURL(file);
+  });
+
+  const handleMediaFile = async (file: File | undefined, kind: 'image' | 'invoice') => {
+    if (!file) return;
+    const allowed = kind === 'image'
+      ? ['image/jpeg', 'image/png', 'image/webp']
+      : ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowed.includes(file.type)) {
+      showToast(kind === 'image' ? 'Choose a JPG, PNG, or WEBP asset image.' : 'Choose a PDF or image invoice.', 'error');
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      showToast('Each upload must be 4 MB or smaller.', 'error');
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      if (kind === 'image') {
+        setAssetImageUrl(dataUrl);
+        setAssetImageName(file.name);
+      } else {
+        setInvoiceUrl(dataUrl);
+        setInvoiceFileName(file.name);
+        setInvoiceMimeType(file.type);
+      }
+    } catch {
+      showToast('Unable to read the selected file.', 'error');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,6 +212,7 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
         brand: brand.trim(),
         model: model.trim() || type.trim(),
         category,
+        ownershipType: category === 'MACHINE' ? ownershipType : undefined,
         type: type.trim(),
         typeName: type.trim(),
         year: isNaN(parsedYear) ? undefined : parsedYear,
@@ -176,6 +229,11 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
         cost: typeof cost === 'number' ? cost : 0,
         motorType,
         specs: specs.trim() || `Plant ${unit.trim()} • Location ${area.trim()} • Year ${year}`,
+        assetImageUrl,
+        assetImageName,
+        invoiceUrl,
+        invoiceFileName,
+        invoiceMimeType,
       };
 
       await updateMachine(asset.id, updatedData);
@@ -245,7 +303,7 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
               <span>Asset Identification</span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Asset ID / M/C NO */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -288,9 +346,18 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
                   <option value="MACHINE">Sewing &amp; Industrial Machinery</option>
                   <option value="FURNITURE">Furniture &amp; Workstations</option>
                   <option value="UTILITY">Electrical Utilities</option>
+                  <option value="APPLIANCE">Appliances</option>
                   <option value="VEHICLE">Vehicles &amp; Transport</option>
                 </select>
               </div>
+
+              {category === 'MACHINE' && <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Ownership Type *</label>
+                <select value={ownershipType} onChange={(event) => setOwnershipType(event.target.value as 'OWNED' | 'LEASED')} className="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition cursor-pointer">
+                  <option value="OWNED">Owned</option>
+                  <option value="LEASED">Leased</option>
+                </select>
+              </div>}
             </div>
           </div>
 
@@ -429,7 +496,7 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
                   type="text"
                   value={zone}
                   onChange={(e) => setZone(e.target.value)}
-                  placeholder="e.g. Zone 1, 1, 2"
+                  placeholder="e.g. NETHAJI or PEACOCK"
                   className="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                 />
               </div>
@@ -514,6 +581,7 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as MachineStatus)}
+                  disabled={!canChangeStatus}
                   className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition cursor-pointer"
                 >
                   <option value="ACTIVE" className="text-emerald-700 font-bold">🟢 ACTIVE (Running in Production)</option>
@@ -523,6 +591,7 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
                   <option value="UNDER_MAINTENANCE" className="text-orange-700 font-bold">🟠 UNDER MAINTENANCE</option>
                   <option value="SCRAP" className="text-slate-600 font-bold">⚫ SCRAP (Decommissioned)</option>
                 </select>
+                {!canChangeStatus && <p className="mt-1 text-[10px] text-slate-500">Status changes are handled by maintenance staff.</p>}
               </div>
 
               {/* Asset Value / Cost */}
@@ -554,6 +623,28 @@ export function EditAssetModal({ isOpen, onClose, asset, onSave }: EditAssetModa
                 placeholder="Specifications, modifications, special attachments..."
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
               />
+            </div>
+          </div>
+
+          {/* Section 5: Asset Documents */}
+          <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200/80 space-y-3.5">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <Upload className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Asset Image &amp; Invoice</span>
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block rounded-lg border border-dashed border-slate-300 bg-white p-3 text-xs text-slate-600 cursor-pointer hover:border-indigo-400">
+                <span className="mb-2 flex items-center gap-2 font-bold text-slate-800"><ImageIcon className="h-4 w-4 text-indigo-600" />Asset Image</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full text-[11px]" onChange={(event) => { void handleMediaFile(event.target.files?.[0], 'image'); event.currentTarget.value = ''; }} />
+                <span className="mt-1 block truncate text-[10px] text-slate-500">{assetImageName || (assetImageUrl ? 'Image already attached' : 'JPG, PNG, or WEBP · max 4 MB')}</span>
+                {assetImageUrl && <img src={assetImageUrl} alt="Asset upload preview" className="mt-2 h-24 w-full rounded-md bg-slate-50 object-contain" />}
+              </label>
+              <label className="block rounded-lg border border-dashed border-slate-300 bg-white p-3 text-xs text-slate-600 cursor-pointer hover:border-indigo-400">
+                <span className="mb-2 flex items-center gap-2 font-bold text-slate-800"><FileText className="h-4 w-4 text-indigo-600" />Purchase Invoice</span>
+                <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="block w-full text-[11px]" onChange={(event) => { void handleMediaFile(event.target.files?.[0], 'invoice'); event.currentTarget.value = ''; }} />
+                <span className="mt-1 block truncate text-[10px] text-slate-500">{invoiceFileName || (invoiceUrl ? 'Invoice already attached' : 'PDF or image · max 4 MB')}</span>
+                {invoiceUrl && invoiceMimeType.startsWith('image/') && <img src={invoiceUrl} alt="Invoice upload preview" className="mt-2 h-24 w-full rounded-md bg-slate-50 object-contain" />}
+              </label>
             </div>
           </div>
 

@@ -19,7 +19,7 @@ export function createRequestLoadingTracker() {
           pending--; emit();
         };
         // A stalled body must not leave the background status visible forever.
-        const timer = setTimeout(finish, 20000);
+        const timer = setTimeout(finish, 65000);
         try {
           const response = await fetcher(input, init);
           void response.clone().arrayBuffer().then(finish, finish);

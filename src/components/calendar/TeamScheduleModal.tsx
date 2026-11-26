@@ -24,9 +24,10 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { RepairTicket, PPMSchedule, Machine } from '@/types/cmms';
-import { assignRepairTicket, completePPMTask } from '@/lib/services/cmmsService';
+import { apiFetch, assignRepairTicket, completePPMTask } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
+import { isTechnicalRole } from '@/lib/constants/roles';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 
@@ -64,12 +65,12 @@ export function TeamScheduleModal({
 
   useEffect(() => {
     if (isOpen) {
-      fetch('/api/users')
+      apiFetch('/api/users')
         .then((r) => r.json())
         .then((data) => {
           if (data.users && Array.isArray(data.users)) {
             let techs = data.users.filter((u: any) =>
-              ['MECHANIC', 'SENIOR_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'].includes(u.role)
+              isTechnicalRole(u.role) && u.status !== 'INACTIVE'
             );
             if (!isAdmin) {
               techs = techs.filter((u: any) => matchesUnit(u.unit, effectiveUnit));
@@ -85,31 +86,35 @@ export function TeamScheduleModal({
 
   const activeStaffRoster = registeredTechs.length > 0 ? registeredTechs : FACTORY_MECHANICS_ROSTER;
 
-  // Filter technicians based on role - strictly floor technicians (never self or senior/admin)
+  // Filter technicians based on role - prioritizes floor technicians, falls back if none match
   const relevantTechnicians = React.useMemo(() => {
     const currentName = (user?.name || '').trim().toLowerCase();
+    const isSelf = (m: MechanicDuty) => {
+      const mName = m.name.trim().toLowerCase();
+      return Boolean(currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName)));
+    };
     const isFloorCandidate = (m: MechanicDuty) => {
       const lower = m.role.toLowerCase();
-      const mName = m.name.trim().toLowerCase();
-      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
       const isSeniorOrAdmin =
         lower.includes('senior') ||
         lower.includes('admin') ||
         lower.includes('supervisor') ||
         lower.includes('director') ||
         lower.includes('manager');
-      return !isSelf && !isSeniorOrAdmin;
+      return !isSelf(m) && !isSeniorOrAdmin;
     };
 
+    let filtered = activeStaffRoster;
     if (role === 'SENIOR_ELECTRICIAN') {
-      return activeStaffRoster.filter(
-        (m) => m.trade === 'ELECTRICIAN' && isFloorCandidate(m)
-      );
+      filtered = activeStaffRoster.filter((m) => m.trade === 'ELECTRICIAN' && isFloorCandidate(m));
+    } else if (role === 'SENIOR_MECHANIC') {
+      filtered = activeStaffRoster.filter((m) => m.trade === 'MECHANIC' && isFloorCandidate(m));
+    } else {
+      filtered = activeStaffRoster.filter((m) => isFloorCandidate(m));
     }
-    if (role === 'SENIOR_MECHANIC') {
-      return activeStaffRoster.filter((m) => m.trade === 'MECHANIC' && isFloorCandidate(m));
-    }
-    return activeStaffRoster.filter((m) => isFloorCandidate(m));
+    if (filtered.length > 0) return filtered;
+    const nonSelf = activeStaffRoster.filter((m) => !isSelf(m));
+    return nonSelf.length > 0 ? nonSelf : activeStaffRoster;
   }, [role, activeStaffRoster, user?.name]);
 
   if (!isOpen) return null;

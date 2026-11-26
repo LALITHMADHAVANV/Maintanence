@@ -1,11 +1,10 @@
 'use client';
 
-import { canManageOperations } from '@/lib/constants/roles';
 import { PDF_MACHINE_TYPES, PDF_MACHINE_MAKES, type PdfMachineType } from '@/lib/constants/machineCatalog';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   Wrench,
   Armchair,
@@ -21,22 +20,26 @@ import {
   Pencil,
   Plus,
   RotateCcw,
-  Building,
   IndianRupee,
   History,
+  QrCode,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Machine } from '@/types/cmms';
 import { subscribeMachines, deleteMachine } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { matchesUnit, hasAllUnitsAccess } from '@/lib/constants/units';
 import { EditAssetModal } from '@/components/asset/EditAssetModal';
-import { ImportButton } from '@/components/import/ImportButton';
+import { AssetDetailsDialog } from '@/components/asset/AssetDetailsDialog';
+import { useNav } from '@/context/NavContext';
 import AllowancePage from '@/app/dashboard/allowance/page';
 import { HistoryView } from '@/app/dashboard/history/HistoryView';
+import { assetScanUrl } from '@/lib/scanUrl';
+import { PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
 
 // Preserved 4 Categories
-type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE';
+type MainCategory = 'MACHINE' | 'FURNITURE' | 'UTILITY' | 'VEHICLE' | 'APPLIANCE';
 
 // Actual Machine Types (Varieties) directly from both Plant Sheets (PDF 1 & PDF 2)
 // "O/L" is categorized as "OVERLOCK" and "F/L" variants are categorized as "FLATLOCK"
@@ -88,18 +91,18 @@ function mapToMainCategory(cat?: string): MainCategory {
   if (!cat) return 'MACHINE';
   if (cat === 'MACHINE') return 'MACHINE';
   if (cat === 'FURNITURE' || cat === 'TABLE' || cat === 'CHAIR') return 'FURNITURE';
+  if (cat === 'APPLIANCE') return 'APPLIANCE';
   if (cat === 'VEHICLE') return 'VEHICLE';
   return 'UTILITY';
 }
 
 function AssetsPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const unitParam = searchParams.get('unit');
+
 
   const { showToast } = useToast();
-  const { user, role } = useAuth();
-  const isAdmin = isUserAdmin(role);
+  const { user } = useAuth();
+
   const [machines, setMachines] = useState<Machine[]>([]);
 
   // User's assigned enterprise company from authenticated session
@@ -119,11 +122,7 @@ function AssetsPageContent() {
   const isTexplus = userCompany.toLowerCase().includes('texplus');
 
   const [selectedCategory, setSelectedCategory] = useState<MainCategory | 'ALL'>('ALL');
-  const [selectedPlant, setSelectedPlant] = useState<string>(() => {
-    if (isUserAdmin(role)) return unitParam || 'ALL';
-    return getUserScopedUnit(user, role);
-  });
-  const effectiveUnit = getUserScopedUnit(user, role, selectedPlant === 'ALL' ? null : selectedPlant);
+  const { selectedUnit } = useNav();
   const [selectedLocation, setSelectedLocation] = useState<string>('ALL');
   const [selectedType, setSelectedType] = useState<string>('ALL');
   const [selectedVariety, setSelectedVariety] = useState<string>('ALL');
@@ -131,17 +130,6 @@ function AssetsPageContent() {
   const [selectedYear, setSelectedYear] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Sync default plant filter with URL param or user's assigned unit
-  useEffect(() => {
-    if (!isUserAdmin(role)) {
-      setSelectedPlant(getUserScopedUnit(user, role));
-    } else if (unitParam) {
-      setSelectedPlant(unitParam);
-    } else if (user?.unit && user.unit !== 'All Units') {
-      setSelectedPlant(user.unit);
-    }
-  }, [unitParam, user, role]);
 
   const tabParam = searchParams.get('tab')?.toUpperCase();
   const activeMainTab = tabParam === 'ALLOWANCE' || tabParam === 'HISTORY' ? tabParam : 'ASSET';
@@ -151,28 +139,12 @@ function AssetsPageContent() {
     window.history.replaceState(null, '', url);
   };
 
-  const handlePlantChange = (newPlant: string) => {
-    if (!isAdmin) return;
-    setSelectedPlant(newPlant);
-    setSelectedType('ALL');
-    setSelectedLocation('ALL');
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (newPlant === 'ALL') {
-        params.delete('unit');
-      } else {
-        params.set('unit', newPlant);
-      }
-      const newQuery = params.toString();
-      const newUrl = `${window.location.pathname}${newQuery ? `?${newQuery}` : ''}`;
-      window.history.replaceState(null, '', newUrl);
-    }
-  };
-
   // Edit & Delete modal states
   const [assetToDelete, setAssetToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [assetToEdit, setAssetToEdit] = useState<Machine | null>(null);
+  const [assetToView, setAssetToView] = useState<Machine | null>(null);
+  const [assetForQr, setAssetForQr] = useState<Machine | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // Subscribe to machines
@@ -211,7 +183,7 @@ function AssetsPageContent() {
           ? 'Furniture'
           : cat === 'UTILITY'
           ? 'Electrical Utilities'
-          : 'Vehicles';
+          : cat === 'APPLIANCE' ? 'Appliances' : 'Vehicles';
 
       const sNo = (m as any).sNo || idx + 1;
       const mcNo = (m as any).mcNo || m.id;
@@ -248,18 +220,14 @@ function AssetsPageContent() {
 
   // Unit-scoped items: when a unit/plant is selected, separate all data by this unit!
   const unitScopedItems = useMemo(() => {
-    if (isAdmin && selectedPlant === 'ALL') return allItems;
-    return allItems.filter((item) => matchesUnit(item.plant, effectiveUnit));
-  }, [allItems, isAdmin, selectedPlant, effectiveUnit]);
-
-  // Unit breakdown totals
-  const unit1Count = useMemo(() => allItems.filter((i) => matchesUnit(i.plant, 'UNIT - 1')).length, [allItems]);
-  const unit2Count = useMemo(() => allItems.filter((i) => matchesUnit(i.plant, 'UNIT-2')).length, [allItems]);
-  const allUnitsCount = allItems.length;
+    if (hasAllUnitsAccess(selectedUnit)) return allItems;
+    return allItems.filter((item) => matchesUnit(item.plant, selectedUnit));
+  }, [allItems, selectedUnit]);
 
   // Category counts scoped to active unit
   const categoryCounts = useMemo(() => {
     return {
+      APPLIANCE: unitScopedItems.filter(i => i.category === 'APPLIANCE').length,
       MACHINE: unitScopedItems.filter((i) => i.category === 'MACHINE').length,
       FURNITURE: unitScopedItems.filter((i) => i.category === 'FURNITURE').length,
       UTILITY: unitScopedItems.filter((i) => i.category === 'UTILITY').length,
@@ -415,8 +383,16 @@ function AssetsPageContent() {
     selectedStatus !== 'ALL' ||
     searchQuery.trim() !== '';
 
-  // The 4 Primary Categories
+  // Asset categories
   const categoriesConfig = [
+    {
+      id: 'APPLIANCE' as MainCategory,
+      title: 'Appliances', subtitle: 'Laptops, TVs, Printers & Other Appliances', icon: Boxes,
+      count: categoryCounts.APPLIANCE,
+      colorBadge: 'bg-sky-50 text-sky-700 border-sky-200',
+      activeRing: 'border-sky-600 bg-sky-50/50 ring-2 ring-sky-500/20 shadow-md',
+      tagColor: 'text-sky-600',
+    },
     {
       id: 'MACHINE' as MainCategory,
       title: 'Sewing Machinery',
@@ -515,88 +491,8 @@ function AssetsPageContent() {
 
       {activeMainTab === 'ASSET' && (
         <div className="space-y-5 animate-in fade-in duration-200">
-          {/* Top Header Card */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                <Boxes className="w-6 h-6" />
-              </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-0.5">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                Asset Master Registry
-              </h1>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                {isTexplus ? 'Texplus Plant Data' : 'Official Plant Data'} ({allItems.length} Assets)
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              {isTexplus
-                ? 'Texplus plant equipment catalog reflecting company machinery, serials, and locations.'
-                : 'Plant equipment catalog reflecting official unit machine types, serials, and locations from plant records.'}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {canManageOperations(user?.role || role) && <ImportButton kind="assets" />}
-          <Link
-            href="/dashboard/machines"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white transition cursor-pointer shadow-xs"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Register New Asset</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* ─── UNIT SWITCHER BAR (Admin Switcher / Personnel Facility Locked) ─── */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-            <Building className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-900">Plant Facility:</span>
-              <span className="text-xs font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                {isAdmin ? (selectedPlant === 'ALL' ? 'Entire Plant (All Units)' : selectedPlant) : effectiveUnit}
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-                • {unitScopedItems.length} Assets Loaded
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              {isAdmin
-                ? 'Switch between Unit 1 and Unit 2 to inspect plant-specific machine types, categories, and serial numbers.'
-                : `Viewing official asset registry for ${effectiveUnit}. Facility scope is locked to your assigned operational unit.`}
-            </p>
-          </div>
-        </div>
-
-        {isAdmin ? (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Switch Unit:</span>
-            <select
-              value={selectedPlant}
-              onChange={(e) => handlePlantChange(e.target.value)}
-              className="text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition shadow-2xs"
-            >
-              <option value="ALL">All Units ({allUnitsCount})</option>
-              <option value="UNIT - 1">UNIT - 1 ({unit1Count})</option>
-              <option value="UNIT-2">UNIT-2 ({unit2Count})</option>
-            </select>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 border border-indigo-200/80 rounded-xl text-xs font-bold text-indigo-700">
-            <Building className="w-4 h-4 text-indigo-600" />
-            <span>Facility Locked: {effectiveUnit}</span>
-          </div>
-        )}
-      </div>
-
       {/* 1. Category Selector Cards (Preserving the 4 Core Categories) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
         {categoriesConfig.map((cat) => {
           const isSelected = selectedCategory === cat.id;
           const Icon = cat.icon;
@@ -716,11 +612,11 @@ function AssetsPageContent() {
                   >
                     <span>{type}</span>
                     <span
-                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                        isSelected ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
-                      }`}
+                      className="inline-flex min-w-7 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-mono font-black leading-none text-emerald-900"
+                      title={`${count.toLocaleString()} machines of type ${type}`}
+                      aria-label={`${count.toLocaleString()} machines of type ${type}`}
                     >
-                      {count}
+                      {count.toLocaleString()}
                     </span>
                   </button>
                 );
@@ -758,7 +654,7 @@ function AssetsPageContent() {
                     }`}
                   >
                     <span>{v.name}</span>
-                    <span className="text-[10px] opacity-80 font-mono ml-1">({v.count})</span>
+                    <span className="ml-1 inline-flex min-w-6 justify-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-mono font-bold leading-none text-emerald-800">{v.count.toLocaleString()}</span>
                   </button>
                 );
               })}
@@ -773,6 +669,7 @@ function AssetsPageContent() {
           <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
             {selectedCategory === 'FURNITURE' && <Armchair className="w-6 h-6" />}
             {selectedCategory === 'UTILITY' && <Zap className="w-6 h-6" />}
+            {selectedCategory === 'APPLIANCE' && <Boxes className="w-6 h-6" />}
             {selectedCategory === 'VEHICLE' && <Truck className="w-6 h-6" />}
           </div>
           <h4 className="text-sm font-bold text-slate-800">
@@ -800,7 +697,7 @@ function AssetsPageContent() {
           <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="font-bold text-slate-800">
-                Asset Records ({filteredItems.length})
+                <span id="asset-records">Asset Records ({filteredItems.length})</span>
               </span>
 
               {/* Reset filter button if any active */}
@@ -870,6 +767,9 @@ function AssetsPageContent() {
                 <option value="ACTIVE">🟢 Active</option>
                 <option value="IDLE">🟡 Idle / Standby</option>
                 <option value="BREAKDOWN">🔴 Breakdown</option>
+                <option value="UNDER_MAINTENANCE">Under Maintenance</option>
+                <option value="BUFFER">Buffer</option>
+                <option value="SCRAP">Scrap</option>
               </select>
 
               {/* Search input */}
@@ -900,17 +800,17 @@ function AssetsPageContent() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-slate-100/90 text-slate-700 font-bold uppercase tracking-wider text-[11px] border-b border-slate-300">
                 <tr>
-                  <th className="py-2.5 px-3 text-center border-r border-slate-300 w-14">S.No</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300">M/C No (Asset ID)</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300 min-w-[130px]">Machine Type</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300 min-w-[180px]">Sub Machine Type</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300">Machine Make</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300">M/C Model</th>
-                  <th className="py-2.5 px-3 text-center border-r border-slate-300 w-16">Year</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300">Location</th>
-                  <th className="py-2.5 px-3 border-r border-slate-300 text-center">Zone</th>
-                  <th className="py-2.5 px-3 text-center border-r border-slate-300 w-24">Status</th>
-                  <th className="py-2.5 px-3 text-center w-28">Action</th>
+                  <th className="py-2 px-2 text-center border-r border-slate-300 w-12">S.No</th>
+                  <th className="py-2 px-2 border-r border-slate-300">M/C No (Asset ID)</th>
+                  <th className="py-2 px-2 border-r border-slate-300 min-w-[120px]">Machine Type</th>
+                  <th className="py-2 px-2 border-r border-slate-300 min-w-[150px]">Sub Machine Type</th>
+                  <th className="py-2 px-2 border-r border-slate-300">Machine Make</th>
+                  <th className="py-2 px-2 border-r border-slate-300">M/C Model</th>
+                  <th className="py-2 px-2 text-center border-r border-slate-300 w-14">Year</th>
+                  <th className="py-2 px-2 border-r border-slate-300">Location</th>
+                  <th className="py-2 px-2 border-r border-slate-300 text-center">Zone</th>
+                  <th className="py-2 px-2 text-center border-r border-slate-300 w-20">Status</th>
+                  <th className="py-2 px-2 text-center w-32">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -950,27 +850,27 @@ function AssetsPageContent() {
                       className="hover:bg-indigo-50/40 transition-colors even:bg-slate-50/50 group"
                     >
                       {/* 1. S.No */}
-                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-500 bg-slate-50/60 text-center border-r border-slate-200">
+                      <td className="py-1.5 px-2 font-mono font-semibold text-slate-500 bg-slate-50/60 text-center border-r border-slate-200">
                         {item.sNo || idx + 1}
                       </td>
 
                       {/* 2. M/C No */}
-                      <td className="py-2.5 px-3 border-r border-slate-200 font-mono">
+                      <td className="py-1.5 px-2 border-r border-slate-200 font-mono">
                         <button
                           type="button"
-                          onClick={() => {
-                            setAssetToEdit(item.rawMachine);
-                            setIsEditModalOpen(true);
-                          }}
+                          onClick={() => setAssetToView(item.rawMachine)}
                           className="font-mono text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-800 hover:text-indigo-700 px-2 py-0.5 rounded border border-slate-300 hover:border-indigo-300 inline-block transition cursor-pointer text-left"
-                          title={`Click to edit asset details for ${item.mcNo || item.id}`}
+                          title={`View image and invoice for ${item.mcNo || item.id}`}
                         >
                           {item.mcNo || item.id}
+                        </button>
+                        <button type="button" onClick={() => setAssetToView(item.rawMachine)} className="mt-1 block max-w-full truncate text-left text-[10px] font-semibold text-slate-500 hover:text-indigo-700 hover:underline" title={`View details for ${item.name}`}>
+                          {item.name}
                         </button>
                       </td>
 
                       {/* 3. Machine Type */}
-                      <td className="py-2.5 px-3 border-r border-slate-200">
+                      <td className="py-1.5 px-2 border-r border-slate-200">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-bold text-slate-900 group-hover:text-indigo-700 text-xs">
                             {item.machineType}
@@ -989,7 +889,7 @@ function AssetsPageContent() {
                       </td>
 
                       {/* 4. Sub Machine Type */}
-                      <td className="py-2.5 px-3 border-r border-slate-200">
+                      <td className="py-1.5 px-2 border-r border-slate-200">
                         {item.variety ? (
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border ${
@@ -1008,26 +908,26 @@ function AssetsPageContent() {
                       </td>
 
                       {/* 5. Machine Make */}
-                      <td className="py-2.5 px-3 border-r border-slate-200">
+                      <td className="py-1.5 px-2 border-r border-slate-200">
                         <span className="font-bold text-slate-800 uppercase">
                           {item.machineMake}
                         </span>
                       </td>
 
                       {/* 6. M/C Model */}
-                      <td className="py-2.5 px-3 border-r border-slate-200">
+                      <td className="py-1.5 px-2 border-r border-slate-200">
                         <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100/90 px-2 py-0.5 rounded border border-slate-200 inline-block">
                           {item.model && item.model !== '—' && item.model !== item.machineType ? item.model : item.variety || '—'}
                         </span>
                       </td>
 
                       {/* 7. Year */}
-                      <td className="py-2.5 px-3 border-r border-slate-200 text-center font-mono text-slate-700 font-semibold text-xs">
+                      <td className="py-1.5 px-2 border-r border-slate-200 text-center font-mono text-slate-700 font-semibold text-xs">
                         {item.year || '—'}
                       </td>
 
                       {/* 8. Location */}
-                      <td className="py-2.5 px-3 border-r border-slate-200">
+                      <td className="py-1.5 px-2 border-r border-slate-200">
                         <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
                           <MapPin className="w-3 h-3 text-slate-400" />
                           {item.location || 'NETHAJI'}
@@ -1035,7 +935,7 @@ function AssetsPageContent() {
                       </td>
 
                       {/* 9. Zone */}
-                      <td className="py-2.5 px-3 border-r border-slate-200 text-center">
+                      <td className="py-1.5 px-2 border-r border-slate-200 text-center">
                         {item.zone ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                             {item.zone}
@@ -1046,7 +946,7 @@ function AssetsPageContent() {
                       </td>
 
                       {/* 10. Status */}
-                      <td className="py-2.5 px-3 border-r border-slate-200 text-center">
+                      <td className="py-1.5 px-2 border-r border-slate-200 text-center">
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             item.status === 'ACTIVE'
@@ -1063,8 +963,17 @@ function AssetsPageContent() {
                       </td>
 
                       {/* 11. Action */}
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="py-1.5 px-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setAssetForQr(item.rawMachine)}
+                            className="inline-flex items-center justify-center p-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition cursor-pointer"
+                            title={`Show QR code for ${item.name}`}
+                            aria-label={`Show QR code for ${item.name}`}
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -1100,7 +1009,7 @@ function AssetsPageContent() {
               Showing {filteredItems.length} of {allItems.length} total plant assets
             </span>
             <span className="text-[11px] text-slate-400 font-normal">
-              Click any M/C No or Edit button to update asset specifications
+              Click an M/C No or asset name to view its image and invoice; use Edit to update specifications
             </span>
           </div>
         </div>
@@ -1163,6 +1072,56 @@ function AssetsPageContent() {
       )}
 
       {/* Edit Asset Modal */}
+      <AssetDetailsDialog asset={assetToView} onClose={() => setAssetToView(null)} />
+      {assetForQr && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setAssetForQr(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="asset-qr-title"
+            className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="asset-qr-title" className="text-base font-bold text-slate-900">Asset QR Code</h2>
+                <p className="mt-1 text-xs text-slate-500">Scan to open this machine&apos;s asset page.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAssetForQr(null)}
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close QR code"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50 p-5">
+              <QRCodeSVG
+                value={assetScanUrl(typeof window !== 'undefined' ? window.location.origin : '', assetForQr.id, user?.companySlug)}
+                size={192}
+                level="M"
+                includeMargin
+                bgColor="#ffffff"
+                fgColor="#0f172a"
+              />
+              <p className="mt-3 max-w-full truncate font-mono text-sm font-bold text-slate-800">{assetForQr.id}</p>
+              <p className="mt-1 text-xs text-slate-500">{assetForQr.brand || 'Machine asset'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAssetForQr(null)}
+              className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
       <EditAssetModal
         isOpen={isEditModalOpen}
         onClose={() => {
@@ -1183,11 +1142,7 @@ function AssetsPageContent() {
 export default function AssetsPage() {
   return (
     <Suspense
-      fallback={
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-8 text-center text-slate-500 font-medium">
-          Loading asset master registry...
-        </div>
-      }
+      fallback={<PageLoadingIndicator label="Loading asset master registry…" />}
     >
       <AssetsPageContent />
     </Suspense>

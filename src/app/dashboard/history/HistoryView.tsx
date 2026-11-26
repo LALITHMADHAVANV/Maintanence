@@ -12,6 +12,7 @@ import { useAuth } from '@/context/AuthContext';
 import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
 import { normalizeRole } from '@/lib/constants/roles';
 import { PersonnelWorkHistoryTable } from '@/components/history/PersonnelWorkHistoryTable';
+import { PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
 import { AssetStatusHistory } from '@/components/history/AssetStatusHistory';
 import { QRCodeSVG } from 'qrcode.react';
 import { BulkQrPrintModal, BulkQrAsset } from '@/components/history/BulkQrPrintModal';
@@ -246,7 +247,7 @@ const CATEGORIES_META: {
 ];
 
 export function HistoryView({ assetOnly = false }: { assetOnly?: boolean }) {
-  return <Suspense fallback={<p className="p-4 text-sm text-slate-500">Loading history…</p>}><HistoryContent assetOnly={assetOnly} /></Suspense>;
+  return <Suspense fallback={<PageLoadingIndicator label="Loading history…" />}><HistoryContent assetOnly={assetOnly} /></Suspense>;
 }
 
 function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
@@ -273,7 +274,6 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
   const [livePpm, setLivePpm] = useState<PPMSchedule[]>([]);
   const [statusFilter] = useState<'active' | 'completed' | 'all'>('all');
   const [q, setQ] = useState('');
-  const [showPoc, setShowPoc] = useState<boolean>(true);
   const [collapsedCategories, setCollapsedCategories] = useState<string[]>([]);
 
   // Group By State: CATEGORY | SUBCATEGORY | LOCATION | RELOCATION | MECHANIC | STATUS
@@ -469,6 +469,7 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
       model: item.model,
       type: item.subCategory || item.category,
       typeName: item.categoryLabel,
+      category: item.category,
       unit: machinesById.get(item.assetId)?.unit || item.unit,
       zone: machinesById.get(item.assetId)?.zone || machinesById.get(item.assetId)?.area,
       currentLine: (item as any).currentLine || item.location || item.unit,
@@ -1166,11 +1167,7 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
 
   // Prevent flash while authentication is resolving
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <PageLoadingIndicator label="Loading history…" />;
   }
 
   const currentRole = normalizeRole(user?.role || role);
@@ -1989,17 +1986,6 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
               )}
             </button>
 
-            {/* View in-charge Checkbox */}
-            <label className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-medium text-slate-700 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200">
-              <input
-                type="checkbox"
-                checked={showPoc}
-                onChange={(e) => setShowPoc(e.target.checked)}
-                className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-              />
-              <span className="whitespace-nowrap">In-charge</span>
-            </label>
-
             {/* Bulk QR Print Button */}
             <button
               type="button"
@@ -2331,11 +2317,6 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
                             <th className="px-3 py-2.5 min-w-[110px] text-center bg-slate-100 border-r border-b border-slate-300">
                               Breakdown Risk
                             </th>
-                            {showPoc && (
-                              <th className="px-3 py-2.5 min-w-[140px] text-left bg-slate-100 border-r border-b border-slate-300">
-                                In-Charge / Mechanic
-                              </th>
-                            )}
                             <th className="px-3.5 py-2.5 min-w-[150px] text-left bg-slate-100 border-r border-b border-slate-300">
                               Current Relocation
                             </th>
@@ -2368,7 +2349,6 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
                             const fromReloc = currentEntry ? currentEntry.fromLocation : 'Maintenance Workshop';
                             const ppmCost = getAssetPpmCost(o);
                             const repairCost = getAssetRepairCost(o);
-                            const assignedTech = getAssetMechanic(o);
 
                             return (
                               <tr
@@ -2431,22 +2411,6 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
                                 </span>
                               </td>
 
-                              {/* In-Charge / Mechanic (Visible when View in-charge is checked) */}
-                              {showPoc && (
-                                <td className="px-3 py-2 border-r border-b border-slate-200 whitespace-nowrap">
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="w-5 h-5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                                      {assignedTech.charAt(0)}
-                                    </div>
-                                    <div>
-                                      <span className="font-semibold text-slate-800 text-xs block truncate max-w-[120px]" title={assignedTech}>
-                                        {assignedTech}
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 block font-mono">Assigned Tech</span>
-                                    </div>
-                                  </div>
-                                </td>
-                              )}
 
                               {/* Current Relocation */}
                               <td className="px-3.5 py-2 border-r border-b border-slate-200 whitespace-nowrap">
@@ -2517,7 +2481,7 @@ function HistoryContent({ assetOnly }: { assetOnly: boolean }) {
                         {sectionItems.length === 0 && (
                           <tr>
                             <td
-                              colSpan={showPoc ? 13 : 12}
+                              colSpan={12}
                               className="p-12 text-center text-slate-400 text-xs font-medium border-b border-slate-200"
                             >
                               No records in {section.title} matching your current filters.

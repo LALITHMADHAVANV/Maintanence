@@ -3,6 +3,9 @@ import { canManageOperations } from '@/lib/constants/roles';
 import { MongoClient, Db, Collection, Document, ObjectId } from 'mongodb';
 import { validateActiveCompany, getCompanyBySlug, CompanyRecord, ensureRegistryInitialized } from './registry';
 import { verifySessionToken, extractSessionToken, SessionPayload } from './auth';
+import { effectiveUserNav } from './userNavigationServer';
+import { NAV_ITEMS } from './userNavigation';
+import { canAccessRoute } from './constants/roles';
 
 
 declare global {
@@ -280,6 +283,27 @@ export async function resolveTenantFromRequest(req: Request): Promise<{
     sessionUser.email = account.email;
     sessionUser.name = account.name;
     const path = new URL(req.url).pathname;
+    const dashboardPath = path.replace(/^\/[^/]+(?=\/dashboard)/, '');
+    const apiToNav: Array<[RegExp, string]> = [
+      [/^\/api\/machines(?:\/|$)/, '/dashboard/machines'],
+      [/^\/api\/(?:leased-assets)(?:\/|$)/, '/dashboard/lease-assets'],
+      [/^\/api\/(?:asset-logs)(?:\/|$)/, '/dashboard/asset-log'],
+      [/^\/api\/(?:parts|requisitions)(?:\/|$)/, '/dashboard/inventory'],
+      [/^\/api\/(?:ppm)(?:\/|$)/, '/dashboard/ppm-scheduler'],
+      [/^\/api\/(?:maintenance-records|repairs)(?:\/|$)/, '/dashboard/calendar'],
+      [/^\/api\/(?:users)(?:\/|$)/, '/dashboard/users'],
+      [/^\/api\/(?:import)(?:\/|$)/, '/dashboard/settings'],
+    ];
+    const apiNavPath = apiToNav.find(([pattern]) => pattern.test(path))?.[1];
+    if (dashboardPath.startsWith('/dashboard/') || apiNavPath) {
+      const guardedPath = apiNavPath || dashboardPath;
+      const link = NAV_ITEMS.find(item => guardedPath === item.path || guardedPath.startsWith(`${item.path}/`));
+      if (link && !canAccessRoute(account.role, guardedPath)) throw new TenantError('Administrator access required.', 403, 'FORBIDDEN');
+      if (link) {
+        const nav = await effectiveUserNav(db, sessionUser.uid);
+        if (!nav.items.includes(link.path)) throw new TenantError('This navigation area is not enabled for your account.', 403, 'NAVIGATION_FORBIDDEN');
+      }
+    }
     if (req.method !== 'GET' && /\/api\/users$/.test(path) && !canManageOperations(account.role)) {
       throw new TenantError('Administrator access required.', 403, 'FORBIDDEN');
     }

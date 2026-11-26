@@ -19,9 +19,7 @@ import {
   Layers,
   Sparkles,
   Zap,
-  Pencil,
 } from 'lucide-react';
-import { EditAssetModal } from '@/components/asset/EditAssetModal';
 import { AssetStatusHistory } from '@/components/history/AssetStatusHistory';
 import { Machine, RepairTicket, PPMSchedule } from '@/types/cmms';
 import { subscribeRepairs, subscribePPMSchedules } from '@/lib/services/cmmsService';
@@ -44,7 +42,6 @@ export function AssetHistoryModal({
   const [repairs, setRepairs] = useState<RepairTicket[]>([]);
   const [ppmList, setPpmList] = useState<PPMSchedule[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !machine) return;
@@ -142,15 +139,6 @@ export function AssetHistoryModal({
             </div>
 
             <div className="flex flex-col sm:items-end text-xs text-slate-300 gap-1.5 font-medium">
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition border border-white/20 cursor-pointer mb-1 shadow-xs active:scale-95"
-                title="Edit this asset's specifications, location, and operational details"
-              >
-                <Pencil className="w-3.5 h-3.5 text-indigo-300" />
-                <span>Edit Asset Info</span>
-              </button>
               <div className="flex items-center gap-1.5 text-emerald-400">
                 <MapPin className="w-3.5 h-3.5" />
                 <span>
@@ -623,12 +611,6 @@ export function AssetHistoryModal({
         </div>
       </div>
 
-      {/* Edit Asset Information Modal */}
-      <EditAssetModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        asset={machine}
-      />
     </div>
   );
 }

@@ -6,12 +6,15 @@ import { apiFetch } from '@/lib/services/cmmsService';
 import { isTechnicalRole, normalizeRole } from '@/lib/constants/roles';
 import { FACTORY_UNITS, getZonesForUnit, hasAllUnitsAccess } from '@/lib/constants/units';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
+import { UserSettingsPanel } from '@/components/settings/UserSettingsPanel';
 
 const emptyForm = { uid: '', name: '', email: '', username: '', role: 'MECHANIC', unit: 'UNIT - 1', zones: [] as string[], phone: '', password: '', status: 'ACTIVE' };
 const roles = ['MECHANIC', 'SENIOR_MECHANIC', 'SERVICE_MECHANIC', 'ELECTRICIAN', 'SENIOR_ELECTRICIAN'];
 
 export function MechanicsManagement() {
   const { showToast } = useToast();
+  const { user: currentUser, role } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [open, setOpen] = useState(false);
@@ -41,11 +44,19 @@ export function MechanicsManagement() {
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to save mechanic.', 'error'); }
     finally { setSaving(false); }
   }
-  return <section className="space-y-4 py-5">
-    <div className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-bold">Manage Mechanics</h1><p className="text-sm text-slate-500">Maintain floor mechanics, service mechanics, supervisors, and their assigned units.</p></div><button onClick={() => { setForm(emptyForm); setOpen(true); }} className="rounded-xl bg-teal-700 px-4 py-2 text-white">Add mechanic</button></div>
-    {loading ? <p>Loading mechanics…</p> : <div className="overflow-x-auto rounded-xl border bg-white"><table className="w-full text-left text-sm"><thead><tr>{['Name', 'Role', 'Unit', 'Status', ''].map(label => <th key={label} className="p-3">{label}</th>)}</tr></thead><tbody>{users.map(user => <tr key={user.uid} className="border-t"><td className="p-3">{user.name}<div className="text-xs text-slate-500">{user.username || user.email}</div></td><td className="p-3">{normalizeRole(user.role).replaceAll('_', ' ')}</td><td className="p-3">{user.unit}</td><td className="p-3">{user.status}</td><td className="p-3"><button className="font-semibold text-teal-700" onClick={() => {
+  async function removeUser(user: UserProfile) {
+    if (!window.confirm('Delete user ' + user.name + '?')) return;
+    try {
+      const response = await apiFetch('/api/users?uid=' + encodeURIComponent(user.uid), { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to delete user.');
+      showToast('User deleted.', 'success'); await load();
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to delete user.', 'error'); }
+  }
+  return <section className="settings-page py-5">
+    <UserSettingsPanel users={users} departments={[]} units={FACTORY_UNITS.filter(unit => unit.id !== 'All Units').map(unit => ({ code: unit.id, name: unit.name }))} companySlug={currentUser?.companySlug} actorRole={currentUser?.role || role} currentUid={currentUser?.uid} roles={roles} loading={loading} onRefresh={load} onDelete={removeUser} onEdit={user => {
       setForm({ uid: user.uid, name: user.name, email: user.email, username: user.username || '', role: normalizeRole(user.role), unit: user.unit || 'UNIT - 1', zones: user.zones || [], phone: user.phone || '', password: '', status: user.status || 'ACTIVE' }); setOpen(true);
-    }}>Edit</button></td></tr>)}</tbody></table>{users.length === 0 && <p className="p-4 text-slate-500">No mechanics registered.</p>}</div>}
+    }} />
     {open && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4"><form onSubmit={save} role="dialog" aria-modal="true" aria-label="Mechanic account" className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-2xl bg-white p-6">
       <h2 className="text-lg font-bold">{form.uid ? 'Edit mechanic' : 'Add mechanic'}</h2>
       {(['name', 'email', 'username', 'phone', 'password'] as const).map(field => <label key={field} className="block text-sm capitalize">{field}{field === 'password' && form.uid ? ' (leave blank to keep current)' : ''}<input className="mt-1 w-full rounded-lg border p-2" type={field === 'password' ? 'password' : field === 'email' ? 'email' : 'text'} value={form[field]} disabled={Boolean(form.uid && field === 'email')} required={field === 'name' || field === 'email' || (field === 'password' && !form.uid)} minLength={field === 'password' ? 8 : undefined} onChange={event => setForm({ ...form, [field]: event.target.value })} /></label>)}

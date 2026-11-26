@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { assetHistoryHref } from '@/lib/historyNavigation';
 import {
   Wrench,
   Users,
@@ -21,12 +19,15 @@ import {
 import { Machine, RepairTicket, RepairUrgency, PPMSchedule } from '@/types/cmms';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
 import {
+  apiFetch,
   createBreakdownTicket,
   assignRepairTicket,
   rejectRepairTicket,
 } from '@/lib/services/cmmsService';
 import { useAuth } from '@/context/AuthContext';
+import { isTechnicalRole } from '@/lib/constants/roles';
 import { useToast } from '@/context/ToastContext';
+import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
 
 interface SupervisorFloorWorkspaceProps {
   machines: Machine[];
@@ -48,7 +49,6 @@ export function SupervisorFloorWorkspace({
   isExternalNewTicketOpen = false,
   onCloseExternalNewTicket,
 }: SupervisorFloorWorkspaceProps) {
-  const router = useRouter();
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -57,6 +57,7 @@ export function SupervisorFloorWorkspace({
   // Filter & Search state
   const [ticketSearch, setTicketSearch] = useState('');
   const [ticketFilter, setTicketFilter] = useState<'ALL' | 'CRITICAL' | 'IN_PROGRESS' | 'UNASSIGNED' | 'COMPLETED'>('ALL');
+  const [historyMachine, setHistoryMachine] = useState<Machine | null>(null);
   const [lineFilter, setLineFilter] = useState<string>('ALL');
   const [rosterTradeFilter, setRosterTradeFilter] = useState<'ALL' | 'MECHANIC' | 'ELECTRICIAN'>(
     isElectricianRole ? 'ELECTRICIAN' : 'ALL'
@@ -101,13 +102,13 @@ export function SupervisorFloorWorkspace({
   const [registeredTechs, setRegisteredTechs] = useState<MechanicDuty[]>([]);
 
   useEffect(() => {
-    fetch('/api/users')
+    apiFetch('/api/users')
       .then((r) => r.json())
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
-          // Strictly select floor mechanics & plant electricians (exclude admin / senior roles)
-          const techs = data.users.filter((u: { role: string }) =>
-            u.role === 'MECHANIC' || u.role === 'ELECTRICIAN'
+          // Select all technical roles so the assign dropdown is never empty
+          const techs = data.users.filter((u: any) =>
+            isTechnicalRole(u.role) && u.status !== 'INACTIVE'
           );
           if (techs.length > 0) {
             setRegisteredTechs(techs.map(userToMechanicDuty));
@@ -125,16 +126,21 @@ export function SupervisorFloorWorkspace({
     });
   }, []);
 
-  // Floor technicians available for task dispatch (NEVER includes self or admin/senior supervisor)
+  // Floor technicians available for task dispatch (prioritizes floor technicians, falls back to all registered staff if none)
   const assignableTechnicians = useMemo(() => {
     const base = registeredTechs.length > 0 ? registeredTechs : fallbackFloorRoster;
     const currentName = (userName || user?.name || '').trim().toLowerCase();
-    return base.filter((m) => {
+    const isSelf = (m: MechanicDuty) => {
       const mName = m.name.trim().toLowerCase();
-      const isSelf = currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName));
+      return Boolean(currentName && (mName === currentName || mName.includes(currentName) || currentName.includes(mName)));
+    };
+    const floorOnly = base.filter((m) => {
       const isSenior = m.role.toLowerCase().includes('senior') || m.role.toLowerCase().includes('admin');
-      return !isSelf && !isSenior;
+      return !isSelf(m) && !isSenior;
     });
+    if (floorOnly.length > 0) return floorOnly;
+    const nonSelf = base.filter((m) => !isSelf(m));
+    return nonSelf.length > 0 ? nonSelf : base;
   }, [registeredTechs, fallbackFloorRoster, userName, user?.name]);
 
   const activeStaffRoster = assignableTechnicians;
@@ -569,7 +575,7 @@ export function SupervisorFloorWorkspace({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => router.push(assetHistoryHref(user?.companySlug || 'sahana', t.machineId || ''))}
+                                onClick={() => setHistoryMachine(machines.find((machine) => machine.id.toLowerCase() === (t.machineId || '').toLowerCase()) || null)}
                                 title="View Asset History"
                                 aria-label="View Asset History"
                                 className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
@@ -1152,6 +1158,11 @@ export function SupervisorFloorWorkspace({
           </div>
         </div>
       )}
+      <AssetHistoryModal
+        machine={historyMachine}
+        isOpen={Boolean(historyMachine)}
+        onClose={() => setHistoryMachine(null)}
+      />
     </div>
   );
 }

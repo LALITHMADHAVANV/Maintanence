@@ -4,8 +4,14 @@ import React, { createContext, useCallback, useContext, useState, useEffect } fr
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch } from '@/lib/services/cmmsService';
 import { departmentNavigationChanged } from '@/lib/departmentNavigation';
+import { getUserScopedUnit } from '@/lib/constants/units';
+import { reportDay } from '@/lib/dailyTicketReport';
 
 interface NavContextType {
+  selectedUnit: string;
+  setSelectedUnit: (unit: string) => void;
+  ticketDate: string;
+  setTicketDate: (date: string) => void;
   isNavHidden: boolean;
   toggleNav: () => void;
   hideNav: () => void;
@@ -15,9 +21,14 @@ interface NavContextType {
   openMobileNav: () => void;
   closeMobileNav: () => void;
   departmentNavigation: string[] | null;
+  departmentNavigationReady: boolean;
 }
 
 const NavContext = createContext<NavContextType>({
+  selectedUnit: 'All Units',
+  setSelectedUnit: () => {},
+  ticketDate: '',
+  setTicketDate: () => {},
   isNavHidden: false,
   toggleNav: () => {},
   hideNav: () => {},
@@ -27,13 +38,22 @@ const NavContext = createContext<NavContextType>({
   openMobileNav: () => {},
   closeMobileNav: () => {},
   departmentNavigation: null,
+  departmentNavigationReady: true,
 });
 
 export function NavProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const accountKey = user ? `${user.companySlug}:${user.uid}:${user.department}` : null;
+  const [defaultTicketDate] = useState(() => reportDay(Date.now()));
+  const [filters, setFilters] = useState<{ accountKey: string | null; unit?: string; date?: string }>({ accountKey: null });
+  const activeFilters = filters.accountKey === accountKey ? filters : null;
+  const selectedUnit = getUserScopedUnit(user, user?.role, activeFilters?.unit);
+  const ticketDate = activeFilters?.date ?? defaultTicketDate;
+  const setSelectedUnit = (unit: string) => setFilters({ accountKey, unit, date: ticketDate });
+  const setTicketDate = (date: string) => setFilters({ accountKey, unit: selectedUnit, date });
   const [menu, setMenu] = useState<{ accountKey: string; paths: string[] | null } | null>(null);
   const departmentNavigation = menu?.accountKey === accountKey ? menu.paths : null;
+  const departmentNavigationReady = !user || menu?.accountKey === accountKey;
 
   useEffect(() => {
     if (!accountKey) return;
@@ -44,10 +64,17 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
       controller = request;
       try {
         const response = await apiFetch('/api/departments', { signal: request.signal, cache: 'no-store' });
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (!request.signal.aborted) setMenu({ accountKey, paths: null });
+          return;
+        }
         const { navigation } = await response.json();
-        if (!request.signal.aborted) setMenu({ accountKey, paths: Array.isArray(navigation) ? navigation : null });
-      } catch { /* Keep the last available menu for this account. */ }
+        if (!request.signal.aborted) setMenu({ accountKey, paths: Array.isArray(navigation)
+          ? [...new Set(navigation.map((path: string) => path === '/dashboard/active-tna' ? '/dashboard/history' : path))]
+          : null });
+      } catch {
+        if (!request.signal.aborted) setMenu({ accountKey, paths: null });
+      }
     };
     void refresh();
     window.addEventListener(departmentNavigationChanged, refresh);
@@ -90,6 +117,10 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
   return (
     <NavContext.Provider
       value={{
+        selectedUnit,
+        setSelectedUnit,
+        ticketDate,
+        setTicketDate,
         isNavHidden,
         toggleNav,
         hideNav,
@@ -99,6 +130,7 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
         openMobileNav,
         closeMobileNav,
         departmentNavigation,
+        departmentNavigationReady,
       }}
     >
       {children}

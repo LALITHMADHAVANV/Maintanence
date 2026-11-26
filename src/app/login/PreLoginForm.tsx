@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { Wrench, User, Lock, Eye, EyeOff, ArrowRight, Loader2, Shield } from 'lucide-react';
+import { Wrench, User, Lock, Eye, EyeOff, ArrowRight, Shield } from 'lucide-react';
+import { LoadingWaveIcon } from '@/components/layout/PageLoadingIndicator';
 import { useAuth } from '@/context/AuthContext';
 
 export function PreLoginForm({ companySlug }: { companySlug?: string }) {
@@ -47,7 +48,7 @@ export function PreLoginForm({ companySlug }: { companySlug?: string }) {
           <div><label htmlFor="login-identifier">Work email or username</label><div className="login-input-wrap"><User size={18}/><input id="login-identifier" value={identifier} onChange={e=>setIdentifier(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Your work email or assigned username" disabled={pending} required/></div></div>
           <div><label htmlFor="login-password">Password</label><div className="login-input-wrap"><Lock size={18}/><input id="login-password" type={visible?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" placeholder="Enter your password" disabled={pending} required/><button type="button" aria-label={visible?'Hide password':'Show password'} onClick={()=>setVisible(!visible)}>{visible?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></div>
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
-          <button type="submit" className="login-submit" disabled={pending}>{pending?<><Loader2 size={18} className="animate-spin"/>Opening your workspace?</>:<>Sign in <ArrowRight size={18}/></>}</button>
+          <button type="submit" className="login-submit" disabled={pending}>{pending?<LoadingWaveIcon className="h-6 w-6"/>:<>Sign in <ArrowRight size={18}/></>}</button>
         </form>
         <p className="login-help">Need an account? Contact your company administrator.</p>
         <div className="login-security"><Shield size={18}/><p><strong>Access belongs to your account.</strong><br/>Your company and permissions are identified after sign-in.</p></div>
