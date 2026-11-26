@@ -10,6 +10,7 @@ const assetLabel = {
   _id: 0, id: 1, name: 1, brand: 1, model: 1, category: 1,
   type: 1, typeName: 1, status: 1, unit: 1, area: 1, zone: 1,
   department: 1, currentLine: 1, stationNo: 1,
+  previousLine: 1, previousStation: 1, lastMovedAt: 1,
 } as const;
 
 // QR visitors can read one asset's label details.
@@ -77,13 +78,14 @@ export async function POST(request: Request) {
     if (machine.currentLine === targetLine && machine.stationNo === stationNo) {
       return NextResponse.json({ success: true, data: await machines.findOne({ _id: machine._id }, { projection: assetLabel }) });
     }
+    const movedBy = typeof input?.movedBy === 'string' && input.movedBy.trim() ? input.movedBy.trim().slice(0, 120) : 'Guest QR scan';
     const movement = {
       fromLine: machine.currentLine,
       fromStation: machine.stationNo || 'Station 01',
       toLine: targetLine,
       toStation: stationNo,
       movedAt: new Date().toISOString(),
-      movedBy: 'Guest QR scan',
+      movedBy,
       reason: reason || 'Floor line balancing',
     };
     const updated = await machines.findOneAndUpdate(
@@ -132,12 +134,13 @@ async function reportBreakdown(companySlug: string, id: string, input: Record<st
     const reportedAt = new Date().toISOString();
     const ticketId = `WO-${randomUUID()}`;
     const faultDetails = notes || 'Logged via QR sticker scan on production floor.';
+    const reportedBy = typeof input.reportedBy === 'string' && input.reportedBy.trim() ? input.reportedBy.trim().slice(0, 120) : 'Guest QR scan';
     await db.collection('repair_tickets').insertOne({
       id: ticketId, machineId: machine.id, machineType: machine.typeName || machine.type,
       line: machine.currentLine, unit: machine.unit, company: company.name, companySlug: company.slug,
-      reportedAt, reportedBy: 'Guest QR scan', faultCategory, faultDetails, urgency,
+      reportedAt, reportedBy, faultCategory, faultDetails, urgency,
       status: attendedBy ? 'ASSIGNED' : 'PENDING', attendedBy,
-      ...(attendedBy ? { assignedBy: 'QR Call Booking' } : {}),
+      ...(attendedBy ? { assignedBy: reportedBy } : {}),
     });
 
     try {

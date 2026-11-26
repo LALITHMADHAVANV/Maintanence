@@ -138,11 +138,8 @@ function ScanContent({ companySlug }: { companySlug: string }) {
       setIsLoading(false);
       return () => controller.abort();
     }
-    const url = user
-      ? `/api/machines?id=${encodeURIComponent(machineId)}`
-      : `/api/public/scan?company=${encodeURIComponent(companySlug)}&id=${encodeURIComponent(machineId)}`;
-    const load = user ? apiFetch : fetch;
-    load(url, { signal: controller.signal, cache: 'no-store' })
+    const url = `/api/public/scan?company=${encodeURIComponent(companySlug)}&id=${encodeURIComponent(machineId)}`;
+    fetch(url, { signal: controller.signal, cache: 'no-store' })
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {
@@ -161,11 +158,10 @@ function ScanContent({ companySlug }: { companySlug: string }) {
       })
       .finally(() => { if (!controller.signal.aborted) setIsLoading(false); });
     return () => controller.abort();
-  }, [machineId, user, companySlug]);
+  }, [machineId, companySlug]);
 
   useEffect(() => {
     setAssetHistoryCount(0);
-    setLastRepair(null);
     if (!user || !machine) return;
     return subscribeRepairs((repairs) => {
       const machineRepairs = repairs.filter(
@@ -173,7 +169,7 @@ function ScanContent({ companySlug }: { companySlug: string }) {
       );
       machineRepairs.sort((a, b) => new Date(b.reportedAt || 0).getTime() - new Date(a.reportedAt || 0).getTime());
       setAssetHistoryCount(machineRepairs.length);
-      setLastRepair(machineRepairs[0] || null);
+      if (machineRepairs[0]) setLastRepair(machineRepairs[0]);
     });
   }, [machine?.id, machineId, user]);
 
@@ -183,20 +179,33 @@ function ScanContent({ companySlug }: { companySlug: string }) {
     setIsSubmitting(true);
 
     try {
-      if (!user) {
+      if (!user || !['ADMIN', 'ASSET_MANAGER', 'HEAD_MECHANIC_MANAGER'].includes(role || '')) {
         const query = new URLSearchParams({ company: companySlug, id: machine.id });
         const response = await fetch(`/api/public/scan?${query}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'breakdown', faultCategory: faultType, notes: faultNotes, urgency }),
+          body: JSON.stringify({
+            action: 'breakdown',
+            faultCategory: faultType,
+            notes: faultNotes,
+            urgency,
+            attendedBy: selectedMechanic.trim() || null,
+            reportedBy: user ? `${user.name || 'Floor Operator'} (${user.title || 'Line'})` : undefined,
+          }),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to submit breakdown report');
         setMachine({ ...machine, status: 'BREAKDOWN' });
         setGuestTicketId(result.ticketId);
         setFaultNotes('');
+        setSelectedMechanic('');
         try { sessionStorage.removeItem(draftKey); } catch { /* The report is already saved. */ }
-        showToast('Breakdown reported to the mechanic queue.', 'success');
+        showToast(
+          selectedMechanic
+            ? `Breakdown #${result.ticketId} dispatched and assigned to ${selectedMechanic}!`
+            : 'Breakdown reported to the mechanic queue.',
+          'success'
+        );
         return;
       }
       const ticketId = await createBreakdownTicket({
@@ -242,12 +251,17 @@ function ScanContent({ companySlug }: { companySlug: string }) {
     setIsSubmitting(true);
 
     try {
-      if (!user) {
+      if (!user || !['ADMIN', 'ASSET_MANAGER', 'HEAD_MECHANIC_MANAGER'].includes(role || '')) {
         const query = new URLSearchParams({ company: companySlug, id: machine.id });
         const response = await fetch(`/api/public/scan?${query}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetLine, station: targetStation, reason: relocateReason }),
+          body: JSON.stringify({
+            targetLine,
+            station: targetStation,
+            reason: relocateReason,
+            movedBy: user?.name || undefined,
+          }),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to relocate machine');
