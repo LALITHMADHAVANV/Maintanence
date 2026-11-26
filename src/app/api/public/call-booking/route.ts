@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
   try {
     const { db, company } = await getCompanyDatabase(companySlug);
-    const [machines, rawUsers] = await Promise.all([
+    const [machines, rawUsers, tickets] = await Promise.all([
       db.collection<Machine>('machines').find({}, { projection: machineProjection }).toArray(),
       db
         .collection('users')
@@ -42,12 +42,36 @@ export async function GET(request: Request) {
           { projection: { _id: 0, uid: 1, id: 1, name: 1, role: 1, unit: 1 } }
         )
         .toArray(),
+      db
+        .collection('repair_tickets')
+        .find(
+          {},
+          {
+            projection: {
+              _id: 0,
+              id: 1,
+              machineId: 1,
+              machineType: 1,
+              line: 1,
+              unit: 1,
+              faultCategory: 1,
+              urgency: 1,
+              status: 1,
+              attendedBy: 1,
+              reportedBy: 1,
+              reportedAt: 1,
+            },
+            sort: { reportedAt: -1, _id: -1 },
+            limit: 60,
+          }
+        )
+        .toArray(),
     ]);
 
     const technicians = rawUsers.filter((u: any) => isTechnicalRole(u.role));
 
     return NextResponse.json(
-      { success: true, companyName: company.name, companySlug: company.slug, machines, technicians },
+      { success: true, companyName: company.name, companySlug: company.slug, machines, technicians, tickets },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   } catch (error) {
@@ -110,7 +134,7 @@ export async function POST(request: Request) {
     const ticketId = `WO-${Math.floor(1000 + Math.random() * 9000)}-${randomUUID().slice(0, 4).toUpperCase()}`;
     const faultDetails = notes || 'Logged via open Service Call Booking page.';
 
-    await db.collection('repair_tickets').insertOne({
+    const ticketDoc = {
       id: ticketId,
       machineId: machine.id,
       machineType: machine.typeName || machine.type,
@@ -126,7 +150,9 @@ export async function POST(request: Request) {
       status: attendedBy ? 'ASSIGNED' : 'PENDING',
       attendedBy,
       ...(attendedBy ? { assignedBy: reportedBy } : {}),
-    });
+    };
+
+    await db.collection('repair_tickets').insertOne(ticketDoc);
 
     try {
       await machines.updateOne(
@@ -151,7 +177,7 @@ export async function POST(request: Request) {
       console.warn('Public call booking follow-up failed:', err);
     }
 
-    return NextResponse.json({ success: true, ticketId }, { status: 201 });
+    return NextResponse.json({ success: true, ticketId, ticket: ticketDoc }, { status: 201 });
   } catch (error) {
     if (error instanceof TenantError) {
       return NextResponse.json({ error: error.message }, { status: error.statusCode });

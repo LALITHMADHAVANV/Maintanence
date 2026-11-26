@@ -12,8 +12,10 @@ import {
   X,
   CheckCircle2,
   Loader2,
+  ClipboardList,
+  RefreshCw,
 } from 'lucide-react';
-import { Machine, RepairUrgency } from '@/types/cmms';
+import { Machine, RepairTicket, RepairUrgency } from '@/types/cmms';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { matchesUnit } from '@/lib/constants/units';
@@ -93,34 +95,35 @@ function OpenCallBookingContent() {
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [registeredTechs, setRegisteredTechs] = useState<any[]>([]);
+  const [tickets, setTickets] = useState<Partial<RepairTicket>[]>([]);
+  const [activeTab, setActiveTab] = useState<'BOOK' | 'LIST'>('BOOK');
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<'ALL' | 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED'>('ALL');
+  const [ticketSearch, setTicketSearch] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  useEffect(() => {
-    let active = true;
+  const loadCallBookingData = useCallback(async () => {
     setIsLoading(true);
     setLoadError('');
-    fetch(`/api/public/call-booking?company=${encodeURIComponent(companySlug)}`, { cache: 'no-store' })
-      .then(async (r) => {
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error || 'Unable to load call booking data');
-        if (!active) return;
-        setMachines(Array.isArray(data.machines) ? data.machines : []);
-        setRegisteredTechs(Array.isArray(data.technicians) ? data.technicians : []);
-        setCompanyName(data.companyName || companySlug.toUpperCase());
-      })
-      .catch((err) => {
-        if (!active) return;
-        setLoadError(err instanceof Error ? err.message : 'Unable to load call booking data');
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    try {
+      const r = await fetch(`/api/public/call-booking?company=${encodeURIComponent(companySlug)}`, { cache: 'no-store' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Unable to load call booking data');
+      setMachines(Array.isArray(data.machines) ? data.machines : []);
+      setRegisteredTechs(Array.isArray(data.technicians) ? data.technicians : []);
+      setTickets(Array.isArray(data.tickets) ? data.tickets : []);
+      setCompanyName(data.companyName || companySlug.toUpperCase());
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Unable to load call booking data');
+    } finally {
+      setIsLoading(false);
+    }
   }, [companySlug]);
+
+  useEffect(() => {
+    void loadCallBookingData();
+  }, [loadCallBookingData]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
@@ -189,6 +192,26 @@ function OpenCallBookingContent() {
 
   const faultOptions = useMemo(() => getFaultOptions(selectedMachine), [selectedMachine]);
 
+  const openTicketCount = useMemo(
+    () => tickets.filter((t) => t.status !== 'COMPLETED' && t.status !== 'REJECTED').length,
+    [tickets]
+  );
+
+  const filteredTickets = useMemo(() => {
+    const q = ticketSearch.trim().toLowerCase();
+    return tickets.filter((t) => {
+      if (ticketStatusFilter !== 'ALL' && t.status !== ticketStatusFilter) return false;
+      if (!q) return true;
+      return (
+        t.id?.toLowerCase().includes(q) ||
+        t.machineId?.toLowerCase().includes(q) ||
+        t.line?.toLowerCase().includes(q) ||
+        t.faultCategory?.toLowerCase().includes(q) ||
+        t.attendedBy?.toLowerCase().includes(q)
+      );
+    });
+  }, [tickets, ticketStatusFilter, ticketSearch]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMachine) {
@@ -213,6 +236,9 @@ function OpenCallBookingContent() {
       if (!res.ok) throw new Error(data.error || 'Failed to book service call.');
 
       setLastTicketId(data.ticketId);
+      if (data.ticket) {
+        setTickets((prev) => [data.ticket, ...prev]);
+      }
       showToast(
         selectedMechanic
           ? `Call #${data.ticketId} booked & assigned to ${selectedMechanic}!`
@@ -267,7 +293,42 @@ function OpenCallBookingContent() {
             {loadError}
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="space-y-4">
+            {/* Tab Bar */}
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setActiveTab('BOOK')}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'BOOK'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>Book Call</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('LIST')}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'LIST'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span>Booked Calls</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                  activeTab === 'LIST' ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700'
+                }`}>
+                  {openTicketCount} open
+                </span>
+              </button>
+            </div>
+
+            {activeTab === 'BOOK' ? (
+              <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
             {/* Section 1: Identify Machine */}
             <div className="p-5 border-b border-slate-100">
               <div className="flex items-center gap-2 mb-3">
@@ -465,6 +526,115 @@ function OpenCallBookingContent() {
               </button>
             </div>
           </form>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(['ALL', 'PENDING', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'] as const).map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setTicketStatusFilter(status)}
+                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition cursor-pointer ${
+                          ticketStatusFilter === status
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {status === 'ALL' ? 'All' : status.replaceAll('_', ' ')}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1 sm:w-52">
+                      <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        value={ticketSearch}
+                        onChange={(e) => setTicketSearch(e.target.value)}
+                        placeholder="Search ticket, machine, tech..."
+                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadCallBookingData()}
+                      disabled={isLoading}
+                      aria-label="Refresh calls"
+                      className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  {filteredTickets.length === 0 ? (
+                    <div className="p-10 text-center text-xs text-slate-500">
+                      No booked service calls match this filter.
+                    </div>
+                  ) : (
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          <th className="px-4 py-2.5">Ticket</th>
+                          <th className="px-4 py-2.5">Machine / Line</th>
+                          <th className="px-4 py-2.5">Fault</th>
+                          <th className="px-4 py-2.5">Mechanic</th>
+                          <th className="px-4 py-2.5">Reported</th>
+                          <th className="px-4 py-2.5">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredTickets.map((t) => (
+                          <tr key={t.id} className="hover:bg-slate-50">
+                            <td className="px-4 py-2.5 font-mono font-bold text-slate-900 whitespace-nowrap">
+                              {t.id}
+                              {t.urgency === 'CRITICAL' && (
+                                <span className="ml-1.5 text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">CRIT</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 whitespace-nowrap">
+                              <div className="font-bold text-slate-900">{t.machineId}</div>
+                              <div className="text-[10px] text-slate-500">{t.line || '—'}{t.unit ? ` • ${t.unit}` : ''}</div>
+                            </td>
+                            <td className="px-4 py-2.5 max-w-[200px] text-slate-700">{t.faultCategory || '—'}</td>
+                            <td className="px-4 py-2.5 whitespace-nowrap font-semibold text-slate-800">
+                              {t.attendedBy || <span className="text-amber-600 font-normal">Unassigned</span>}
+                            </td>
+                            <td className="px-4 py-2.5 whitespace-nowrap text-[11px] text-slate-500">
+                              {t.reportedAt && Number.isFinite(new Date(t.reportedAt).getTime())
+                                ? new Date(t.reportedAt).toLocaleString('en-IN', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    timeZone: 'Asia/Kolkata',
+                                  })
+                                : '—'}
+                            </td>
+                            <td className="px-4 py-2.5 whitespace-nowrap">
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                t.status === 'COMPLETED'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : t.status === 'IN_PROGRESS'
+                                  ? 'bg-indigo-100 text-indigo-700'
+                                  : t.status === 'ASSIGNED'
+                                  ? 'bg-sky-100 text-sky-700'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {(t.status || 'PENDING').replaceAll('_', ' ')}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
