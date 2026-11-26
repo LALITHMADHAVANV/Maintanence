@@ -21,6 +21,7 @@
 /build
 
 # misc
+/artifacts/database-backups/
 .DS_Store
 *.pem
 

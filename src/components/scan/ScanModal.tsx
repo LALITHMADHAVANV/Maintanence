@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { QrCode, X, AlertTriangle, ArrowRightLeft, Radio, Camera, UserCheck } from 'lucide-react';
 import { Machine, FloorLine, RepairUrgency } from '@/types/cmms';
-import { subscribeMachines, createBreakdownTicket, relocateMachine } from '@/lib/services/cmmsService';
+import { apiFetch, subscribeMachines, createBreakdownTicket, relocateMachine } from '@/lib/services/cmmsService';
 import { formatAssetLocation } from '@/lib/formatters';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
@@ -46,7 +46,7 @@ export function ScanModal({
 
   // Fetch registered mechanics / technicians
   useEffect(() => {
-    fetch('/api/users')
+    apiFetch('/api/users')
       .then((r) => r.json())
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {

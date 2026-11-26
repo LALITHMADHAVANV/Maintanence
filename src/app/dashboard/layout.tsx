@@ -4,6 +4,7 @@ import React from 'react';
 import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { RouteGuard } from '@/components/layout/RouteGuard';
+import { PageDataLoading } from '@/components/layout/AppDataLoading';
 
 export default function DashboardLayout({
   children,
@@ -22,11 +23,11 @@ export default function DashboardLayout({
             id="main-content"
             className="w-full min-w-0 flex-grow space-y-6 px-4 pb-4 sm:px-6 sm:pb-6"
           >
-            {children}
+            <PageDataLoading>{children}</PageDataLoading>
           </main>
         </RouteGuard>
         <footer className="bg-white border-t border-slate-200 text-slate-400 text-xs py-3 text-center no-print mt-auto">
-          <p>Maintenance Module • Coimbatore Unit</p>
+          <p>Maintenance Module</p>
         </footer>
       </div>
     </div>

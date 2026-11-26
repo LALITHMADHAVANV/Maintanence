@@ -6,7 +6,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   Calendar,
-  CalendarCheck,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -27,11 +26,9 @@ import {
   Clock,
   Building2,
   Search,
-  RotateCw,
   User,
   X,
 } from 'lucide-react';
-import Link from 'next/link';
 import { RepairTicket, PPMSchedule, Machine, UserProfile } from '@/types/cmms';
 import {
   subscribeRepairs,
@@ -99,11 +96,9 @@ export default function MechanicRosterPage() {
   const [viewMode, setViewMode] = useState<'ACTIONS' | 'ROSTER_SHEET'>('ACTIONS');
 
   // Filter & Search states for the Actions view
-  const [activeTab, setActiveTab] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('ALL');
-  const [selectedBuyer, setSelectedBuyer] = useState<string>('ALL');
-  const [selectedInCharge, setSelectedInCharge] = useState<string>('ALL');
+  const [selectedMechanic, setSelectedMechanic] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'URGENT' | 'DUE' | 'NAME'>('NEWEST');
 
   // Reschedule modal
@@ -299,18 +294,6 @@ export default function MechanicRosterPage() {
     return Math.min(100, Math.round((clearedTodayCount / total) * 100));
   }, [totalToGoCount, clearedTodayCount]);
 
-  // List of unique in-charges from registered technical staff & active assignments
-  const uniqueInCharges = useMemo(() => {
-    const set = new Set<string>();
-    registeredRoster.forEach((m) => {
-      if (m.name) set.add(m.name);
-    });
-    allInChargeActions.forEach((a) => {
-      if (a.inCharge && a.inCharge !== 'Unassigned') set.add(a.inCharge);
-    });
-    return Array.from(set);
-  }, [registeredRoster, allInChargeActions]);
-
   // Unique types from real tasks
   const availableTypes = useMemo(() => {
     const set = new Set<string>();
@@ -320,36 +303,27 @@ export default function MechanicRosterPage() {
     return Array.from(set);
   }, [allInChargeActions]);
 
-  // Unique buyers from real machine assignments
-  const availableBuyers = useMemo(() => {
+  // Unique mechanics from the live roster and assigned queue items
+  const availableMechanics = useMemo(() => {
     const set = new Set<string>();
-    allInChargeActions.forEach((a) => {
-      if (a.buyer && a.buyer !== 'General Factory') set.add(a.buyer);
+    registeredRoster.forEach((mechanic) => {
+      if (mechanic.name) set.add(mechanic.name);
+    });
+    allInChargeActions.forEach((action) => {
+      if (action.inCharge && action.inCharge !== 'Unassigned') set.add(action.inCharge);
     });
     return Array.from(set);
-  }, [allInChargeActions]);
+  }, [registeredRoster, allInChargeActions]);
 
   // Filtered in-charge action items
   const filteredActions = useMemo(() => {
     return allInChargeActions.filter((item) => {
-      if (activeTab !== 'ALL' && activeTab !== 'OVERDUE') {
-        if (!item.inCharge.toLowerCase().includes(activeTab.toLowerCase())) return false;
-      }
-      if (activeTab === 'OVERDUE' && item.overdueDays <= 0) return false;
-
       if (selectedType !== 'ALL' && item.type.toLowerCase() !== selectedType.toLowerCase()) {
         return false;
       }
-      if (selectedBuyer !== 'ALL' && item.buyer.toLowerCase() !== selectedBuyer.toLowerCase()) {
+      if (selectedMechanic !== 'ALL' && item.inCharge.toLowerCase() !== selectedMechanic.toLowerCase()) {
         return false;
       }
-      if (
-        selectedInCharge !== 'ALL' &&
-        !item.inCharge.toLowerCase().includes(selectedInCharge.toLowerCase())
-      ) {
-        return false;
-      }
-
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesRef = item.ref.toLowerCase().includes(q);
@@ -382,7 +356,7 @@ export default function MechanicRosterPage() {
       }
       return a.stageName.localeCompare(b.stageName);
     });
-  }, [allInChargeActions, activeTab, selectedType, selectedBuyer, selectedInCharge, searchQuery, sortBy]);
+  }, [allInChargeActions, selectedType, selectedMechanic, searchQuery, sortBy]);
 
   const handleCompleteAction = async (action: InChargeActionItem) => {
     try {
@@ -490,93 +464,6 @@ export default function MechanicRosterPage() {
       {viewMode === 'ACTIONS' ? (
         <>
           {/* ─── Top Filter Tabs & View Switcher Bar ─── */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-            <div className="flex items-center gap-2.5 overflow-x-auto pb-1 flex-1">
-              <button
-                onClick={() => setActiveTab('ALL')}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer shrink-0 ${
-                  activeTab === 'ALL'
-                    ? 'bg-[#00897b] text-white shadow-xs'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                All {totalToGoCount}
-              </button>
-
-              {uniqueInCharges.slice(0, 6).map((name) => {
-                const count = allInChargeActions.filter((a) =>
-                  a.inCharge.toLowerCase().includes(name.toLowerCase())
-                ).length;
-                return (
-                  <button
-                    key={name}
-                    onClick={() => setActiveTab(name)}
-                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer shrink-0 ${
-                      activeTab === name
-                        ? 'bg-[#00897b] text-white shadow-xs'
-                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {name} <span className="text-slate-400 font-normal ml-1">{count}</span>
-                  </button>
-                );
-              })}
-
-              <button
-                onClick={() => setActiveTab('OVERDUE')}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer shrink-0 ${
-                  activeTab === 'OVERDUE'
-                    ? 'bg-[#00897b] text-white shadow-xs'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                Overdue Stages{' '}
-                <span className="text-rose-600 font-bold ml-1">
-                  {allInChargeActions.filter((a) => a.overdueDays > 0).length}
-                </span>
-              </button>
-            </div>
-
-            {/* View Switcher & Action Buttons */}
-            <div className="flex items-center gap-2 shrink-0 no-print self-end sm:self-auto">
-              <div className="bg-slate-100 p-0.5 rounded-xl flex items-center text-xs font-bold border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('ACTIONS')}
-                  className="px-3 py-1 rounded-lg transition cursor-pointer bg-white text-slate-900 shadow-2xs"
-                >
-                  Stage & Issue Queue
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('ROSTER_SHEET')}
-                  className="px-3 py-1 rounded-lg transition cursor-pointer text-slate-600 hover:text-slate-900"
-                >
-                  Staff Duty Roster
-                </button>
-              </div>
-
-              <Link
-                href="/dashboard/ppm-scheduler"
-                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
-                title="Open PPM Scheduler & Bulk Preventive Overhaul"
-              >
-                <CalendarCheck className="w-3.5 h-3.5 text-amber-600" />
-                <span>PPM Scheduler</span>
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => showToast(`Synced: ${totalToGoCount} in-charge actions active`, 'info')}
-                className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-xl transition shadow-2xs cursor-pointer"
-                title="Refresh list"
-              >
-                <RotateCw className="w-4 h-4 text-slate-600 hover:text-slate-900" />
-              </button>
-            </div>
-          </div>
-
-          {/* ─── Filter Toolbar Matching Reference Screen ─── */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-6">
             {/* Search input with magnifying glass */}
             <div className="col-span-12 md:col-span-5 relative">
@@ -611,34 +498,17 @@ export default function MechanicRosterPage() {
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
 
-            {/* Dropdown: All buyers */}
+            {/* Dropdown: All mechanics */}
             <div className="col-span-6 md:col-span-2 relative">
               <select
-                value={selectedBuyer}
-                onChange={(e) => setSelectedBuyer(e.target.value)}
+                value={selectedMechanic}
+                onChange={(e) => setSelectedMechanic(e.target.value)}
                 className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
               >
-                <option value="ALL">All buyers</option>
-                {availableBuyers.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-
-            {/* Dropdown: All in-charges / staff */}
-            <div className="col-span-6 md:col-span-2 relative">
-              <select
-                value={selectedInCharge}
-                onChange={(e) => setSelectedInCharge(e.target.value)}
-                className="w-full appearance-none pl-3.5 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
-              >
-                <option value="ALL">All in-charges</option>
-                {uniqueInCharges.map((ic) => (
-                  <option key={ic} value={ic}>
-                    {ic}
+                <option value="ALL">All mechanics</option>
+                {availableMechanics.map((mechanic) => (
+                  <option key={mechanic} value={mechanic}>
+                    {mechanic}
                   </option>
                 ))}
               </select>
@@ -661,113 +531,22 @@ export default function MechanicRosterPage() {
             </div>
           </div>
 
-          {/* ─── Action Cards List Matching Reference Screen ─── */}
-          <div className="space-y-4">
-            {filteredActions.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-2xs">
-                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-slate-800">All in-charge stages cleared!</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  There are no pending actions matching your active filters.
-                </p>
-              </div>
-            ) : (
-              filteredActions.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs relative transition-all hover:shadow-xs border-l-4 border-l-rose-500"
-                >
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    {/* Left Content Area */}
-                    <div className="space-y-2 min-w-0 flex-1">
-                      {/* Top Line: Badge, Reference, In-charge, Target, Urgency */}
-                      <div className="flex flex-wrap items-center gap-2.5 text-xs">
-                        {/* Red Overdue Badge */}
-                        <span className="bg-[#fee2e2] text-[#b91c1c] font-bold text-[11px] px-2.5 py-0.5 rounded-md">
-                          {item.tag}
-                        </span>
-
-                        {/* Bold Reference / IO / Style */}
-                        <span className="font-extrabold text-slate-900 tracking-tight text-sm">
-                          {item.ref}
-                        </span>
-
-                        {/* In-Charge with user icon */}
-                        <div className="flex items-center gap-1 text-slate-700 font-medium ml-1">
-                          <User className="w-3.5 h-3.5 text-slate-400" />
-                          <span>
-                            In-charge: <strong className="font-bold text-slate-900">{item.inCharge}</strong>
-                          </span>
-                        </div>
-
-                        {/* Target / Ex-factory date */}
-                        <span className="text-slate-500 font-medium">{item.targetDate}</span>
-
-                        {/* Urgency Pill */}
-                        <span
-                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
-                            item.urgency === 'Critical'
-                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                              : 'bg-rose-50 text-rose-600 border border-rose-100'
-                          }`}
-                        >
-                          {item.urgency}
-                        </span>
-                      </div>
-
-                      {/* Second Line: Stage, Status Badge, Subtitle */}
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="font-bold text-slate-900 text-sm">
-                          Stage: {item.stageName}
-                        </span>
-                        <span className="bg-[#eff6ff] text-[#2563eb] font-semibold text-[11px] px-2.5 py-0.5 rounded-full">
-                          {item.statusBadge}
-                        </span>
-                        <span className="text-slate-400 font-normal">· {item.stageSubtitle}</span>
-                      </div>
-
-                      {/* Third Line: Due date & Overdue tag */}
-                      <div className="text-xs text-slate-700">
-                        <span>
-                          Due date: <strong className="text-slate-900">{item.dueDate}</strong> (planned{' '}
-                          {item.plannedDate})
-                        </span>
-                        <span className="text-rose-600 font-bold ml-1.5">
-                          +{item.overdueDays}d overdue
-                        </span>
-                      </div>
-
-                      {/* Fourth Line: Secondary Details / Merchandiser / Machine */}
-                      <div className="text-xs text-slate-500 font-medium">{item.details}</div>
-
-                      {/* Fifth Line: Caption / Action Hint */}
-                      <div className="text-[11px] text-slate-400 font-normal pt-1">
-                        {item.hint}
-                      </div>
-                    </div>
-
-                    {/* Right Side Buttons Matching Reference Screenshot */}
-                    <div className="flex items-center gap-3 shrink-0 pt-2 lg:pt-0">
-                      {/* Complete Button (Teal / Emerald) */}
-                      <button
-                        onClick={() => handleCompleteAction(item)}
-                        className="px-5 py-2 bg-[#00897b] hover:bg-[#00796b] text-white font-bold text-xs rounded-xl shadow-2xs hover:shadow-xs transition cursor-pointer"
-                      >
-                        Complete
-                      </button>
-
-                      {/* Request New Date Button (White with border) */}
-                      <button
-                        onClick={() => handleOpenReschedule(item)}
-                        className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs rounded-xl shadow-2xs hover:shadow-xs transition cursor-pointer"
-                      >
-                        Request New Date
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
+          <div className="process-charge-table-wrap">
+            <table className="process-charge-table">
+              <caption className="sr-only">Process in-charge actions matching the current filters</caption>
+              <thead><tr>{['Reference', 'Process In-Charge', 'Stage / Issue', 'Status', 'Priority', 'Target Date', 'Due / Planned Date', 'Overdue', 'Actions'].map(heading => <th scope="col" key={heading}>{heading}</th>)}</tr></thead>
+              <tbody>{filteredActions.length === 0 ? <tr><td colSpan={9} className="process-charge-empty">No pending actions match your filters.</td></tr> : filteredActions.map(item => <tr key={item.id}>
+                <td><strong>{item.ref}</strong><small>{item.tag}</small></td>
+                <td>{item.inCharge}</td>
+                <td className="process-charge-issue"><strong>{item.stageName}</strong><small>{item.stageSubtitle}</small><small>{item.details}</small><small>{item.hint}</small></td>
+                <td><span className="process-charge-status">{item.statusBadge}</span></td>
+                <td><span className={item.urgency === 'Critical' ? 'process-charge-priority critical' : 'process-charge-priority'}>{item.urgency}</span></td>
+                <td>{item.targetDate}</td>
+                <td>{item.dueDate}<small>Planned: {item.plannedDate}</small></td>
+                <td className={item.overdueDays > 0 ? 'process-charge-overdue' : ''}>{item.overdueDays > 0 ? '+' + item.overdueDays + 'd overdue' : 'On time'}</td>
+                <td><div className="process-charge-actions"><button onClick={() => handleCompleteAction(item)}>Complete</button><button onClick={() => handleOpenReschedule(item)}>Request New Date</button></div></td>
+              </tr>)}</tbody>
+            </table>
           </div>
         </>
       ) : (

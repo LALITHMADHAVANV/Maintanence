@@ -68,11 +68,10 @@ import {
   sendAppNotification,
 } from '@/lib/services/cmmsService';
 import { FACTORY_MECHANICS_ROSTER, MechanicDuty, userToMechanicDuty } from '@/lib/constants/mechanics';
-import { MechanicCustodyModal } from '@/components/mechanic/MechanicCustodyModal';
 import { ImportButton } from '@/components/import/ImportButton';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import { normalizeRole } from '@/lib/constants/roles';
+import { canAccessRoute, normalizeRole } from '@/lib/constants/roles';
 import { FACTORY_MACHINE_CATEGORIES, detectMachineCategory, isSpareCompatibleWithMachine } from '@/lib/utils/spareMapping';
 
 export default function InventoryPage() {
@@ -80,7 +79,8 @@ export default function InventoryPage() {
   const { user, role } = useAuth();
   const currentRole = normalizeRole(user?.role || role);
 
-  const isStorePersonOrAdmin = currentRole === 'STORE_PERSON' || currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER';
+  const isStorePerson = currentRole === 'STORE_PERSON';
+  const isAdminReadOnly = currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER';
   const isMechanicOrAdmin = currentRole === 'MECHANIC' || currentRole === 'SENIOR_MECHANIC' || currentRole === 'ELECTRICIAN' || currentRole === 'SENIOR_ELECTRICIAN' || currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER';
 
   // Strict authorization matrix: only authorized executives/admin can approve critical needs
@@ -99,12 +99,6 @@ export default function InventoryPage() {
       unsub();
     };
   }, []);
-
-  // Mechanic Custody details state
-  const [selectedMechanic, setSelectedMechanic] = useState<MechanicDuty | null>(null);
-  const [isMechCustodyOpen, setIsMechCustodyOpen] = useState(false);
-  const [activeMechanicId, setActiveMechanicId] = useState<string>('ELEC-02');
-  const [showFullPartsTable, setShowFullPartsTable] = useState(true);
 
   // Dynamic staff roster from registered users
   const [registeredStaff, setRegisteredStaff] = useState<MechanicDuty[]>([]);
@@ -186,6 +180,10 @@ export default function InventoryPage() {
 
   // Inward Goods (GRN) Intake Modal state
   const [grnVendor, setGrnVendor] = useState<string>('');
+  const [grnPurchaseDate, setGrnPurchaseDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  });
   const [grnChallanNo, setGrnChallanNo] = useState<string>('');
   const [grnQcPassed, setGrnQcPassed] = useState<boolean>(true);
   const [grnNotes, setGrnNotes] = useState<string>('');
@@ -194,121 +192,6 @@ export default function InventoryPage() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // For Senior Electrician, ONLY show junior electricians
-  const visibleMechanics = useMemo(() => {
-    let baseList = [...activeStaffRoster];
-
-    // Ensure any mechanic who performed machine repairs is included in the staff roster
-    (repairs || []).forEach((r) => {
-      const name = (r.attendedBy || '').trim();
-      if (!name) return;
-      const alreadyInList = baseList.some(
-        (m) => m.name.toLowerCase() === name.toLowerCase() || m.id.toLowerCase() === name.toLowerCase()
-      );
-      if (!alreadyInList) {
-        baseList.push(
-          userToMechanicDuty({
-            name,
-            role: 'Line Sewing Mechanic',
-            uid: `repair-history:${name.toLowerCase()}`,
-            department: r.line || 'Sewing Floor',
-          })
-        );
-      }
-    });
-
-    if (currentRole === 'SENIOR_ELECTRICIAN') {
-      baseList = baseList.filter((m) => m.trade === 'ELECTRICIAN' && !m.role.toLowerCase().includes('senior'));
-    } else if (currentRole === 'SENIOR_MECHANIC') {
-      baseList = baseList.filter((m) => m.trade === 'MECHANIC');
-    }
-
-    return baseList.map((m) => {
-      const mechNameClean = (m.name || '').trim().toLowerCase();
-      const mechIdClean = (m.id || '').trim().toLowerCase();
-
-      const matchedRepairs = repairs.filter((r) => {
-        const att = (r.attendedBy || '').trim().toLowerCase();
-        return att === mechNameClean || att === mechIdClean || att.includes(mechNameClean) || mechNameClean.includes(att);
-      });
-
-      const partsDrawn: any[] = [];
-      matchedRepairs.forEach((r) => {
-        (r.partsUsed || []).forEach((pu) => {
-          const dStr = r.completedAt || r.resolvedAt || r.startedAt || r.reportedAt || '';
-          let formattedDate = 'Recent';
-          if (dStr) {
-            try {
-              const d = new Date(dStr);
-              formattedDate = `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-            } catch {}
-          }
-
-          partsDrawn.push({
-            partId: pu.partId,
-            sku: pu.sku,
-            partName: pu.name,
-            quantity: pu.quantity,
-            unit: 'pcs',
-            drawnAt: formattedDate,
-            forMachineId: r.machineId || 'Floor Machine',
-            line: r.line || 'Floor Line',
-          });
-        });
-      });
-
-      const machineTasks = matchedRepairs
-        .filter((r) => r.status === 'IN_PROGRESS' || r.status === 'ASSIGNED')
-        .map((r) => ({
-          ticketId: r.id,
-          machineId: r.machineId,
-          line: r.line || 'Line 01',
-          fault: r.faultCategory || r.faultDetails || 'Breakdown Repair',
-          urgency: r.urgency as 'CRITICAL' | 'WARNING',
-          startedAt: r.startedAt || r.reportedAt,
-        }));
-
-      return {
-        ...m,
-        activePartsDrawn: partsDrawn.length > 0 ? partsDrawn : m.activePartsDrawn || [],
-        activeMachineTasks: machineTasks.length > 0 ? machineTasks : m.activeMachineTasks || [],
-      };
-    });
-  }, [currentRole, activeStaffRoster, repairs]);
-
-  // Sync active selected mechanic
-  useEffect(() => {
-    if (visibleMechanics.length > 0 && !visibleMechanics.some((m) => m.id === activeMechanicId)) {
-      setActiveMechanicId(visibleMechanics[0].id);
-    }
-  }, [visibleMechanics, activeMechanicId]);
-
-  const currentMechanicData = useMemo(
-    () => visibleMechanics.find((m) => m.id === activeMechanicId) || visibleMechanics[0] || null,
-    [activeMechanicId, visibleMechanics]
-  );
-
-  const handleOpenMechanicCustody = (mechIdentifier: string | MechanicDuty) => {
-    if (typeof mechIdentifier === 'object' && mechIdentifier !== null) {
-      setSelectedMechanic(mechIdentifier);
-      setActiveMechanicId(mechIdentifier.id);
-      setIsMechCustodyOpen(true);
-      return;
-    }
-    const cleanName = (mechIdentifier || '').toLowerCase();
-    const found = activeStaffRoster.find(
-      (m) =>
-        m.name.toLowerCase().includes(cleanName) ||
-        cleanName.includes(m.name.toLowerCase()) ||
-        m.id.toLowerCase() === cleanName
-    );
-    const mech = found || activeStaffRoster[0];
-    if (mech) {
-      setSelectedMechanic(mech);
-      setActiveMechanicId(mech.id);
-      setIsMechCustodyOpen(true);
-    }
-  };
-
   // Requisition Hub Modal tab: 'MONTHLY_INDENT' | 'URGENT_NEED' | 'CRITICAL_CEO' | 'VIEW_ALL'
   const [reqModalTab, setReqModalTab] = useState<RequisitionType | 'VIEW_ALL'>('MONTHLY_INDENT');
 
@@ -351,11 +234,23 @@ export default function InventoryPage() {
   // Centralized Indent & Requisition Dropdown Menu state
   const [isIndentMenuOpen, setIsIndentMenuOpen] = useState(false);
   const indentMenuRef = useRef<HTMLDivElement>(null);
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const quickActionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (indentMenuRef.current && !indentMenuRef.current.contains(event.target as Node)) {
         setIsIndentMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (quickActionsRef.current && !quickActionsRef.current.contains(event.target as Node)) {
+        setIsQuickActionsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -468,6 +363,10 @@ export default function InventoryPage() {
   }, [displayedRequisitions, reqFilter]);
 
   const handleAdjust = async (part: SparePart, delta: number) => {
+    if (!isStorePerson) {
+      showToast('Stock adjustments are managed by Store users.', 'error');
+      return;
+    }
     if (part.stock + delta < 0) {
       showToast('Stock cannot fall below zero.', 'warning');
       return;
@@ -477,6 +376,10 @@ export default function InventoryPage() {
   };
 
   const handleOpenIssueModal = (part?: SparePart) => {
+    if (!isStorePerson) {
+      showToast('Stock issues are managed by Store users.', 'error');
+      return;
+    }
     const targetPart = part || parts[0];
     if (!targetPart) {
       showToast('No spare parts available to issue.', 'warning');
@@ -491,6 +394,10 @@ export default function InventoryPage() {
 
   const handleConfirmIssue = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isStorePerson) {
+      showToast('Only Store users can issue stock.', 'error');
+      return;
+    }
     if (!activeIssuePart) return;
     if (issueQty <= 0) {
       showToast('Quantity must be greater than 0', 'warning');
@@ -572,6 +479,12 @@ export default function InventoryPage() {
   };
 
   const handleOpenGrnModal = (part?: SparePart) => {
+    if (!isStorePerson) {
+      showToast('Inward stock receipts are managed by Store users.', 'error');
+      return;
+    }
+    const today = new Date();
+    setGrnPurchaseDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
     const targetPart = part || parts[0];
     if (targetPart) {
       setRestockPartId(targetPart.partId);
@@ -614,12 +527,16 @@ export default function InventoryPage() {
 
   const handleRestockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isStorePerson) {
+      showToast('Only Store users can receive stock.', 'error');
+      return;
+    }
     if (!restockPartId || restockQty <= 0) return;
     const target = parts.find((p) => p.partId === restockPartId);
     if (!target) return;
 
     const poRef = grnChallanNo || restockPO || `GRN-${Date.now().toString().slice(-6)}`;
-    await restockPart(restockPartId, restockQty, poRef);
+    await restockPart(restockPartId, restockQty, poRef, grnVendor, grnPurchaseDate);
 
     sendAppNotification({
       type: 'RESTOCK_ALERT',
@@ -655,6 +572,7 @@ export default function InventoryPage() {
       'Unit Cost (INR)',
       'Est Reorder Value (INR)',
       'Vendor / Supplier',
+      'Purchase Date',
       'Scrap Return Policy',
     ];
     const rows = lowStock.map((p) => [
@@ -668,6 +586,7 @@ export default function InventoryPage() {
       p.unitCost,
       ((p.minStock * 2 - p.stock > 0 ? p.minStock * 2 - p.stock : p.minStock) * p.unitCost),
       `"${p.vendor || 'Direct Purchase'}"`,
+      p.purchaseDate || 'Not recorded',
       p.oldPartReturnRequired ? '1:1 Scrap Return Required' : 'Standard Consumable',
     ]);
     const csvContent =
@@ -687,6 +606,12 @@ export default function InventoryPage() {
   };
 
   const handleOpenReqModal = (mode: RequisitionType | 'VIEW_ALL' = 'MONTHLY_INDENT', initialPartId?: string) => {
+    setIsQuickActionsOpen(false);
+    setIsIndentMenuOpen(false);
+    if (isAdminReadOnly && mode !== 'VIEW_ALL') {
+      showToast('Admin stock access is read-only. Mechanics submit part requests.', 'info');
+      return;
+    }
     if (mode === 'VIEW_ALL') {
       setReqModalTab('VIEW_ALL');
       setIsReqModalOpen(true);
@@ -771,6 +696,10 @@ export default function InventoryPage() {
 
   const handleRequisitionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAdminReadOnly) {
+      showToast('Admin stock access is read-only. Mechanics submit part requests.', 'error');
+      return;
+    }
     setIsSubmittingReq(true);
 
     try {
@@ -950,35 +879,72 @@ export default function InventoryPage() {
     }
   };
 
+  const catalogRef = useRef<HTMLDivElement>(null);
+  const scrollToCatalog = () => catalogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const showFullCatalog = () => {
+    setCategoryFilter('ALL');
+    setMachineTypeFilter('ALL');
+    setLowStockOnly(false);
+    requestAnimationFrame(scrollToCatalog);
+  };
+  const showLowStockCatalog = () => {
+    setLowStockOnly(true);
+    requestAnimationFrame(scrollToCatalog);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-            <Boxes className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span>Spare Parts Stock Maintenance Table</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Live crib stock inventory, buffer levels, machine compatibility mappings, and parts catalog.
-            </p>
-          </div>
-        </div>
-
-        {/* Action Buttons: Stock Maintenance & Mechanic Indents */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {isStorePersonOrAdmin && <><ImportButton kind="parts" /><ImportButton kind="indents" /></>}
-          <Link
-            href="/dashboard/store-inbox"
-            className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-            title="Go to Mechanic Indent Receiving Desk"
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleExportReorderList}
+          className="text-xs px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+          title="Export low-stock items as CSV for purchase order"
+        >
+          <Download className="w-3.5 h-3.5 text-slate-600" />
+          <span>Export Reorder List</span>
+        </button>
+      </div>
+      {/* Stock actions live in one compact corner menu. */}
+      {!isAdminReadOnly && (
+        <div className="fixed bottom-6 right-6 z-[80] flex items-center gap-2" ref={quickActionsRef}>
+          <button
+            type="button"
+            onClick={() => setIsQuickActionsOpen((open) => !open)}
+            aria-label="Open stock actions"
+            aria-expanded={isQuickActionsOpen}
+            aria-haspopup="menu"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            title="Stock actions"
           >
-            <PackageCheck className="w-4 h-4 text-[#059669]" />
-            <span>Mechanic Indents Desk</span>
-          </Link>
+            <Plus className={`h-5 w-5 transition-transform ${isQuickActionsOpen ? 'rotate-45' : ''}`} />
+          </button>
+
+          {isQuickActionsOpen && <div role="menu" className="absolute bottom-full right-0 z-[80] mb-3 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl animate-in fade-in zoom-in-95 duration-100">
+            <p className="mb-2 px-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Stock actions</p>
+            {isStorePerson && <div className="flex flex-col gap-2">
+              <ImportButton kind="parts" />
+              <ImportButton kind="indents" />
+            </div>}
+            <button
+              type="button"
+              onClick={() => { setIsQuickActionsOpen(false); setIsScannerOpen(true); }}
+              className="mt-2 flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+              role="menuitem"
+            >
+              <ScanBarcode className="h-4 w-4 text-indigo-600" />
+              <span>Search / Scan Stock</span>
+            </button>
+            {canAccessRoute(currentRole, '/dashboard/store-inbox') && <Link
+              href="/dashboard/store-inbox"
+              onClick={() => setIsQuickActionsOpen(false)}
+              className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
+              title="Go to Mechanic Indent Receiving Desk"
+              role="menuitem"
+            >
+              <PackageCheck className="h-4 w-4 text-[#059669]" />
+              <span>Mechanic Indents Desk</span>
+            </Link>}
 
           {/* Centralized Action: Indents & Requisitions under a Specific Button */}
           {isMechanicOrAdmin && (
@@ -1005,7 +971,7 @@ export default function InventoryPage() {
 
               {/* Centralized Dropdown Menu */}
               {isIndentMenuOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-full top-0 mr-2 mt-0 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-[70] animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-3.5 py-2 border-b border-slate-100">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
                       Centralized Indent Desk
@@ -1016,6 +982,7 @@ export default function InventoryPage() {
                   </div>
 
                   <div className="p-1.5 space-y-1">
+                    {!isAdminReadOnly && <>
                     {/* 1. Urgent Floor Indent (Mechanic Need) */}
                     <button
                       type="button"
@@ -1096,6 +1063,7 @@ export default function InventoryPage() {
                         </p>
                       </div>
                     </button>
+                    </>}
 
                     {/* 4. Active Requisitions & Approvals */}
                     <button
@@ -1150,30 +1118,25 @@ export default function InventoryPage() {
           )}
 
           {/* Store Person & Admin Action: Restock Intake */}
-          {isStorePersonOrAdmin && (
+          {isStorePerson && (
             <button
-              onClick={() => setIsRestockOpen(true)}
-              className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              onClick={() => { setIsQuickActionsOpen(false); setIsRestockOpen(true); }}
+              className="mt-2 flex w-full items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
+              role="menuitem"
             >
               <PackageOpen className="w-4 h-4 text-emerald-600" />
               <span>Restock Tool Crib</span>
             </button>
           )}
-
-          {/* CEO View Indicator */}
-          {role === 'CEO' && (
-            <span className="text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-              👑 Executive Inventory & Valuation Audit
-            </span>
-          )}
+          </div>}
         </div>
-      </div>
+      )}
 
       {/* INVENTORY CATALOG & CRIB STOCK */}
       <div className="space-y-6 animate-in fade-in duration-150">
           {/* Summary metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+            <button type="button" onClick={showFullCatalog} aria-label="Show all catalog items" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-300">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Total Catalog Items
               </div>
@@ -1181,9 +1144,9 @@ export default function InventoryPage() {
               <div className="text-[11px] text-emerald-600 font-medium">
                 Categorized for 7 Machine Types
               </div>
-            </div>
+            </button>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+            <button type="button" onClick={showLowStockCatalog} aria-label="Show low stock items" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-rose-300">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Low Stock Warnings
               </div>
@@ -1193,9 +1156,9 @@ export default function InventoryPage() {
               <div className="text-[11px] text-rose-600 font-medium">
                 Below safe buffer threshold
               </div>
-            </div>
+            </button>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+            <button type="button" onClick={() => handleOpenReqModal('VIEW_ALL')} aria-label="Open requisitions and pending approvals" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-300">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Pending Approvals
               </div>
@@ -1205,9 +1168,9 @@ export default function InventoryPage() {
               <div className="text-[11px] text-slate-500">
                 {pendingCeoApprovals.length} CEO • {pendingManagerApprovals.length} Manager
               </div>
-            </div>
+            </button>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+            <button type="button" onClick={showFullCatalog} aria-label="View spare parts inventory value" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-300">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Total Inventory Value
               </div>
@@ -1215,398 +1178,23 @@ export default function InventoryPage() {
                 ₹{Math.round(totalValuation).toLocaleString('en-IN')}
               </div>
               <div className="text-[11px] text-slate-500">Tool crib stock valuation</div>
-            </div>
+            </button>
           </div>
 
-          {/* MECHANIC & ELECTRICIAN TOOL CUSTODY SECTION */}
-          {role !== 'MECHANIC' && role !== 'ELECTRICIAN' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    {role === 'SENIOR_ELECTRICIAN' ? (
-                      <Zap className="w-4 h-4 text-cyan-600" />
-                    ) : (
-                      <Wrench className="w-4 h-4 text-indigo-600" />
-                    )}
-                    <span>
-                      {role === 'SENIOR_ELECTRICIAN'
-                        ? 'Junior Electricians Tool Custody'
-                        : 'Mechanic Tool Custody'}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {role === 'SENIOR_ELECTRICIAN'
-                      ? 'Click any junior electrician below to see the calibration tools and electrical components in their custody.'
-                      : 'Click any mechanic below to see the tools and spare parts they are currently handling.'}
-                  </p>
-                </div>
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {visibleMechanics.length} {role === 'SENIOR_ELECTRICIAN' ? 'Junior Electricians' : 'Technicians On Duty'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowFullPartsTable(!showFullPartsTable)}
-                  className="text-xs font-semibold px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
-                >
-                  {showFullPartsTable ? 'Hide Stock Catalog' : 'View Stock Catalog'}
-                </button>
-              </div>
-            </div>
-
-            {/* Mechanic Selector Cards */}
-            {visibleMechanics.length === 0 ? (
-              <div className="p-6 bg-white rounded-2xl border border-dashed border-slate-300 text-center text-slate-400">
-                <Wrench className="w-6 h-6 mx-auto text-slate-300 mb-1" />
-                <p className="text-xs font-semibold">No mechanics or technicians currently found in roster.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                {visibleMechanics.map((mech) => {
-                  const isSelected = mech.id === activeMechanicId;
-                  const specialToolsCount = mech.checkedOutTools?.length || 0;
-                  const drawnSparesCount = mech.activePartsDrawn?.reduce((acc, p) => acc + p.quantity, 0) || 0;
-
-                  return (
-                    <button
-                      key={mech.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveMechanicId(mech.id);
-                      }}
-                      className={`text-left p-3.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-3 ${
-                        isSelected
-                          ? 'border-indigo-600 ring-2 ring-indigo-500 bg-indigo-50/50 shadow-sm'
-                          : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/70 shadow-2xs'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${mech.avatarColor || 'bg-indigo-600 text-white'}`}
-                        >
-                          {mech.name?.charAt(0) || 'M'}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 truncate">
-                            {mech.name}
-                          </div>
-                          <div className="text-[10px] text-slate-500 font-mono">
-                            {mech.id}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-[11px] bg-white/80 p-2 rounded-xl border border-slate-200/70 space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500 text-[10px]">Tools:</span>
-                          <span className="font-bold text-amber-700 font-mono">
-                            {specialToolsCount}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-500 text-[10px]">Drawn:</span>
-                          <span className="font-bold text-emerald-700 font-mono">
-                            {drawnSparesCount} pcs
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-[10px] text-indigo-600 font-bold flex items-center justify-between pt-1 border-t border-slate-100">
-                        <span>{isSelected ? '✓ Active Table' : 'Click to View'}</span>
-                        <span>➜</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* DYNAMIC ITEM TABLE FOR SELECTED MECHANIC */}
-            {currentMechanicData ? (
-              <div className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${currentMechanicData.avatarColor || 'bg-indigo-600 text-white'}`}>
-                      {currentMechanicData.name?.charAt(0) || 'M'}
-                    </div>
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-bold text-slate-900">
-                        {currentMechanicData.name} &mdash; Handled Tools &amp; Parts Register
-                      </h4>
-                      <p className="text-[11px] text-slate-500">
-                        {currentMechanicData.role} • Shift: {currentMechanicData.shift} • {currentMechanicData.assignedLines}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenMechanicCustody(currentMechanicData)}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-                  >
-                    <Wrench className="w-3.5 h-3.5" />
-                    <span>Full Custody Dossier</span>
-                  </button>
-                </div>
-
-                {/* Table 1: Checked-Out Tools */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                    <span>1. Checked-Out Special Tools ({currentMechanicData.checkedOutTools?.length || 0}):</span>
-                    <span className="text-[11px] font-normal text-slate-500">From Tool Crib</span>
-                  </div>
-
-                  {(!currentMechanicData.checkedOutTools || currentMechanicData.checkedOutTools.length === 0) ? (
-                    <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
-                      No specialized calibration tools currently logged out.
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
-                          <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
-                            <tr>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool Name</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Tool ID &amp; S/N</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Category</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Location</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Return Due</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Condition</th>
-                              <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Purpose</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {currentMechanicData.checkedOutTools.map((tool, idx) => (
-                              <tr key={tool.id} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-bold text-slate-900">{tool.toolName}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-[11px]">
-                                  <span className="font-bold text-indigo-700">{tool.id}</span>
-                                  <span className="text-slate-400 block">S/N: {tool.serialNo}</span>
-                                </td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-600">
-                                  {tool.category.replace('_', ' ')}
-                                </td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-[11px] text-slate-700 font-medium">{tool.location}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-amber-700 font-semibold text-[11px]">{tool.returnDue}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200">
-                                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                    {tool.condition.replace('_', ' ')}
-                                  </span>
-                                </td>
-                                <td className="py-1.5 px-3 border-b border-slate-200 text-slate-500 text-[11px] max-w-xs truncate" title={tool.purpose}>
-                                  {tool.purpose}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Table 2: Active Drawn Spare Parts */}
-                <div className="space-y-2 pt-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                    <span>2. Spare Parts in Active Hand ({currentMechanicData.activePartsDrawn?.length || 0}):</span>
-                    <span className="text-[11px] font-normal text-slate-500">Drawn for Active Machine Repairs</span>
-                  </div>
-
-                  {(!currentMechanicData.activePartsDrawn || currentMechanicData.activePartsDrawn.length === 0) ? (
-                    <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 text-center">
-                      No spare parts currently drawn from crib.
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden shadow-2xs">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse border border-slate-300 text-xs text-slate-700">
-                          <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
-                            <tr>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-center w-10 text-slate-500 font-mono">#</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part Description</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Part SKU</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Quantity</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Target Machine</th>
-                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300">Floor Line</th>
-                              <th className="py-2 px-3 bg-slate-100 border-b border-slate-300">Drawn At</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {currentMechanicData.activePartsDrawn.map((part, idx) => (
-                              <tr key={idx} className="hover:bg-blue-50/60 even:bg-slate-50/40 transition">
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-center text-[10px] font-mono text-slate-400 bg-slate-50/50">{idx + 1}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-semibold text-slate-900">{part.partName}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono text-indigo-700 text-[11px] font-bold">{part.sku}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-900">
-                                  {part.quantity} {part.unit}
-                                </td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 font-mono font-bold text-slate-800">{part.forMachineId}</td>
-                                <td className="py-1.5 px-3 border-r border-b border-slate-200 text-emerald-700 font-medium">{part.line}</td>
-                                <td className="py-1.5 px-3 border-b border-slate-200 font-mono text-slate-500 text-[11px]">{part.drawnAt}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        )}
-
-          {/* CRIB STOCK CATALOG (Always shown for line mechanics who do not have tool custody, or when toggled) */}
-          {(showFullPartsTable || role === 'MECHANIC') && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4 animate-in fade-in duration-100">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Boxes className="w-4 h-4 text-indigo-600" />
-                    <span>Tool Crib &amp; Spare Parts Catalog</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Real-time bin quantities, catalog pricing (₹), and SKU details for monthly indents.
-                  </p>
-                </div>
-                {role !== 'MECHANIC' && (
-                  <button
-                    type="button"
-                    onClick={() => setShowFullPartsTable(false)}
-                    className="text-xs font-semibold px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer self-start sm:self-auto"
-                  >
-                    Hide Catalog
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2 flex-grow max-w-xl">
-                  <div className="relative flex-grow">
-                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search SKU, name, or rack (e.g. Rack B-03)..."
-                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsScannerOpen(true)}
-                    className="p-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-slate-700 transition flex items-center gap-1.5 shrink-0 text-xs font-semibold cursor-pointer"
-                    title="Scan Barcode or Quick-Select SKU"
-                  >
-                    <ScanBarcode className="w-4 h-4 text-indigo-600" />
-                    <span className="hidden sm:inline">Scanner</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Machine Type Filter */}
-                  <select
-                    value={machineTypeFilter}
-                    onChange={(e) => setMachineTypeFilter(e.target.value)}
-                    className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 outline-none font-bold text-slate-800 cursor-pointer"
-                  >
-                    <option value="ALL">All Machine Types ({parts.length})</option>
-                    <option value="FLATLOCK">FLATLOCK (50)</option>
-                    <option value="OVERLOCK">OVERLOCK (49)</option>
-                    <option value="SNLS">SNLS (Single Needle) (65)</option>
-                    <option value="KAJA">KAJA (Buttonhole) (7)</option>
-                    <option value="BUTTON">BUTTON (Stitch) (3)</option>
-                    <option value="BARTACK">BARTACK (4)</option>
-                    <option value="RIB CUTTING">RIB CUTTING (2)</option>
-                    <option value="PICODING">PICODING (7)</option>
-                    <option value="TRIMMER M/C">TRIMMER M/C (3)</option>
-                    <option value="CUTTER M/C">CUTTER M/C (9)</option>
-                    <option value="BAND KNIFE">BAND KNIFE (1)</option>
-                    <option value="PATTERN TAKER">PATTERN TAKER (3)</option>
-                    <option value="DOUBLE NEEDLE">DOUBLE NEEDLE (1)</option>
-                    <option value="IRONING">IRONING (1)</option>
-                    <option value="IOT DEVICE">IOT DEVICE (2)</option>
-                    <option value="GENERAL">GENERAL (Universal) (53)</option>
-                  </select>
-
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 outline-none font-medium cursor-pointer"
-                  >
-                    <option value="ALL">All Categories</option>
-                    <option value="Needles">Needles &amp; Pins</option>
-                    <option value="Hooks & Loopers">Rotary Hooks &amp; Loopers</option>
-                    <option value="Feed & Plates">Feed Dogs &amp; Plates</option>
-                    <option value="Knives & Cutters">Knives &amp; Cutters</option>
-                    <option value="Pressure Feet">Pressure Feet</option>
-                    <option value="Tension & Guides">Tension &amp; Guides</option>
-                    <option value="Mechanical & Fittings">Mechanical &amp; Fittings</option>
-                    <option value="Motors & Electrical">Electronics &amp; Motors</option>
-                    <option value="Fluids & Consumables">Fluids &amp; Consumables</option>
-                    <option value="General">General</option>
-                  </select>
-
-                  <button
-                    type="button"
-                    onClick={() => setLowStockOnly(!lowStockOnly)}
-                    className={`text-xs px-3 py-1.5 rounded-xl border font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      lowStockOnly
-                        ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-2xs'
-                        : 'bg-slate-50 border-slate-300 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <AlertTriangle className={`w-3.5 h-3.5 ${lowStockOnly ? 'text-rose-600' : 'text-slate-400'}`} />
-                    <span>Low Stock Only</span>
-                    {lowStockItems.length > 0 && (
-                      <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-black">
-                        {lowStockItems.length}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleExportReorderList}
-                    className="text-xs px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                    title="Export low-stock items as CSV for purchase order"
-                  >
-                    <Download className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Export Reorder List</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenIssueModal()}
-                    className="text-xs px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                  >
-                    <ArrowUpRight className="w-3.5 h-3.5 text-white" />
-                    <span>Fast Floor Issue</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenGrnModal()}
-                    className="text-xs px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                  >
-                    <Truck className="w-3.5 h-3.5 text-white" />
-                    <span>Inward GRN</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto rounded-lg border border-slate-300 shadow-2xs">
-                <table className="w-full text-left text-xs border-collapse border border-slate-300">
-                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
+          {/* CRIB STOCK CATALOG */}
+            <div ref={catalogRef} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4 animate-in fade-in duration-100 scroll-mt-6">
+              <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-300 shadow-2xs">
+                <table className="min-w-[1250px] w-full text-left text-xs border-collapse border border-slate-300">
+                    <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 select-none">
                     <tr>
                       <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Part SKU &amp; Specs</th>
                       <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Shelf Location</th>
                       <th className="py-2.5 px-3 min-w-[170px] bg-slate-100 border-r border-b border-slate-300">Live Stock Health</th>
                       <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Scrap Return Policy</th>
                       <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 font-mono">Unit Cost</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-300">Floor Actions</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Supplier / Vendor</th>
+                      <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300">Purchase Date</th>
+                      {isStorePerson && <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-300">Floor Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 font-medium bg-white">
@@ -1643,14 +1231,6 @@ export default function InventoryPage() {
                               >
                                 {part.machineType || 'GENERAL'}
                               </span>
-                              {part.vendor && (
-                                <span
-                                  className="text-[10px] text-slate-400 font-normal truncate max-w-[130px]"
-                                  title={part.vendor}
-                                >
-                                  {part.vendor}
-                                </span>
-                              )}
                             </div>
                             <div className="font-semibold text-slate-800 text-xs mt-0.5">
                               {part.name}
@@ -1750,8 +1330,22 @@ export default function InventoryPage() {
                             </span>
                           </td>
 
-                          {/* Actions */}
-                          <td className="py-2.5 px-3 text-right border-b border-slate-200">
+                          {/* Supplier / Vendor */}
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200 min-w-[160px]">
+                            {part.vendor?.trim() ? (
+                              <span className="font-semibold text-slate-800" title={part.vendor.trim()}>{part.vendor.trim()}</span>
+                            ) : (
+                              <span className="text-slate-400 italic">Not recorded</span>
+                            )}
+                          </td>
+
+                          {/* Purchase Date */}
+                          <td className="py-2.5 px-3 border-r border-b border-slate-200 whitespace-nowrap">
+                            {part.purchaseDate ? new Date(part.purchaseDate).toLocaleDateString('en-IN') : <span className="text-slate-400 italic">Not recorded</span>}
+                          </td>
+
+                          {/* Store-only stock actions */}
+                          {isStorePerson && <td className="py-2.5 px-3 text-right border-b border-slate-200">
                             <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               <button
                                 type="button"
@@ -1792,7 +1386,7 @@ export default function InventoryPage() {
                                 </button>
                               </div>
                             </div>
-                          </td>
+                          </td>}
                         </tr>
                       );
                     })}
@@ -1800,7 +1394,6 @@ export default function InventoryPage() {
                 </table>
               </div>
             </div>
-          )}
         </div>
 
       {/* MODAL 1: RAISE SPARE NEED / MONTHLY INDENT MODAL */}
@@ -1872,6 +1465,7 @@ export default function InventoryPage() {
 
             {/* 4 Mode Switcher Tabs */}
             <div className="flex border-b border-slate-200 text-xs font-bold bg-slate-50 shrink-0 overflow-x-auto">
+              {!isAdminReadOnly && <>
               {/* Tab 1: Monthly Indent (Part List) */}
               <button
                 type="button"
@@ -1923,6 +1517,7 @@ export default function InventoryPage() {
                 <span>3. 🚨 Critical (CEO)</span>
               </button>
 
+              </>}
               {/* Tab 4: All Requisitions & Approvals */}
               <button
                 type="button"
@@ -2097,7 +1692,7 @@ export default function InventoryPage() {
             </div>
 
             <div className="flex items-center gap-2.5">
-              {isMechanicOrAdmin && (
+              {isMechanicOrAdmin && !isAdminReadOnly && (
                 <button
                   type="button"
                   onClick={() => handleOpenReqModal('MONTHLY_INDENT')}
@@ -2221,7 +1816,7 @@ export default function InventoryPage() {
                         </div>
 
                         {/* Itemized Table of parts */}
-                        <div className="overflow-x-auto rounded-lg border border-slate-300 shadow-2xs">
+                        <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-300 shadow-2xs">
                           <table className="w-full text-left border-collapse border border-slate-300 text-xs">
                             <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b border-slate-300 select-none">
                               <tr>
@@ -2259,15 +1854,7 @@ export default function InventoryPage() {
                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs flex justify-between items-center text-slate-600">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span><b>Target Lines:</b> {req.targetLine || 'Universal Plant'} • <b>Raised by:</b></span>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenMechanicCustody(req.requestedBy)}
-                              className="font-bold text-indigo-700 hover:text-indigo-900 hover:underline inline-flex items-center gap-1 cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition"
-                              title="Click to view tools and parts handled by this mechanic"
-                            >
-                              <Wrench className="w-3 h-3 text-indigo-600" />
-                              <span>{req.requestedBy}</span>
-                            </button>
+                            <span className="font-bold text-indigo-700">{req.requestedBy}</span>
                             <span className="text-slate-500">({req.requestedByRole})</span>
                           </div>
                           <div className="text-[11px] text-slate-500 italic max-w-md truncate">
@@ -2310,15 +1897,7 @@ export default function InventoryPage() {
                             </span>
                             <span className="flex items-center gap-1">
                               <span>Raised by:</span>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenMechanicCustody(req.requestedBy)}
-                                className="font-bold text-indigo-700 hover:text-indigo-900 hover:underline inline-flex items-center gap-1 cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition"
-                                title="Click to view tools and parts handled by this mechanic"
-                              >
-                                <Wrench className="w-3 h-3 text-indigo-600" />
-                                <span>{req.requestedBy}</span>
-                              </button>
+                              <span className="font-bold text-indigo-700">{req.requestedBy}</span>
                             </span>
                           </div>
                           <p className="text-slate-700 text-xs leading-relaxed font-medium">
@@ -3385,7 +2964,7 @@ export default function InventoryPage() {
                 );
               })()}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     Quantity Received *
@@ -3409,6 +2988,18 @@ export default function InventoryPage() {
                     value={grnVendor}
                     onChange={(e) => setGrnVendor(e.target.value)}
                     placeholder="e.g. Organ Needle Co."
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Purchase Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={grnPurchaseDate}
+                    onChange={(e) => setGrnPurchaseDate(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800"
                   />
                 </div>
@@ -3555,13 +3146,6 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
-
-      {/* Mechanic Handled Tools & Crib Custody Modal */}
-      <MechanicCustodyModal
-        mechanic={selectedMechanic}
-        isOpen={isMechCustodyOpen}
-        onClose={() => setIsMechCustodyOpen(false)}
-      />
     </div>
   );
 }

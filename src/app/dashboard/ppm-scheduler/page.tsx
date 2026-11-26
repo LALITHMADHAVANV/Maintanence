@@ -2,45 +2,88 @@
 
 import { isTechnicalRole } from '@/lib/constants/roles';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CalendarCheck,
-  Calendar,
-  Clock,
-  Wrench,
-  ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  Play,
-  RotateCw,
   Search,
-  Filter,
-  Plus,
-  Users,
-  Building2,
-  ChevronRight,
-  Layers,
-  Sparkles,
   Camera,
-  Check,
   X,
-  SlidersHorizontal,
-  ChevronDown,
-  LayoutGrid,
-  ListFilter,
-  ArrowRight,
   CheckCheck,
 } from 'lucide-react';
-import { Machine, PPMSchedule, PPMFrequency, PPMStatus } from '@/types/cmms';
+import { Machine, PPMSchedule, PPMFrequency, RepairTicket, UserProfile } from '@/types/cmms';
 import {
   subscribeMachines,
   subscribePPMSchedules,
+  subscribeRepairs,
   createPPMSchedule,
+  createBulkPPMSchedules,
   completePPMTask,
 } from '@/lib/services/cmmsService';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
-import { matchesUnit, isUserAdmin, getUserScopedUnit } from '@/lib/constants/units';
+import { useNav } from '@/context/NavContext';
+import { matchesUnit, hasAllUnitsAccess, getFactoryUnitsFromSettings, normalizeUnit, isUserAdmin } from '@/lib/constants/units';
+import { canManageOperations } from '@/lib/constants/roles';
+
+type Technician = UserProfile & { id?: string };
+
+const MONTHLY_PPM_ACTIVITIES = [
+  'Oil Level Check',
+  'Oil Circulation Check',
+  'Looper (or) Hookset Point Check',
+  'Grease Points Check',
+  'Air Leakage Check',
+  'Safety Guard Check',
+  'Wheel Cleaning Check',
+  'Table Clean & Alignment Check',
+  'Feed Dog Cleaning Check',
+];
+
+type PpmMonthStatus = {
+  status: 'DONE' | 'OVERDUE' | 'UPCOMING' | 'NONE';
+  title: string;
+  completedBy?: string;
+  completedAt?: string;
+};
+
+function PpmStatusMark({ status, title, completedBy, completedAt }: PpmMonthStatus) {
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+  const symbol = status === 'DONE' || status === 'UPCOMING' ? '✓' : status === 'OVERDUE' ? '×' : '—';
+  const label = status === 'DONE' ? 'Completed' : status === 'OVERDUE' ? 'Overdue' : status === 'UPCOMING' ? 'Coming soon' : 'No PPM scheduled';
+  const markClass = status === 'DONE'
+    ? 'bg-emerald-500 text-white ring-1 ring-emerald-600'
+    : status === 'OVERDUE'
+    ? 'bg-rose-500 text-white ring-1 ring-rose-600'
+    : status === 'UPCOMING'
+    ? 'bg-amber-400 text-amber-950 ring-1 ring-amber-500'
+    : 'text-slate-300';
+
+  const showTooltip = (target: HTMLElement) => {
+    const rect = target.getBoundingClientRect();
+    setTooltipPosition({ x: rect.left + rect.width / 2, y: rect.top - 8 });
+  };
+
+  return (
+    <span className="inline-flex" tabIndex={0} aria-label={`${label}. ${title}`} onMouseEnter={(event) => showTooltip(event.currentTarget)} onMouseLeave={() => setTooltipPosition(null)} onFocus={(event) => showTooltip(event.currentTarget)} onBlur={() => setTooltipPosition(null)}>
+      <span className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-base font-black leading-none ${markClass}`} aria-hidden="true">{symbol}</span>
+      {tooltipPosition && typeof document !== 'undefined' && createPortal(
+        <span role="tooltip" className="pointer-events-none fixed z-[100] w-max max-w-64 -translate-x-1/2 -translate-y-full overflow-hidden rounded-xl border border-indigo-300/30 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-800 text-left text-[11px] font-medium leading-4 text-indigo-50 shadow-xl ring-1 ring-white/10" style={{ left: tooltipPosition.x, top: tooltipPosition.y }}>
+          <span className="block border-b border-white/10 bg-indigo-400/10 px-3 py-2 font-bold tracking-wide">{label}</span>
+          {status === 'DONE' ? (
+            <span className="block space-y-1 px-3 py-2">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-indigo-200">Done by</span>
+              <span className="block text-sm font-bold text-white">{completedBy || 'Mechanic not recorded'}</span>
+              {completedAt && <span className="block text-indigo-200">{completedAt}</span>}
+              {title.startsWith('Sample:') && <span className="block border-t border-white/10 pt-1 text-[10px] text-indigo-200">Sample preview</span>}
+            </span>
+          ) : status !== 'NONE' ? <span className="block px-3 py-2">{title}</span> : null}
+        </span>,
+        document.body
+      )}
+    </span>
+  );
+}
 
 // Format Date helper
 function toDateKey(d: Date): string {
@@ -52,36 +95,46 @@ function toDateKey(d: Date): string {
 
 export default function PPMSchedulerPage() {
   const { showToast } = useToast();
-  const { user, role } = useAuth();
-  const isAdmin = isUserAdmin(role);
+  const { user } = useAuth();
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [ppmSchedules, setPpmSchedules] = useState<PPMSchedule[]>([]);
-  const [techUsers, setTechUsers] = useState<any[]>([]);
+  const [repairs, setRepairs] = useState<RepairTicket[]>([]);
+  const [techUsers, setTechUsers] = useState<Technician[]>([]);
 
-  // Facility Unit Filter
-  const [selectedUnit, setSelectedUnit] = useState<string>(() => {
-    if (isUserAdmin(role)) return 'ALL';
-    return getUserScopedUnit(user, role);
-  });
-  const effectiveUnit = getUserScopedUnit(user, role, selectedUnit === 'ALL' ? null : selectedUnit);
-
-  useEffect(() => {
-    if (!isUserAdmin(role)) {
-      setSelectedUnit(getUserScopedUnit(user, role));
-    }
-  }, [user, role]);
+  // Share the workspace unit filter so every PPM action uses the same scope.
+  const { selectedUnit, setSelectedUnit } = useNav();
+  const allUnits = hasAllUnitsAccess(selectedUnit);
+  const canSwitchUnits = isUserAdmin(user?.role) || hasAllUnitsAccess(user?.unit);
+  const [configuredUnits, setConfiguredUnits] = useState<string[]>([]);
+  const unitOptions = [...new Map([...configuredUnits, ...machines.map((machine) => machine.unit), selectedUnit]
+    .filter((unit): unit is string => Boolean(unit) && !hasAllUnitsAccess(unit))
+    .map((unit) => [normalizeUnit(unit), unit])).values()];
 
   // View state & filters
   const [activeTab, setActiveTab] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'DUE_SOON' | 'COMPLETED'>('ALL');
-  const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedLine, setSelectedLine] = useState<string>('ALL');
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [zoneFilters, setZoneFilters] = useState<Record<string, string>>({});
+  const selectedZone = zoneFilters[selectedUnit] || 'ALL';
+  const [lineFilters, setLineFilters] = useState<Record<string, string>>({});
+  const selectedLine = lineFilters[selectedUnit] || 'ALL';
+  const setSelectedLine = (line: string) => setLineFilters(previous => ({ ...previous, [selectedUnit]: line }));
+  const setSelectedZone = (zone: string) => {
+    setZoneFilters(previous => ({ ...previous, [selectedUnit]: zone }));
+    setLineFilters(previous => ({ ...previous, [selectedUnit]: 'ALL' }));
+  };
+  const [selectedType, setSelectedType] = useState<string>('ALL');
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const [showSamplePpm, setShowSamplePpm] = useState<boolean | null>(null);
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  const [isTableHovered, setIsTableHovered] = useState(false);
+  const tableViewportRef = useRef<HTMLDivElement>(null);
 
   // Single Machine Schedule Modal State
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [selectedMachineForSchedule, setSelectedMachineForSchedule] = useState<Machine | null>(null);
+  const [scheduleBeingEdited, setScheduleBeingEdited] = useState<PPMSchedule | null>(null);
+  const [selectedMachineForCalendar, setSelectedMachineForCalendar] = useState<Machine | null>(null);
   const [taskName, setTaskName] = useState('Routine Preventative Maintenance & Lubrication');
   const [frequency, setFrequency] = useState<PPMFrequency>('Monthly');
   const [intervalDays, setIntervalDays] = useState<number>(30);
@@ -92,19 +145,22 @@ export default function PPMSchedulerPage() {
   });
   const [assignedTechnician, setAssignedTechnician] = useState<string>('');
   const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
-
-  // Bulk Schedule Modal State ("Schedule PPM for Every Machine")
-  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isBulkScheduleModalOpen, setIsBulkScheduleModalOpen] = useState(false);
+  const [isSubmittingBulkSchedule, setIsSubmittingBulkSchedule] = useState(false);
+  const [bulkTaskName, setBulkTaskName] = useState('Routine Preventative Maintenance & Lubrication');
   const [bulkFrequency, setBulkFrequency] = useState<PPMFrequency>('Monthly');
-  const [bulkIntervalDays, setBulkIntervalDays] = useState<number>(30);
-  const [bulkTaskName, setBulkTaskName] = useState('Comprehensive Multi-Point Machinery Overhaul');
-  const [bulkStartDate, setBulkStartDate] = useState<string>(() => {
+  const [bulkNextDueDate, setBulkNextDueDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
     return toDateKey(d);
   });
-  const [bulkAssignedTechnician, setBulkAssignedTechnician] = useState<string>('');
-  const [isSubmittingBulk, setIsSubmittingBulk] = useState(false);
+  const [bulkSelectedType, setBulkSelectedType] = useState('ALL');
+  const [bulkSelectedZone, setBulkSelectedZone] = useState('ALL');
+  const [bulkSelectedLine, setBulkSelectedLine] = useState('ALL');
+  const [isCustomSelectMode, setIsCustomSelectMode] = useState(false);
+  const [customSelectedMachineIds, setCustomSelectedMachineIds] = useState<string[]>([]);
+  const [bulkTargetMode, setBulkTargetMode] = useState<'FILTERED' | 'CUSTOM'>('FILTERED');
+  const canBulkSchedule = canManageOperations(user?.role);
 
   // Complete PPM Modal State
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
@@ -120,7 +176,7 @@ export default function PPMSchedulerPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.users && Array.isArray(data.users)) {
-          const techs = data.users.filter((u: any) =>
+          const techs = data.users.filter((u: Technician) =>
             isTechnicalRole(u.role)
           );
           setTechUsers(techs);
@@ -131,35 +187,58 @@ export default function PPMSchedulerPage() {
 
   // Subscriptions
   useEffect(() => {
-    const unsubM = subscribeMachines((data) => setMachines(data));
+    const unsubM = subscribeMachines((data) => {
+      setMachines(data);
+      setConfiguredUnits(getFactoryUnitsFromSettings().map((unit) => unit.code));
+    });
     const unsubP = subscribePPMSchedules((data) => setPpmSchedules(data));
+    const unsubR = subscribeRepairs((data) => setRepairs(data));
 
     return () => {
       unsubM();
       unsubP();
+      unsubR();
     };
   }, []);
 
+  useEffect(() => {
+    const viewport = tableViewportRef.current;
+    if (!viewport || !isAutoScrollEnabled || isTableHovered || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let direction = 1;
+    const timer = window.setInterval(() => {
+      const maxScroll = viewport.scrollWidth - viewport.clientWidth;
+      if (maxScroll <= 0) return;
+      if (viewport.scrollLeft >= maxScroll - 1) direction = -1;
+      else if (viewport.scrollLeft <= 1) direction = 1;
+      viewport.scrollLeft += direction;
+    }, 32);
+
+    return () => window.clearInterval(timer);
+  }, [isAutoScrollEnabled, isTableHovered]);
+
   // Filter machines based on selected unit
   const scopedMachines = useMemo(() => {
-    if (isAdmin && selectedUnit === 'ALL') return machines;
-    return machines.filter((m) => matchesUnit(m.unit, effectiveUnit));
-  }, [machines, isAdmin, selectedUnit, effectiveUnit]);
+    if (allUnits) return machines;
+    return machines.filter((m) => matchesUnit(m.unit, selectedUnit));
+  }, [machines, allUnits, selectedUnit]);
 
   // Filter PPM schedules based on selected unit
   const scopedPpm = useMemo(() => {
-    if (isAdmin && selectedUnit === 'ALL') return ppmSchedules;
+    if (allUnits) return ppmSchedules;
     const allowedMachineIds = new Set(scopedMachines.map((m) => m.id.toLowerCase()));
     return ppmSchedules.filter((p) => {
-      if (p.machineId && allowedMachineIds.has(p.machineId.toLowerCase())) return true;
-      if (p.unit && matchesUnit(p.unit, effectiveUnit)) return true;
+      const machine = machines.find(m => m.id.toLowerCase() === p.machineId?.toLowerCase());
+      if (machine) return allowedMachineIds.has(machine.id.toLowerCase());
+      if (p.unit && matchesUnit(p.unit, selectedUnit)) return true;
       return false;
     });
-  }, [ppmSchedules, scopedMachines, isAdmin, selectedUnit, effectiveUnit]);
+  }, [ppmSchedules, scopedMachines, machines, allUnits, selectedUnit]);
+  const samplePpmIsVisible = showSamplePpm ?? (scopedPpm.length === 0);
 
   // Group all available technicians by unit
   const groupedTechnicians = useMemo(() => {
-    const groups: Record<string, any[]> = {};
+    const groups: Record<string, Technician[]> = {};
     techUsers.forEach((t) => {
       const u = t.unit || 'All Units';
       if (!groups[u]) groups[u] = [];
@@ -223,16 +302,21 @@ export default function PPMSchedulerPage() {
       if (activeTab === 'DUE_SOON' && item.ppmStatusCategory !== 'DUE_SOON') return false;
       if (activeTab === 'COMPLETED' && item.ppmStatusCategory !== 'COMPLETED') return false;
 
+      if (selectedZone !== 'ALL') {
+        const zone = item.machine.zone || item.machine.area || '';
+        if (zone !== selectedZone) return false;
+      }
+
       // Line filter
       if (selectedLine !== 'ALL') {
         const line = item.machine.currentLine || item.machine.area || '';
         if (line !== selectedLine) return false;
       }
 
-      // Category filter
-      if (selectedCategory !== 'ALL') {
-        const cat = item.machine.category || 'MACHINE';
-        if (cat !== selectedCategory) return false;
+      // Machine type filter
+      if (selectedType !== 'ALL') {
+        const type = item.machine.type || item.machine.typeName || '';
+        if (type !== selectedType) return false;
       }
 
       // Search filter
@@ -241,7 +325,7 @@ export default function PPMSchedulerPage() {
         const matchesId = item.machine.id.toLowerCase().includes(q);
         const matchesBrand = (item.machine.brand || '').toLowerCase().includes(q);
         const matchesModel = (item.machine.model || '').toLowerCase().includes(q);
-        const matchesType = (item.machine.typeName || item.machine.type || '').toLowerCase().includes(q);
+        const matchesType = (item.machine.type || item.machine.typeName || '').toLowerCase().includes(q);
         const matchesTech = (item.activePpm?.assignedTo || '').toLowerCase().includes(q);
         const matchesTask = (item.activePpm?.task || '').toLowerCase().includes(q);
 
@@ -252,16 +336,167 @@ export default function PPMSchedulerPage() {
 
       return true;
     });
-  }, [machinesWithPpm, activeTab, selectedLine, selectedCategory, searchQuery]);
+  }, [machinesWithPpm, activeTab, selectedZone, selectedLine, selectedType, searchQuery]);
+
+  const bulkTargetMachines = useMemo(() => machinesWithPpm.filter(({ machine }) => {
+    if (bulkSelectedType !== 'ALL' && (machine.type || machine.typeName || '') !== bulkSelectedType) return false;
+    if (bulkSelectedZone !== 'ALL' && (machine.zone || machine.area || '') !== bulkSelectedZone) return false;
+    if (bulkSelectedLine !== 'ALL' && (machine.currentLine || machine.area || '') !== bulkSelectedLine) return false;
+    return true;
+  }), [machinesWithPpm, bulkSelectedType, bulkSelectedZone, bulkSelectedLine]);
+
+  const modalTargetMachines = useMemo(() => {
+    if (bulkTargetMode === 'CUSTOM') {
+      const idSet = new Set(customSelectedMachineIds);
+      return machinesWithPpm.filter(({ machine }) => idSet.has(machine.id));
+    }
+    return bulkTargetMachines;
+  }, [bulkTargetMode, customSelectedMachineIds, machinesWithPpm, bulkTargetMachines]);
+
+  const bulkTypeOptions = useMemo(() => Array.from(new Set(
+    scopedMachines.map((machine) => machine.type || machine.typeName).filter((type): type is string => Boolean(type))
+  )).sort((a, b) => a.localeCompare(b)), [scopedMachines]);
+  const bulkZoneOptions = useMemo(() => Array.from(new Set(
+    scopedMachines
+      .filter((machine) => bulkSelectedType === 'ALL' || (machine.type || machine.typeName || '') === bulkSelectedType)
+      .map((machine) => machine.zone || machine.area)
+      .filter((zone): zone is string => Boolean(zone))
+  )).sort((a, b) => a.localeCompare(b)), [scopedMachines, bulkSelectedType]);
+  const bulkLineOptions = useMemo(() => Array.from(new Set(
+    scopedMachines
+      .filter((machine) => (bulkSelectedType === 'ALL' || (machine.type || machine.typeName || '') === bulkSelectedType)
+        && (bulkSelectedZone === 'ALL' || (machine.zone || machine.area || '') === bulkSelectedZone))
+      .map((machine) => machine.currentLine || machine.area)
+      .filter((line): line is string => Boolean(line))
+  )).sort((a, b) => a.localeCompare(b)), [scopedMachines, bulkSelectedType, bulkSelectedZone]);
+
+  const monthlyStatusByMachine = useMemo(() => {
+    const now = new Date();
+    const completedByMachine = new Map<string, Map<number, Set<string>>>();
+    const completionDetailsByMachine = new Map<string, Map<number, RepairTicket[]>>();
+    const completedScheduleDetailsByMachine = new Map<string, Map<number, PPMSchedule[]>>();
+
+    repairs.forEach((repair) => {
+      const isPpmCompletion = repair.status === 'COMPLETED' && (
+        repair.faultCategory?.toLowerCase().includes('preventive overhaul') ||
+        repair.actionTaken?.toLowerCase().includes('scheduled ppm overhaul')
+      );
+      if (!isPpmCompletion || !repair.machineId) return;
+      const completedAt = repair.resolvedAt || repair.reportedAt;
+      const completedDate = new Date(completedAt);
+      if (Number.isNaN(completedDate.getTime()) || completedDate.getFullYear() !== selectedYear) return;
+
+      const machineKey = repair.machineId.toLowerCase();
+      const months = completedByMachine.get(machineKey) || new Map<number, Set<string>>();
+      const tasks = months.get(completedDate.getMonth()) || new Set<string>();
+      tasks.add((repair.faultDetails || '*').trim().toLowerCase());
+      months.set(completedDate.getMonth(), tasks);
+      completedByMachine.set(machineKey, months);
+
+      const machineDetails = completionDetailsByMachine.get(machineKey) || new Map<number, RepairTicket[]>();
+      const monthDetails = machineDetails.get(completedDate.getMonth()) || [];
+      monthDetails.push(repair);
+      machineDetails.set(completedDate.getMonth(), monthDetails);
+      completionDetailsByMachine.set(machineKey, machineDetails);
+    });
+
+    scopedPpm.forEach((schedule) => {
+      if (schedule.status !== 'COMPLETED' || !schedule.machineId) return;
+      const completionDate = new Date(schedule.completedAt || schedule.lastServiced);
+      if (Number.isNaN(completionDate.getTime()) || completionDate.getFullYear() !== selectedYear) return;
+
+      const machineKey = schedule.machineId.toLowerCase();
+      const months = completedByMachine.get(machineKey) || new Map<number, Set<string>>();
+      const tasks = months.get(completionDate.getMonth()) || new Set<string>();
+      tasks.add((schedule.task || '*').trim().toLowerCase());
+      months.set(completionDate.getMonth(), tasks);
+      completedByMachine.set(machineKey, months);
+
+      const machineDetails = completedScheduleDetailsByMachine.get(machineKey) || new Map<number, PPMSchedule[]>();
+      const monthDetails = machineDetails.get(completionDate.getMonth()) || [];
+      monthDetails.push(schedule);
+      machineDetails.set(completionDate.getMonth(), monthDetails);
+      completedScheduleDetailsByMachine.set(machineKey, machineDetails);
+    });
+
+    const result = new Map<string, PpmMonthStatus[]>();
+    filteredMachines.forEach(({ machine }) => {
+      const schedules = scopedPpm.filter((schedule) => schedule.machineId.toLowerCase() === machine.id.toLowerCase());
+      const months = Array.from({ length: 12 }, (_, monthIndex) => {
+        const dueSchedules = schedules.filter((schedule) => {
+          if (!schedule.nextDue) return false;
+          const nextDue = new Date(`${schedule.nextDue.slice(0, 10)}T00:00:00`);
+          if (Number.isNaN(nextDue.getTime())) return false;
+          const dueMonth = (selectedYear - nextDue.getFullYear()) * 12 + monthIndex - nextDue.getMonth();
+          const intervalMonths = schedule.frequency === '6-Month' ? 6 : 1;
+          return dueMonth >= 0 && dueMonth % intervalMonths === 0;
+        });
+        const completedTasks = completedByMachine.get(machine.id.toLowerCase())?.get(monthIndex) || new Set<string>();
+        const completionDetails = completionDetailsByMachine.get(machine.id.toLowerCase())?.get(monthIndex) || [];
+        const completedScheduleDetails = completedScheduleDetailsByMachine.get(machine.id.toLowerCase())?.get(monthIndex) || [];
+        const completionPeople = Array.from(new Set([
+          ...completionDetails.map((repair) => repair.attendedBy?.trim()),
+          ...completedScheduleDetails.map((schedule) => schedule.assignedTo?.trim()),
+        ].filter((name): name is string => Boolean(name))));
+        const completedBy = completionPeople.join(', ');
+        const completedAt = completionDetails[0]?.resolvedAt || completionDetails[0]?.completedAt || completedScheduleDetails[0]?.completedAt || completedScheduleDetails[0]?.lastServiced;
+        const completedDateLabel = completedAt ? new Date(completedAt).toLocaleDateString() : undefined;
+        const doneCount = dueSchedules.filter((schedule) =>
+          completedTasks.has((schedule.task || '').trim().toLowerCase()) || completedTasks.has('*')
+        ).length;
+        const isPastDue = selectedYear < now.getFullYear() || (selectedYear === now.getFullYear() && (
+          monthIndex < now.getMonth() || (monthIndex === now.getMonth() && dueSchedules.some((schedule) => {
+            const baseDue = new Date(`${schedule.nextDue.slice(0, 10)}T00:00:00`);
+            const dueDay = Math.min(baseDue.getDate(), new Date(selectedYear, monthIndex + 1, 0).getDate());
+            return dueDay < now.getDate();
+          }))
+        ));
+
+        if (dueSchedules.length > 0 && doneCount === dueSchedules.length) {
+          return { status: 'DONE' as const, title: `Completed ${doneCount} of ${dueSchedules.length} scheduled task(s)`, completedBy, completedAt: completedDateLabel };
+        }
+        if (doneCount > 0) {
+          return { status: isPastDue ? 'OVERDUE' as const : 'UPCOMING' as const, title: `Completed ${doneCount} of ${dueSchedules.length} scheduled task(s); remaining tasks are ${isPastDue ? 'overdue' : 'coming soon'}`, completedBy, completedAt: completedDateLabel };
+        }
+        if (dueSchedules.length > 0) {
+          return isPastDue
+            ? { status: 'OVERDUE' as const, title: `${dueSchedules.length} scheduled task(s) overdue` }
+            : { status: 'UPCOMING' as const, title: `${dueSchedules.length} task(s) coming soon` };
+        }
+        if (completedTasks.size > 0) return { status: 'DONE' as const, title: 'PPM completed this month', completedBy, completedAt: completedDateLabel };
+        return { status: 'NONE' as const, title: 'No PPM scheduled or completed this month' };
+      });
+      result.set(machine.id.toLowerCase(), months);
+    });
+    return result;
+  }, [filteredMachines, scopedPpm, repairs, selectedYear]);
 
   // Unique lines
   const availableLines = useMemo(() => {
     const set = new Set<string>();
-    scopedMachines.forEach((m) => {
+    scopedMachines.filter((machine) => selectedZone === 'ALL' || (machine.zone || machine.area || '') === selectedZone).forEach((m) => {
       if (m.currentLine) set.add(m.currentLine);
       else if (m.area) set.add(m.area);
     });
     return Array.from(set).sort();
+  }, [scopedMachines, selectedZone]);
+
+  const availableZones = useMemo(() => {
+    const set = new Set<string>();
+    scopedMachines.forEach((machine) => {
+      const zone = machine.zone || machine.area;
+      if (zone) set.add(zone);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [scopedMachines]);
+
+  const availableTypes = useMemo(() => {
+    const types = new Set<string>();
+    scopedMachines.forEach((machine) => {
+      const type = machine.type || machine.typeName;
+      if (type) types.add(type);
+    });
+    return Array.from(types).sort((a, b) => a.localeCompare(b));
   }, [scopedMachines]);
 
   // KPI Metrics
@@ -279,6 +514,7 @@ export default function PPMSchedulerPage() {
   // Open Schedule Modal for a single machine
   const handleOpenScheduleModal = (machine: Machine, existingPpm?: PPMSchedule | null) => {
     setSelectedMachineForSchedule(machine);
+    setScheduleBeingEdited(existingPpm || null);
     if (existingPpm) {
       setTaskName(existingPpm.task || 'Routine Preventative Maintenance');
       setFrequency(existingPpm.frequency || 'Monthly');
@@ -309,21 +545,25 @@ export default function PPMSchedulerPage() {
 
     try {
       const newPpm: PPMSchedule = {
-        id: `PPM-${selectedMachineForSchedule.id}-${Date.now().toString().slice(-4)}`,
+        id: scheduleBeingEdited?.id || `PPM-${selectedMachineForSchedule.id}-${Date.now().toString().slice(-4)}`,
         machineId: selectedMachineForSchedule.id,
         unit: selectedMachineForSchedule.unit || selectedUnit,
         task: taskName.trim() || 'Preventative Maintenance Routine',
         intervalDays,
         frequency,
-        lastServiced: toDateKey(new Date()),
+        lastServiced: scheduleBeingEdited?.lastServiced || toDateKey(new Date()),
         nextDue: nextDueDate,
-        status: 'PENDING',
+        status: scheduleBeingEdited?.status === 'COMPLETED' ? 'PENDING' : scheduleBeingEdited?.status || 'PENDING',
         assignedTo: assignedTechnician.trim() || undefined,
-        assignedBy: user?.name || 'PPM Superintendent',
+        assignedBy: scheduleBeingEdited?.assignedBy || user?.name || 'PPM Superintendent',
+        completedAt: scheduleBeingEdited?.status === 'COMPLETED' ? undefined : scheduleBeingEdited?.completedAt,
+        completionProofImage: scheduleBeingEdited?.status === 'COMPLETED' ? undefined : scheduleBeingEdited?.completionProofImage,
+        actualDurationMinutes: scheduleBeingEdited?.status === 'COMPLETED' ? undefined : scheduleBeingEdited?.actualDurationMinutes,
+        technicianNotes: scheduleBeingEdited?.status === 'COMPLETED' ? undefined : scheduleBeingEdited?.technicianNotes,
       };
 
       await createPPMSchedule(newPpm);
-      showToast(`⚡ PPM successfully scheduled for machine ${selectedMachineForSchedule.id}! Due: ${nextDueDate}`, 'success');
+      showToast(`âš¡ PPM successfully scheduled for machine ${selectedMachineForSchedule.id}! Due: ${nextDueDate}`, 'success');
       setIsScheduleModalOpen(false);
       setSelectedMachineForSchedule(null);
     } catch (err) {
@@ -334,43 +574,46 @@ export default function PPMSchedulerPage() {
     }
   };
 
-  // Submit Bulk Schedule for Every Machine
   const handleSubmitBulkSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (filteredMachines.length === 0) {
-      showToast('No machines found matching the active filters to schedule.', 'warning');
-      return;
-    }
-    setIsSubmittingBulk(true);
+    if (!canBulkSchedule || modalTargetMachines.length === 0) return;
+    setIsSubmittingBulkSchedule(true);
 
     try {
-      let createdCount = 0;
-      for (const item of filteredMachines) {
-        const m = item.machine;
-        const newPpm: PPMSchedule = {
-          id: `PPM-${m.id}-${Date.now().toString().slice(-4)}`,
-          machineId: m.id,
-          unit: m.unit || selectedUnit,
-          task: bulkTaskName.trim() || `${bulkFrequency} Plant Preventative Maintenance`,
-          intervalDays: bulkIntervalDays,
-          frequency: bulkFrequency,
-          lastServiced: toDateKey(new Date()),
-          nextDue: bulkStartDate,
-          status: 'PENDING',
-          assignedTo: bulkAssignedTechnician.trim() || undefined,
-          assignedBy: user?.name || 'PPM Superintendent',
-        };
-        await createPPMSchedule(newPpm);
-        createdCount++;
-      }
+      const intervalDays = bulkFrequency === 'Weekly' ? 7 : bulkFrequency === 'Monthly' ? 30 : 180;
+      const batchStamp = Date.now().toString().slice(-8);
+      const schedules: PPMSchedule[] = modalTargetMachines.map(({ machine, activePpm }, index) => ({
+        id: activePpm && activePpm.status !== 'COMPLETED'
+          ? activePpm.id
+          : `PPM-${machine.id}-${batchStamp}-${index + 1}`,
+        machineId: machine.id,
+        unit: machine.unit || selectedUnit,
+        task: bulkTaskName.trim() || 'Preventative Maintenance Routine',
+        intervalDays,
+        frequency: bulkFrequency,
+        lastServiced: activePpm?.lastServiced || toDateKey(new Date()),
+        nextDue: bulkNextDueDate,
+        status: 'PENDING',
+        assignedTo: activePpm?.assignedTo,
+        assignedBy: user?.name || 'Head Mechanic Manager',
+        completedAt: undefined,
+        completionProofImage: undefined,
+        actualDurationMinutes: undefined,
+        technicianNotes: undefined,
+      }));
 
-      showToast(`🎉 Bulk PPM successfully generated for ${createdCount} machines! Target Due: ${bulkStartDate}`, 'success');
-      setIsBulkModalOpen(false);
+      await createBulkPPMSchedules(schedules);
+      showToast(`PPM scheduled in bulk for ${schedules.length} machines`, 'success');
+      setIsBulkScheduleModalOpen(false);
+      if (bulkTargetMode === 'CUSTOM') {
+        setCustomSelectedMachineIds([]);
+        setIsCustomSelectMode(false);
+      }
     } catch (err) {
       console.error(err);
-      showToast('Failed to complete bulk PPM generation', 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to bulk schedule PPM', 'error');
     } finally {
-      setIsSubmittingBulk(false);
+      setIsSubmittingBulkSchedule(false);
     }
   };
 
@@ -397,7 +640,7 @@ export default function PPMSchedulerPage() {
         completionDuration,
         completionNotes.trim() || 'Routine inspection completed with photo verification.'
       );
-      showToast(`✅ PPM Work Order ${selectedPpmForComplete.id} signed off as COMPLETED!`, 'success');
+      showToast(`âœ… PPM Work Order ${selectedPpmForComplete.id} signed off as COMPLETED!`, 'success');
       setIsCompleteModalOpen(false);
       setSelectedPpmForComplete(null);
     } catch (err) {
@@ -426,410 +669,414 @@ export default function PPMSchedulerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 p-6 md:p-8 space-y-6">
-      {/* ─── 1. TOP HEADER & FACILITY UNIT CONTROLS ───────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
-              <CalendarCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <span>PPM Scheduler &amp; Preventive Overhaul</span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
-                  Fleet Maintenance
-                </span>
-              </h1>
-              <p className="text-xs text-slate-500">
-                Schedule, assign, and track scheduled preventive maintenance routines for every plant machinery asset across UNIT - 1 &amp; UNIT-2
-              </p>
-            </div>
+    <div className="min-h-screen min-w-0 bg-[#f8fafc] text-slate-800 p-3 sm:p-6 xl:p-8 space-y-6">
+      {/* â”€â”€â”€ 2. KPI SUMMARY METRICS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs sm:p-5">
+        <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div className="min-w-0">
+            <h1 className="text-base font-black text-slate-900">Preventive Maintenance Schedule</h1>
+            <p className="mt-1 text-xs text-slate-500">Monthly completion status by machine. Select an asset ID to view its activity checklist.</p>
+          </div>
+          <div className="grid min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+            <label className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+              <span className="shrink-0">Unit</span>
+              <select aria-label="Filter PPM by unit" value={selectedUnit} disabled={!canSwitchUnits} onChange={(event) => setSelectedUnit(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none disabled:cursor-not-allowed disabled:opacity-70">
+                {canSwitchUnits && <option value="All Units">All Units ({machines.length})</option>}
+                {unitOptions.filter((unit) => canSwitchUnits || matchesUnit(unit, selectedUnit)).map((unit) => <option key={normalizeUnit(unit)} value={unit}>{unit} ({machines.filter((machine) => matchesUnit(machine.unit, unit)).length})</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+              <span>Year</span>
+              <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="ml-auto bg-transparent text-xs font-bold text-slate-800 outline-none">
+                {Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - 2 + index).map((year) => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </label>
           </div>
         </div>
 
-        {/* Action Controls & Unit Filter */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Facility Unit Tabs */}
-          {isAdmin && (
-            <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-bold">
-              {['ALL', 'UNIT - 1', 'UNIT-2'].map((u) => (
-                <button
-                  key={u}
-                  onClick={() => setSelectedUnit(u)}
-                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                    selectedUnit === u
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  {u === 'ALL' ? 'All Units' : u}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Schedule PPM for Every Machine Button (Bulk) */}
-          <button
-            onClick={() => setIsBulkModalOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/25 transition cursor-pointer flex items-center gap-2"
-            title="Schedule PPM for every machine in current view"
-          >
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Schedule PPM for Every Machine ({filteredMachines.length})</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ─── 2. KPI SUMMARY METRICS ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Total Assets */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Machinery</div>
-          <div className="text-2xl font-black text-slate-900 font-mono">{stats.total}</div>
-          <div className="text-[11px] text-slate-500 font-medium">{selectedUnit === 'ALL' ? 'Entire Plant Fleet' : selectedUnit}</div>
-        </div>
-
-        {/* Active Scheduled */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Active Scheduled</div>
-          <div className="text-2xl font-black text-indigo-600 font-mono">{stats.scheduled}</div>
-          <div className="text-[11px] text-slate-500 font-medium">Under active routine</div>
-        </div>
-
-        {/* Overdue */}
-        <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200 shadow-2xs space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Overdue Overhauls</div>
-          <div className="text-2xl font-black text-rose-700 font-mono">{stats.overdue}</div>
-          <div className="text-[11px] text-rose-600 font-medium">Requires immediate action</div>
-        </div>
-
-        {/* Due Soon */}
-        <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 shadow-2xs space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Due in 7 Days</div>
-          <div className="text-2xl font-black text-amber-700 font-mono">{stats.dueSoon}</div>
-          <div className="text-[11px] text-amber-700 font-medium">Upcoming preventive tasks</div>
-        </div>
-
-        {/* Completed */}
-        <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 shadow-2xs space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Completed PPMs</div>
-          <div className="text-2xl font-black text-emerald-700 font-mono">{stats.completed}</div>
-          <div className="text-[11px] text-emerald-700 font-medium">Serviced with photo proof</div>
-        </div>
-
-        {/* Unscheduled */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Needs Scheduling</div>
-          <div className="text-2xl font-black text-slate-700 font-mono">{stats.unscheduled}</div>
-          <div className="text-[11px] text-slate-400 font-medium">Zero pending schedules</div>
-        </div>
-      </div>
-
-      {/* ─── 3. FILTER TABS & SEARCH CONTROLS ───────────────────────────── */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Status Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-1">
-          {[
-            { id: 'ALL', label: `All Machines (${stats.total})` },
-            { id: 'ACTIVE', label: `Scheduled (${stats.scheduled})` },
-            { id: 'OVERDUE', label: `Overdue (${stats.overdue})`, isRed: stats.overdue > 0 },
-            { id: 'DUE_SOON', label: `Due Soon (${stats.dueSoon})`, isAmber: stats.dueSoon > 0 },
-            { id: 'COMPLETED', label: `Completed (${stats.completed})` },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
-                activeTab === tab.id
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : tab.isRed
-                  ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                  : tab.isAmber
-                  ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Filters & Search */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Search */}
-          <div className="relative min-w-[200px]">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search M/C ID, model, tech..."
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-
-          {/* Line Filter */}
-          <select
-            value={selectedLine}
-            onChange={(e) => setSelectedLine(e.target.value)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-          >
-            <option value="ALL">All Lines</option>
-            {availableLines.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <select value={activeTab} onChange={(e) => setActiveTab(e.target.value as typeof activeTab)} aria-label="Filter PPM status" className="w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700 sm:w-auto sm:px-3">
+            <option value="ALL">All Machines ({stats.total})</option>
+            <option value="ACTIVE">Scheduled ({stats.scheduled})</option>
+            <option value="OVERDUE">Overdue ({stats.overdue})</option>
+            <option value="DUE_SOON">Due Soon ({stats.dueSoon})</option>
+            <option value="COMPLETED">Completed ({stats.completed})</option>
           </select>
-
-          {/* View Toggle */}
-          <div className="flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setViewMode('GRID')}
-              className={`p-1.5 rounded-lg transition cursor-pointer ${
-                viewMode === 'GRID' ? 'bg-white shadow-2xs text-indigo-600' : 'text-slate-400 hover:text-slate-700'
-              }`}
-              title="Grid Cards View"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setViewMode('TABLE')}
-              className={`p-1.5 rounded-lg transition cursor-pointer ${
-                viewMode === 'TABLE' ? 'bg-white shadow-2xs text-indigo-600' : 'text-slate-400 hover:text-slate-700'
-              }`}
-              title="Table View"
-            >
-              <ListFilter className="w-3.5 h-3.5" />
-            </button>
+          <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} aria-label="Filter by machine type" className="w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700 sm:w-auto sm:px-3">
+            <option value="ALL">All Machine Types</option>
+            {availableTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
+          <select value={selectedZone} onChange={(event) => setSelectedZone(event.target.value)} aria-label="Filter by zone" className="w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700 sm:w-auto sm:px-3">
+            <option value="ALL">All Zones</option>
+            {availableZones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+          </select>
+          {selectedZone !== 'ALL' && <select value={selectedLine} onChange={(e) => setSelectedLine(e.target.value)} aria-label="Filter by line" className="w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700 sm:w-auto sm:px-3">
+            <option value="ALL">All Lines in Zone</option>
+            {availableLines.map((line) => <option key={line} value={line}>{line}</option>)}
+          </select>}
+          <button type="button" onClick={() => setShowSamplePpm(!samplePpmIsVisible)} aria-pressed={samplePpmIsVisible} className={`w-full rounded-lg border px-2.5 py-2 text-xs font-bold sm:w-auto sm:px-3 ${samplePpmIsVisible ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+            {samplePpmIsVisible ? 'Hide sample PPM' : 'Show sample PPM'}
+          </button>
+          {canBulkSchedule && (
+            <>
+              <button
+                type="button"
+                disabled={scopedMachines.length === 0}
+                onClick={() => {
+                  setBulkTargetMode('FILTERED');
+                  setIsBulkScheduleModalOpen(true);
+                }}
+                className="w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                Bulk Schedule PPM
+              </button>
+              <button
+                type="button"
+                disabled={scopedMachines.length === 0}
+                onClick={() => {
+                  setIsCustomSelectMode((prev) => {
+                    if (prev) setCustomSelectedMachineIds([]);
+                    return !prev;
+                  });
+                }}
+                aria-pressed={isCustomSelectMode}
+                className={`w-full rounded-lg border px-3 py-2 text-xs font-bold transition sm:w-auto ${
+                  isCustomSelectMode
+                    ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                    : 'border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {isCustomSelectMode ? `Cancel Custom (${customSelectedMachineIds.length})` : 'Custom Select'}
+              </button>
+              {isCustomSelectMode && customSelectedMachineIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkTargetMode('CUSTOM');
+                    setIsBulkScheduleModalOpen(true);
+                  }}
+                  className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 sm:w-auto"
+                >
+                  Schedule Selected ({customSelectedMachineIds.length})
+                </button>
+              )}
+            </>
+          )}
+          <div className="relative col-span-2 min-w-0 sm:min-w-[200px] sm:flex-1">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search machine, model, tech..." className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs text-slate-800" />
           </div>
         </div>
-      </div>
 
-      {/* ─── 4. MACHINERY FLEET DISPLAY (GRID OR TABLE) ───────────────── */}
-      {viewMode === 'GRID' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredMachines.map(({ machine, activePpm, ppmStatusCategory, diffDays }) => {
-            const isOverdue = ppmStatusCategory === 'OVERDUE';
-            const isDueSoon = ppmStatusCategory === 'DUE_SOON';
-            const isCompleted = ppmStatusCategory === 'COMPLETED';
-            const hasActivePpm = activePpm && activePpm.status !== 'COMPLETED';
+        {samplePpmIsVisible && <p className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] font-semibold text-indigo-900">Sample preview is on: the first three machines show example monthly statuses. These examples are not saved to your maintenance records.</p>}
+        <div className="mb-3 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700" aria-label="PPM status legend">
+          <span className="text-slate-500">PPM status</span>
+          <span className="inline-flex items-center gap-1.5"><span className="font-black text-emerald-600">✓</span>Done</span>
+          <span className="inline-flex items-center gap-1.5"><span className="font-black text-amber-600">✓</span>Coming soon</span>
+          <span className="inline-flex items-center gap-1.5"><span className="font-black text-rose-600">×</span>Overdue</span>
+          <span className="inline-flex items-center gap-1.5 text-slate-500"><span className="h-2.5 w-2.5 rounded-full bg-slate-300" />No scheduled PPM</span>
+          <button type="button" onClick={() => setIsAutoScrollEnabled((enabled) => !enabled)} className="ml-auto rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-700 hover:bg-slate-100" aria-pressed={isAutoScrollEnabled}>{isAutoScrollEnabled ? 'Pause auto-scroll' : 'Resume auto-scroll'}</button>
+        </div>
 
-            return (
-              <div
-                key={machine.id}
-                className={`bg-white rounded-2xl border transition-all duration-200 p-4 flex flex-col justify-between gap-3 shadow-2xs hover:shadow-md ${
-                  isOverdue
-                    ? 'border-rose-300 hover:border-rose-400'
-                    : isDueSoon
-                    ? 'border-amber-300 hover:border-amber-400'
-                    : 'border-slate-200 hover:border-indigo-300'
-                }`}
-              >
-                {/* Top: Machine ID & Category Visual */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-800 text-xs border border-slate-200">
-                        <Wrench className="w-4 h-4 text-indigo-600" />
-                      </div>
-                      <div>
-                        <span className="font-mono font-black text-slate-900 text-sm block leading-tight">
-                          {machine.id}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          {machine.unit || 'UNIT - 1'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Status Pill */}
-                    {isOverdue ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
-                        Overdue by {Math.abs(diffDays)}d
-                      </span>
-                    ) : isDueSoon ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                        Due in {diffDays}d
-                      </span>
-                    ) : hasActivePpm ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {activePpm.frequency} PPM
-                      </span>
-                    ) : isCompleted ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        Completed
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                        No Schedule
-                      </span>
+        <div ref={tableViewportRef} onMouseEnter={() => setIsTableHovered(true)} onMouseLeave={() => setIsTableHovered(false)} onFocusCapture={() => setIsTableHovered(true)} onBlurCapture={() => setIsTableHovered(false)} className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-[960px] border-collapse text-left text-xs">
+            <thead className="sticky top-0 z-20 bg-slate-100 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+              <tr>
+                <th className="sticky left-0 z-30 min-w-[200px] border-b border-r border-slate-200 bg-slate-100 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    {canBulkSchedule && isCustomSelectMode && (
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible machines"
+                        checked={
+                          filteredMachines.length > 0 &&
+                          filteredMachines.every(({ machine }) => customSelectedMachineIds.includes(machine.id))
+                        }
+                        onChange={(e) => {
+                          const visibleIds = filteredMachines.map(({ machine }) => machine.id);
+                          if (e.target.checked) {
+                            setCustomSelectedMachineIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+                          } else {
+                            const visibleSet = new Set(visibleIds);
+                            setCustomSelectedMachineIds((prev) => prev.filter((id) => !visibleSet.has(id)));
+                          }
+                        }}
+                        className="h-3.5 w-3.5 cursor-pointer rounded border-slate-300 accent-indigo-600"
+                      />
                     )}
+                    <span>Asset / Type</span>
                   </div>
-
-                  {/* Machine Specs & Location */}
-                  <div>
-                    <div className="text-xs font-bold text-slate-900 truncate">
-                      {machine.brand} {machine.model}
-                    </div>
-                    <div className="text-[11px] text-slate-500 truncate">
-                      {machine.typeName || machine.type || 'Apparel Sewing Machine'}
-                    </div>
-                  </div>
-
-                  <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-1 border-t border-slate-100">
-                    <span>Line: <strong className="text-slate-700">{machine.currentLine || machine.area || 'Line 01'}</strong></span>
-                    <span>•</span>
-                    <span>Station: <strong className="text-slate-700">{machine.stationNo || 'Station 01'}</strong></span>
-                  </div>
-
-                  {/* Active PPM Details Card */}
-                  {hasActivePpm && (
-                    <div className={`p-2.5 rounded-xl border text-xs space-y-1 ${
-                      isOverdue
-                        ? 'bg-rose-50/60 border-rose-200 text-rose-950'
-                        : isDueSoon
-                        ? 'bg-amber-50/60 border-amber-200 text-amber-950'
-                        : 'bg-slate-50 border-slate-200 text-slate-900'
-                    }`}>
-                      <div className="font-semibold text-[11px] line-clamp-1">
-                        📋 {activePpm.task}
+                </th>
+                {Array.from({ length: 12 }, (_, month) => <th key={month} className="min-w-[64px] border-b border-r border-slate-200 px-1.5 py-2 text-center">{new Date(2000, month, 1).toLocaleString('en', { month: 'short' })}</th>)}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-700">
+              {filteredMachines.length === 0 ? (
+                <tr><td colSpan={13} className="px-4 py-12 text-center text-slate-400">No machines match these filters.</td></tr>
+              ) : filteredMachines.map(({ machine }, machineIndex) => {
+                const monthStatuses = monthlyStatusByMachine.get(machine.id.toLowerCase()) || [];
+                const sampleStatuses: Array<'DONE' | 'OVERDUE' | 'UPCOMING' | 'NONE'> | null = machineIndex === 0
+                  ? ['DONE', 'NONE', 'NONE', 'NONE', 'NONE', 'NONE', 'NONE', 'DONE', 'NONE', 'OVERDUE', 'UPCOMING', 'UPCOMING']
+                  : machineIndex === 1
+                  ? ['NONE', 'UPCOMING', 'NONE', 'DONE', 'NONE', 'NONE', 'NONE', 'NONE', 'OVERDUE', 'OVERDUE', 'UPCOMING', 'NONE']
+                  : machineIndex === 2
+                  ? ['UPCOMING', 'NONE', 'DONE', 'NONE', 'UPCOMING', 'NONE', 'OVERDUE', 'NONE', 'NONE', 'NONE', 'UPCOMING', 'NONE']
+                  : null;
+                const displayedMonthStatuses = samplePpmIsVisible && sampleStatuses
+                  ? sampleStatuses.map((status, monthIndex) => ({
+                      status,
+                      title: status === 'DONE' ? 'Sample: PPM completed' : status === 'OVERDUE' ? 'Sample: PPM is overdue' : status === 'UPCOMING' ? 'Sample: PPM is coming soon' : 'Sample: no PPM scheduled',
+                      completedBy: status === 'DONE' ? 'Sample Mechanic' : undefined,
+                      completedAt: status === 'DONE' ? `15 ${new Date(selectedYear, monthIndex, 1).toLocaleString('en', { month: 'short' })} ${selectedYear}` : undefined,
+                    }))
+                  : monthStatuses;
+                const type = machine.type || machine.typeName || 'Machine';
+                return (
+                  <tr key={machine.id} className={`hover:bg-indigo-50/40 ${isCustomSelectMode && customSelectedMachineIds.includes(machine.id) ? 'bg-indigo-50/60' : ''}`}>
+                    <td className="sticky left-0 z-[1] border-r border-slate-200 bg-white px-3 py-2">
+                      <div className="flex items-start gap-2">
+                        {canBulkSchedule && isCustomSelectMode && (
+                          <input
+                            type="checkbox"
+                            aria-label={`Select machine ${machine.id}`}
+                            checked={customSelectedMachineIds.includes(machine.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCustomSelectedMachineIds((prev) => (prev.includes(machine.id) ? prev : [...prev, machine.id]));
+                              } else {
+                                setCustomSelectedMachineIds((prev) => prev.filter((id) => id !== machine.id));
+                              }
+                            }}
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-slate-300 accent-indigo-600"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <button type="button" onClick={() => setSelectedMachineForCalendar(machine)} className="block text-left font-mono text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline" aria-label={`Open PPM checklist for asset ${machine.id}`}>{machine.id}</button>
+                          <div className="mt-0.5 text-[10px] font-semibold text-emerald-700">{type} · {machine.currentLine || machine.area || 'Line not set'}</div>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
-                        <span>Due: <b className="text-slate-800">{activePpm.nextDue}</b></span>
-                        <span>Tech: <b className="text-indigo-600">{activePpm.assignedTo || 'Unassigned'}</b></span>
-                      </div>
-                    </div>
-                  )}
+                    </td>
+                    {displayedMonthStatuses.map((monthStatus, month) => {
+                      return <td key={month} className="border-r border-slate-100 px-1 py-1.5 text-center"><PpmStatusMark {...monthStatus} /></td>;
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {/* â”€â”€â”€ MODAL 1: SCHEDULE PPM FOR SINGLE MACHINE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {selectedMachineForCalendar && (() => {
+        const machineId = selectedMachineForCalendar.id.toLowerCase();
+        const actualMonthStatuses = monthlyStatusByMachine.get(machineId) || [];
+        const selectedMachineIndex = filteredMachines.findIndex(({ machine }) => machine.id.toLowerCase() === machineId);
+        const sampleStatusSets: Array<Array<'DONE' | 'OVERDUE' | 'UPCOMING' | 'NONE'>> = [
+          ['DONE', 'NONE', 'NONE', 'NONE', 'NONE', 'NONE', 'NONE', 'DONE', 'NONE', 'OVERDUE', 'UPCOMING', 'UPCOMING'],
+          ['NONE', 'UPCOMING', 'NONE', 'DONE', 'NONE', 'NONE', 'NONE', 'NONE', 'OVERDUE', 'OVERDUE', 'UPCOMING', 'NONE'],
+          ['UPCOMING', 'NONE', 'DONE', 'NONE', 'UPCOMING', 'NONE', 'OVERDUE', 'NONE', 'NONE', 'NONE', 'UPCOMING', 'NONE'],
+        ];
+        const selectedSampleStatuses = selectedMachineIndex >= 0 && selectedMachineIndex < sampleStatusSets.length
+          ? sampleStatusSets[selectedMachineIndex]
+          : null;
+        const monthStatuses = samplePpmIsVisible && selectedSampleStatuses
+          ? selectedSampleStatuses.map((status, monthIndex) => ({
+              status,
+              title: status === 'DONE' ? 'Sample: PPM completed' : status === 'OVERDUE' ? 'Sample: PPM is overdue' : status === 'UPCOMING' ? 'Sample: PPM is coming soon' : 'Sample: no PPM scheduled',
+              completedBy: status === 'DONE' ? 'Sample Mechanic' : undefined,
+              completedAt: status === 'DONE' ? `15 ${new Date(selectedYear, monthIndex, 1).toLocaleString('en', { month: 'short' })} ${selectedYear}` : undefined,
+            }))
+          : actualMonthStatuses;
+        const machineSchedules = scopedPpm.filter((schedule) => schedule.machineId.toLowerCase() === machineId);
+        const halfYearStatus = (start: number): PpmMonthStatus => {
+          const statuses = monthStatuses.slice(start, start + 6).map((item) => item.status);
+          if (statuses.includes('DONE')) {
+            const completion = monthStatuses.slice(start, start + 6).find((item) => item.status === 'DONE');
+            return { status: 'DONE', title: 'PPM completion recorded during this half-year', completedBy: completion?.completedBy, completedAt: completion?.completedAt };
+          }
+          if (statuses.includes('OVERDUE')) return { status: 'OVERDUE' as const, title: 'Scheduled PPM is overdue during this half-year' };
+          if (statuses.includes('UPCOMING')) return { status: 'UPCOMING' as const, title: 'PPM is scheduled during this half-year' };
+          return { status: 'NONE' as const, title: 'No PPM schedule or completion recorded' };
+        };
+        const statusCell = (status: PpmMonthStatus) => <PpmStatusMark {...status} />;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6">
+            <section className="w-full max-w-7xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-5">
+                <div>
+                  <h2 className="text-sm font-black text-slate-900">Monthly PPM Activity Checklist</h2>
+                  <p className="mt-0.5 text-xs text-slate-600">{selectedMachineForCalendar.name || `${selectedMachineForCalendar.brand} ${selectedMachineForCalendar.model}`} · {selectedMachineForCalendar.id} · {selectedYear}</p>
                 </div>
+                <button type="button" onClick={() => setSelectedMachineForCalendar(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100">Close</button>
+              </header>
+              <div className="max-h-[75dvh] overflow-auto">
+                <table className="w-full min-w-[1050px] border-collapse text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                    <tr>
+                      <th className="border-b border-r border-slate-200 px-3 py-2.5 text-center">S.No.</th>
+                      <th className="border-b border-r border-slate-200 px-3 py-2.5">Activity</th>
+                      {Array.from({ length: 12 }, (_, month) => <th key={month} className="border-b border-r border-slate-200 px-2 py-2.5 text-center">{new Date(2000, month, 1).toLocaleString('en', { month: 'short' })}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {MONTHLY_PPM_ACTIVITIES.map((activity, activityIndex) => (
+                      <tr key={activity}>
+                        <td className="border-r border-slate-100 px-3 py-3 text-center font-mono text-slate-500">{activityIndex + 1}</td>
+                        <td className="border-r border-slate-100 px-3 py-3 font-semibold text-slate-800">{activity}</td>
+                        {Array.from({ length: 12 }, (_, month) => {
+                          const monthStatus = monthStatuses[month] || { status: 'NONE' as const, title: 'No PPM record' };
+                          return <td key={month} className="border-r border-slate-100 px-1 py-2 text-center">{statusCell({ ...monthStatus, title: `${activity}: ${monthStatus.title}` })}</td>;
+                        })}
+                      </tr>
+                    ))}
+                    <tr className="bg-indigo-50/40">
+                      <td className="border-r border-slate-100 px-3 py-3 text-center font-mono text-slate-500">10</td>
+                      <td className="border-r border-slate-100 px-3 py-3 font-bold text-slate-900">Oil Service<span className="mt-0.5 block text-[10px] font-medium text-slate-500">Every six months</span></td>
+                      <td colSpan={6} className="border-r border-slate-100 px-2 py-2 text-center">{statusCell(halfYearStatus(0))}</td>
+                      <td colSpan={6} className="px-2 py-2 text-center">{statusCell(halfYearStatus(6))}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-[10px] text-slate-500 sm:px-5">
+                <span>Done reflects a recorded PPM completion; Pending and Due follow scheduled dates.</span>
+                <button type="button" onClick={() => { const schedule = machineSchedules.find((item) => item.status !== 'COMPLETED') || machineSchedules[0] || null; handleOpenScheduleModal(selectedMachineForCalendar, schedule); setSelectedMachineForCalendar(null); }} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700">Change PPM Schedule</button>
+              </footer>
+            </section>
+          </div>
+        );
+      })()}
 
-                {/* Bottom Actions */}
-                <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenScheduleModal(machine, activePpm)}
-                    className="flex-1 py-1.5 px-3 rounded-xl text-xs font-bold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>{hasActivePpm ? 'Update PPM' : 'Schedule PPM'}</span>
-                  </button>
-
-                  {hasActivePpm && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenCompleteModal(activePpm)}
-                      className="py-1.5 px-3 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer flex items-center justify-center gap-1"
-                      title="Inspect & Sign Off Completed PPM"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Sign Off</span>
-                    </button>
-                  )}
+      {isBulkScheduleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex items-center justify-between bg-slate-900 p-5 text-white">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500 shadow-md">
+                  <CalendarCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">{bulkTargetMode === 'CUSTOM' ? 'Custom Schedule PPM' : 'Bulk Schedule PPM'}</h3>
+                  <p className="text-[11px] text-slate-400">
+                    {modalTargetMachines.length} machine(s) selected in {selectedUnit}
+                  </p>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* TABLE VIEW */
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4">Machine ID</th>
-                  <th className="py-3 px-4">Brand / Model</th>
-                  <th className="py-3 px-4">Type</th>
-                  <th className="py-3 px-4">Location</th>
-                  <th className="py-3 px-4">PPM Status</th>
-                  <th className="py-3 px-4">Scheduled Task</th>
-                  <th className="py-3 px-4">Next Due Date</th>
-                  <th className="py-3 px-4">Assigned Tech</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredMachines.map(({ machine, activePpm, ppmStatusCategory, diffDays }) => {
-                  const isOverdue = ppmStatusCategory === 'OVERDUE';
-                  const isDueSoon = ppmStatusCategory === 'DUE_SOON';
-                  const hasActivePpm = activePpm && activePpm.status !== 'COMPLETED';
+              <button type="button" onClick={() => setIsBulkScheduleModalOpen(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-white/10 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </header>
 
-                  return (
-                    <tr key={machine.id} className="hover:bg-slate-50/70 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                        {machine.id}
-                      </td>
-                      <td className="py-3 px-4 font-medium text-slate-900">
-                        {machine.brand} {machine.model}
-                      </td>
-                      <td className="py-3 px-4 text-slate-500 truncate max-w-[150px]">
-                        {machine.typeName || machine.type}
-                      </td>
-                      <td className="py-3 px-4 text-slate-500">
-                        {machine.currentLine || machine.area} • {machine.stationNo}
-                      </td>
-                      <td className="py-3 px-4">
-                        {isOverdue ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                            Overdue {Math.abs(diffDays)}d
-                          </span>
-                        ) : isDueSoon ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                            Due in {diffDays}d
-                          </span>
-                        ) : hasActivePpm ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            Scheduled
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">
-                            None
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-slate-800 max-w-[200px] truncate">
-                        {activePpm?.task || '—'}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-slate-800">
-                        {activePpm?.nextDue || '—'}
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-indigo-600">
-                        {activePpm?.assignedTo || 'Unassigned'}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenScheduleModal(machine, activePpm)}
-                            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-                          >
-                            Schedule
-                          </button>
-                          {hasActivePpm && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenCompleteModal(activePpm)}
-                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer"
-                            >
-                              Sign Off
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <form onSubmit={handleSubmitBulkSchedule} className="space-y-4 p-5 text-xs">
+              {bulkTargetMode === 'CUSTOM' ? (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-[11px] text-indigo-950">
+                  <span className="font-bold">Custom Selected Machines ({modalTargetMachines.length}): </span>
+                  <span className="font-mono font-semibold">
+                    {modalTargetMachines.slice(0, 8).map(({ machine }) => machine.id).join(', ')}
+                    {modalTargetMachines.length > 8 ? ` +${modalTargetMachines.length - 8} more` : ''}
+                  </span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="space-y-1">
+                    <label className="block font-bold uppercase tracking-wider text-slate-700">Machine Type</label>
+                    <select
+                      value={bulkSelectedType}
+                      onChange={(e) => {
+                        setBulkSelectedType(e.target.value);
+                        setBulkSelectedZone('ALL');
+                        setBulkSelectedLine('ALL');
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-semibold text-slate-800"
+                    >
+                      <option value="ALL">All Types</option>
+                      {bulkTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block font-bold uppercase tracking-wider text-slate-700">Zone</label>
+                    <select
+                      value={bulkSelectedZone}
+                      onChange={(e) => {
+                        setBulkSelectedZone(e.target.value);
+                        setBulkSelectedLine('ALL');
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-semibold text-slate-800"
+                    >
+                      <option value="ALL">All Zones</option>
+                      {bulkZoneOptions.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block font-bold uppercase tracking-wider text-slate-700">Line</label>
+                    <select
+                      value={bulkSelectedLine}
+                      onChange={(e) => setBulkSelectedLine(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-semibold text-slate-800"
+                    >
+                      <option value="ALL">All Lines</option>
+                      {bulkLineOptions.map((line) => <option key={line} value={line}>{line}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="block font-bold uppercase tracking-wider text-slate-700">PPM Task Description *</label>
+                <input
+                  type="text"
+                  value={bulkTaskName}
+                  onChange={(e) => setBulkTaskName(e.target.value)}
+                  required
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="block font-bold uppercase tracking-wider text-slate-700">Frequency *</label>
+                  <select
+                    value={bulkFrequency}
+                    onChange={(e) => {
+                      const nextFrequency = e.target.value as PPMFrequency;
+                      setBulkFrequency(nextFrequency);
+                      const days = nextFrequency === 'Weekly' ? 7 : nextFrequency === 'Monthly' ? 30 : 180;
+                      const d = new Date();
+                      d.setDate(d.getDate() + days);
+                      setBulkNextDueDate(toDateKey(d));
+                    }}
+                    className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-semibold text-slate-800"
+                  >
+                    <option value="Weekly">Weekly Routine (7 Days)</option>
+                    <option value="Monthly">Monthly Overhaul (30 Days)</option>
+                    <option value="6-Month">6-Month Deep Service (180 Days)</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block font-bold uppercase tracking-wider text-slate-700">Next Due Date *</label>
+                  <input type="date" value={bulkNextDueDate} onChange={(e) => setBulkNextDueDate(e.target.value)} required className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-semibold text-slate-800" />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900">
+                This schedule applies to matching machines in the selected unit, regardless of the main table filters.
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 pt-2">
+                <button type="button" onClick={() => setIsBulkScheduleModalOpen(false)} className="rounded-xl px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="submit" disabled={isSubmittingBulkSchedule || modalTargetMachines.length === 0} className="flex items-center gap-1.5 rounded-xl bg-amber-500 px-5 py-2.5 font-bold text-white shadow-lg shadow-amber-500/25 hover:bg-amber-600 disabled:opacity-50">
+                  <CalendarCheck className="h-4 w-4" />
+                  <span>{isSubmittingBulkSchedule ? 'Scheduling...' : `Schedule ${modalTargetMachines.length} Machines`}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* ─── MODAL 1: SCHEDULE PPM FOR SINGLE MACHINE ─────────────────── */}
       {isScheduleModalOpen && selectedMachineForSchedule && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -839,7 +1086,7 @@ export default function PPMSchedulerPage() {
                 <div>
                   <h3 className="text-sm font-bold">Schedule Preventive Maintenance (PPM)</h3>
                   <p className="text-[11px] text-slate-400">
-                    Machine {selectedMachineForSchedule.id} • {selectedMachineForSchedule.brand} {selectedMachineForSchedule.model}
+                    Machine {selectedMachineForSchedule.id} â€¢ {selectedMachineForSchedule.brand} {selectedMachineForSchedule.model}
                   </p>
                 </div>
               </div>
@@ -925,10 +1172,10 @@ export default function PPMSchedulerPage() {
                 >
                   <option value="">-- Select In-Charge Technician (All Units) --</option>
                   {Object.entries(groupedTechnicians).map(([unitGroup, techs]) => (
-                    <optgroup key={unitGroup} label={`📍 ${unitGroup}`}>
-                      {techs.map((t: any) => (
+                    <optgroup key={unitGroup} label={`ðŸ“ ${unitGroup}`}>
+                      {techs.map((t: Technician) => (
                         <option key={t.uid || t.id || t.name} value={t.name}>
-                          {t.name} ({t.role || 'Mechanic'}) • {t.unit || unitGroup}
+                          {t.name} ({t.role || 'Mechanic'}) â€¢ {t.unit || unitGroup}
                         </option>
                       ))}
                     </optgroup>
@@ -959,142 +1206,10 @@ export default function PPMSchedulerPage() {
         </div>
       )}
 
-      {/* ─── MODAL 2: BULK SCHEDULE PPM FOR EVERY MACHINE ───────────────── */}
-      {isBulkModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center shadow-md">
-                  <Sparkles className="w-5 h-5 text-amber-300" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold">Schedule PPM for Every Machine</h3>
-                  <p className="text-[11px] text-indigo-200">
-                    Auto-generate preventive schedules for {filteredMachines.length} machinery assets in current view
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsBulkModalOpen(false)}
-                className="p-1.5 text-indigo-200 hover:text-white rounded-xl hover:bg-white/10 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitBulkSchedule} className="p-5 space-y-4 text-xs">
-              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl text-indigo-950 font-medium">
-                This will automatically attach a new preventative maintenance work order to all <b>{filteredMachines.length} filtered machines</b> ({selectedUnit === 'ALL' ? 'All Units' : selectedUnit}).
-              </div>
-
-              {/* Bulk Task Name */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 uppercase tracking-wider block">
-                  Routine Title *
-                </label>
-                <input
-                  type="text"
-                  value={bulkTaskName}
-                  onChange={(e) => setBulkTaskName(e.target.value)}
-                  required
-                  placeholder="e.g. Monthly Machinery Lubrication &amp; Mechanical Timing Inspection"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Bulk Frequency & Start Date */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 uppercase tracking-wider block">
-                    Frequency *
-                  </label>
-                  <select
-                    value={bulkFrequency}
-                    onChange={(e) => {
-                      const f = e.target.value as PPMFrequency;
-                      setBulkFrequency(f);
-                      const days = f === 'Weekly' ? 7 : f === 'Monthly' ? 30 : 180;
-                      setBulkIntervalDays(days);
-                      const d = new Date();
-                      d.setDate(d.getDate() + days);
-                      setBulkStartDate(toDateKey(d));
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none cursor-pointer"
-                  >
-                    <option value="Weekly">Weekly Routine (7 Days)</option>
-                    <option value="Monthly">Monthly Overhaul (30 Days)</option>
-                    <option value="6-Month">6-Month Deep Service (180 Days)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 uppercase tracking-wider block">
-                    Initial Target Due Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={bulkStartDate}
-                    onChange={(e) => setBulkStartDate(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none"
-                  >
-                  </input>
-                </div>
-              </div>
-
-              {/* Bulk Assign Technician */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 uppercase tracking-wider block">
-                  Default Lead Technician (Optional)
-                </label>
-                <select
-                  value={bulkAssignedTechnician}
-                  onChange={(e) => setBulkAssignedTechnician(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-800 outline-none cursor-pointer"
-                >
-                  <option value="">-- Leave Unassigned / Floor Dispatch Later --</option>
-                  {Object.entries(groupedTechnicians).map(([unitGroup, techs]) => (
-                    <optgroup key={unitGroup} label={`📍 ${unitGroup}`}>
-                      {techs.map((t: any) => (
-                        <option key={t.uid || t.id || t.name} value={t.name}>
-                          {t.name} ({t.role || 'Mechanic'}) • {t.unit || unitGroup}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-
-              {/* Actions */}
-              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsBulkModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingBulk || filteredMachines.length === 0}
-                  className="px-5 py-2.5 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-lg shadow-indigo-600/25 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>{isSubmittingBulk ? 'Generating Schedules...' : `Generate PPM for All (${filteredMachines.length})`}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODAL 3: COMPLETE PPM WORK ORDER WITH PROOF ──────────────── */}
+      {/* â”€â”€â”€ MODAL 3: COMPLETE PPM WORK ORDER WITH PROOF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {isCompleteModalOpen && selectedPpmForComplete && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90dvh] overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="bg-emerald-950 text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1104,7 +1219,7 @@ export default function PPMSchedulerPage() {
                 <div>
                   <h3 className="text-sm font-bold">Complete &amp; Sign Off PPM Routine</h3>
                   <p className="text-[11px] text-emerald-300 font-mono">
-                    {selectedPpmForComplete.id} • Machine {selectedPpmForComplete.machineId}
+                    {selectedPpmForComplete.id} â€¢ Machine {selectedPpmForComplete.machineId}
                   </p>
                 </div>
               </div>

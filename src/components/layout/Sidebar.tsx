@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Wrench,
   Boxes,
   History,
   CalendarCheck,
@@ -13,14 +12,12 @@ import {
   Crown,
   Package,
   PackageCheck,
-  UserPlus,
   Menu,
   X,
   ClipboardList,
   Users,
   LayoutDashboard,
   QrCode,
-  IndianRupee,
   PanelLeftClose,
   PanelLeftOpen,
   CheckCircle2,
@@ -63,6 +60,7 @@ export function Sidebar() {
   const router = useRouter();
   const { user, role, logout } = useAuth();
   const { isNavHidden, showNav, hideNav, isMobileOpen, setIsMobileOpen, closeMobileNav, departmentNavigation } = useNav();
+  const [userNavigation, setUserNavigation] = useState<string[]>([]);
 
   const [lowStockCount, setLowStockCount] = useState<number>(0);
   const [pendingTicketsCount, setPendingTicketsCount] = useState<number>(0);
@@ -74,9 +72,18 @@ export function Sidebar() {
 
   const companySlug = (user?.companySlug || 'sahana').toLowerCase();
 
+  useEffect(() => {
+    if (!user?.uid) { setUserNavigation([]); return; }
+    let active = true;
+    void fetch('/api/user-navigation', { cache: 'no-store', credentials: 'include' }).then(response => response.ok ? response.json() : null)
+      .then(data => { if (active) setUserNavigation(Array.isArray(data?.items) ? data.items : []); })
+      .catch(() => { if (active) setUserNavigation([]); });
+    return () => { active = false; };
+  }, [user?.uid]);
+
   const handleSignOut = async () => {
     await logout();
-    window.location.href = `/${companySlug}/login`;
+    router.replace(`/${companySlug}/login`);
   };
 
   useEffect(() => {
@@ -105,7 +112,7 @@ export function Sidebar() {
       // Unique process in-charges currently attending to breakdown issues
       const activeInCharges = new Set(
         pendingTickets
-          .map((r) => r.attendedBy || (r as any).assignedTo)
+          .map((r) => r.attendedBy || (Reflect.get(r, 'assignedTo') as string | undefined))
           .filter((n) => Boolean(n && n.trim()))
       );
       setActiveInChargesCount(activeInCharges.size);
@@ -164,22 +171,13 @@ export function Sidebar() {
   // Dynamic day of week and greeting (e.g. "Happy Thursday, Administrator!")
   const todayGreeting = useMemo(() => {
     try {
-      const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date());
-      const displayName =
-        currentRole === 'ADMIN' || currentRole === 'ASSET_MANAGER'
-          ? 'Administrator'
-          : currentRole === 'CEO'
-            ? 'Executive Director'
-            : currentRole === 'STORE_PERSON'
-              ? 'Store In-Charge'
-              : currentRole === 'SENIOR_MECHANIC' || currentRole === 'SENIOR_ELECTRICIAN'
-                ? 'Supervisor'
-                : user?.name?.split(' ')[0] || 'Technician';
+      const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'Asia/Kolkata' }).format(new Date());
+      const displayName = user?.username || user?.name || 'Team';
       return `Happy ${dayName}, ${displayName}!`;
     } catch {
       return 'Happy Day, Operations Team!';
     }
-  }, [currentRole, user]);
+  }, [user]);
 
   // Grouped Navigation Sections separated based on credentials
   const navSections: NavSection[] = useMemo(() => {
@@ -219,7 +217,12 @@ export function Sidebar() {
                 icon: Boxes,
               },
               {
-                label: 'Audit History',
+                label: 'Lease Assets',
+                href: '/dashboard/lease-assets',
+                icon: Package,
+              },
+              {
+                label: 'T&A',
                 href: '/dashboard/history',
                 icon: History,
               },
@@ -270,7 +273,12 @@ export function Sidebar() {
                 icon: Boxes,
               },
               {
-                label: 'Dispatch History',
+                label: 'Lease Assets',
+                href: '/dashboard/lease-assets',
+                icon: Package,
+              },
+              {
+                label: 'T&A',
                 href: '/dashboard/history',
                 icon: History,
               },
@@ -314,7 +322,7 @@ export function Sidebar() {
                 icon: Package,
               },
               {
-                label: 'Task History',
+                label: 'T&A',
                 href: '/dashboard/history',
                 icon: History,
               },
@@ -337,13 +345,6 @@ export function Sidebar() {
                 label: 'Team Overview',
                 href: '/dashboard/calendar',
                 icon: LayoutGrid,
-              },
-              {
-                label: 'Pending Actions',
-                href: '/dashboard/pending-actions',
-                icon: Clock,
-                badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
-                badgeColor: 'bg-emerald-500 text-white',
               },
               {
                 label: 'Process In-Charges',
@@ -377,6 +378,11 @@ export function Sidebar() {
                 icon: Boxes,
               },
               {
+                label: 'Lease Assets',
+                href: '/dashboard/lease-assets',
+                icon: Package,
+              },
+              {
                 label: 'Asset Log',
                 href: '/dashboard/asset-log',
                 icon: ClipboardList,
@@ -389,7 +395,7 @@ export function Sidebar() {
                 badgeColor: 'bg-amber-100 text-amber-800',
               },
               {
-                label: 'Work History',
+                label: 'T&A',
                 href: '/dashboard/history',
                 icon: History,
               },
@@ -411,13 +417,6 @@ export function Sidebar() {
               label: 'Team Overview',
               href: '/dashboard/calendar',
               icon: LayoutGrid,
-            },
-            {
-              label: 'Pending Actions',
-              href: '/dashboard/pending-actions',
-              icon: Clock,
-              badge: (pendingTicketsCount + pendingPpmCount) > 0 ? (pendingTicketsCount + pendingPpmCount) : null,
-              badgeColor: 'bg-emerald-500 text-white',
             },
             {
               label: 'Process In-Charges',
@@ -446,12 +445,7 @@ export function Sidebar() {
           title: 'TNA',
           items: [
             {
-              label: 'Active TNAs',
-              href: '/dashboard/active-tna',
-              icon: Layers,
-            },
-            {
-              label: 'Completed TNAs',
+              label: 'T&A',
               href: '/dashboard/history',
               icon: CheckCircle2,
             },
@@ -464,6 +458,11 @@ export function Sidebar() {
               label: 'Asset',
               href: '/dashboard/asset-types',
               icon: Boxes,
+            },
+            {
+              label: 'Lease Assets',
+              href: '/dashboard/lease-assets',
+              icon: Package,
             },
             {
               label: 'Asset Registration',
@@ -513,12 +512,8 @@ export function Sidebar() {
         },
       ];
     };
-    const sections = buildSections().map(section => ({ ...section, items: section.items.filter(item => canAccessRoute(currentRole, item.href)) }));
-    if (currentRole === 'HEAD_MECHANIC_MANAGER') sections.push({ title: 'TEAM & FLOW', items: [
-      { label: 'Manage Mechanics', href: '/dashboard/users', icon: Users },
-      { label: 'Factory Floor', href: '/dashboard/floor-tracker', icon: LayoutGrid },
-    ] });
-    const isVisible = (path: string) => departmentNavigation?.includes(path) && canAccessRoute(currentRole, path);
+    const sections = buildSections().map(section => ({ ...section, items: section.items.filter(item => item.href !== '/dashboard/messages' && canAccessRoute(currentRole, item.href) && userNavigation.includes(item.href)) }));
+    const isVisible = (path: string) => path !== '/dashboard/messages' && departmentNavigation?.includes(path) && canAccessRoute(currentRole, path) && userNavigation.includes(path);
     const rawSections = departmentNavigation === null ? sections : sections.map(section => ({
       ...section, items: section.items.filter(item => isVisible(item.href)),
     }));
@@ -538,20 +533,11 @@ export function Sidebar() {
         href: it.href.startsWith('/dashboard') ? `/${companySlug}${it.href}` : it.href,
       })),
     }));
-  }, [currentRole, pendingTicketsCount, pendingPpmCount, activeInChargesCount, pendingCeoCount, pendingStoreCount, lowStockCount, user?.companySlug, departmentNavigation]);
+  }, [currentRole, pendingTicketsCount, pendingPpmCount, activeInChargesCount, pendingCeoCount, pendingStoreCount, lowStockCount, unattendedBreachCount, user?.companySlug, departmentNavigation, userNavigation]);
 
-  const userInitial = useMemo(() => {
-    if (currentRole === 'ADMIN') return 'A';
-    if (currentRole === 'CEO') return 'C';
-    if (user?.name) return user.name.charAt(0).toUpperCase();
-    return 'A';
-  }, [currentRole, user]);
+  const userInitial = (user?.username || user?.name || 'U').charAt(0).toUpperCase();
 
-  const userDisplayName = useMemo(() => {
-    if (currentRole === 'ADMIN') return 'Administrator';
-    if (currentRole === 'CEO') return 'Managing Director';
-    return user?.name || 'Administrator';
-  }, [currentRole, user]);
+  const userDisplayName = user?.username || user?.name || 'My account';
 
   const userDisplayRole = useMemo(() => {
     if (currentRole === 'ADMIN') return 'Administrator';
@@ -574,23 +560,7 @@ export function Sidebar() {
           </Link>
 
           <div className="flex items-center gap-1.5">
-            {/* Top Notification Bell with unseen counter */}
-            {(departmentNavigation === null || departmentNavigation.includes('/dashboard/messages')) && (
-            <Link
-              href={`/${user?.companySlug || 'sahana'}/dashboard/messages`}
-              className="relative p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer flex items-center justify-center group"
-              title={`${unattendedBreachCount} unseen alerts & notifications`}
-            >
-              <Bell className="w-4 h-4 text-slate-600 group-hover:text-rose-600 transition" />
-              {unattendedBreachCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-extrabold flex items-center justify-center shadow-2xs animate-pulse">
-                  {unattendedBreachCount}
-                </span>
-              )}
-            </Link>
-            )}
-
-            {/* Desktop hide button */}
+    {/* Desktop hide button */}
             <button
               onClick={hideNav}
               className="hidden lg:flex p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
@@ -720,25 +690,7 @@ export function Sidebar() {
           ASSET MODULE
         </Link>
 
-        {/* Top Notification Bell with unseen counter */}
-
-        {(departmentNavigation === null || departmentNavigation.includes('/dashboard/messages')) && (
-        <Link
-          href={`/${companySlug}/dashboard/messages`}
-          className="relative p-2 text-slate-600 hover:text-rose-600 hover:bg-slate-50 rounded-xl transition cursor-pointer flex items-center justify-center group"
-          title={`${unattendedBreachCount} unseen alerts & notifications`}
-        >
-          <Bell className="w-5 h-5 text-slate-600 group-hover:text-rose-600 transition" />
-          {unattendedBreachCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#f43f5e] text-white text-[10px] font-extrabold flex items-center justify-center shadow-2xs animate-pulse">
-              {unattendedBreachCount}
-            </span>
-          )}
-        </Link>
-
-        )}
-
-        {/* Open/Expand Navbar button */}
+{/* Open/Expand Navbar button */}
         <button
           type="button"
           onClick={showNav}
@@ -867,7 +819,7 @@ export function Sidebar() {
 
       {/* Desktop Sticky Left Sidebar (Full w-64 or Collapsed w-[72px]) */}
       <aside
-        className={`hidden lg:flex flex-col shrink-0 sticky top-0 h-dvh bg-white z-30 transition-all duration-150 ${isNavHidden ? 'w-[72px]' : 'w-64'
+        className={`hidden lg:flex flex-col shrink-0 sticky top-0 h-dvh bg-white z-30 transition-all duration-150 ${isNavHidden ? 'w-[72px]' : 'w-[220px]'
           }`}
       >
         {isNavHidden ? collapsedSidebarContent : sidebarContent}

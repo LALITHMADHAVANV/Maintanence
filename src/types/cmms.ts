@@ -1,4 +1,5 @@
 export type AssetCategory =
+  | 'APPLIANCE' // Laptops, TVs, printers and other appliances
   | 'MACHINE' // Sewing & Industrial Machinery
   | 'FURNITURE' // Furniture: Work Tables, Cutting Tables, Operator & Supervisor Chairs, Workshop Stools
   | 'TABLE' // Work Tables (backward compatibility)
@@ -112,12 +113,20 @@ export type FloorLine =
   | (string & {});
 
 export interface Machine {
+  location?: string;
+  companySlug?: string;
   id: string; // e.g., "MC-SNLS-101", "TBL-CUT-101", "CHR-ERG-101", "LGT-HBY-101", "FAN-CEIL-101"
   name?: string; // Display name, e.g. "Line 01 Fabric Spreading Table"
   company?: string; // Company / Facility Name
   brand: string; // "Juki", "Featherlite", "Philips", "Almonard", "Eastman", "Godrej"
   model: string; // "DDL-8700-7", "Optima-360", "120W-LED"
   category?: AssetCategory; // Defaults to 'MACHINE' if absent
+  ownershipType?: 'OWNED' | 'LEASED';
+  assetImageUrl?: string;
+  assetImageName?: string;
+  invoiceUrl?: string;
+  invoiceFileName?: string;
+  invoiceMimeType?: string;
   department?: FactoryDepartment; // Factory department or plant section
   machineClass?: MachineClass; // 'OVERLOCK' | 'FLATLOCK' | 'SINGLE_NEEDLE'
   type: MachineType;
@@ -204,6 +213,7 @@ export interface SparePart {
   shelfLocation?: string; // e.g., "Rack B-03 • Bin 12"
   oldPartReturnRequired?: boolean;
   vendor?: string;
+  purchaseDate?: string;
 }
 
 export type RepairUrgency = 'CRITICAL' | 'WARNING';
@@ -307,6 +317,8 @@ export type UserRole =
   | (string & {});
 
 export interface UserProfile {
+  teams?: string[];
+  lines?: string[];
   username?: string;
   uid: string;
   name: string;

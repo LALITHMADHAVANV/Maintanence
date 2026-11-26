@@ -70,6 +70,10 @@ const nextConfig: NextConfig = {
         source: '/:company/scan/:path*',
         destination: '/scan/:path*',
       },
+      {
+        source: '/:company/call-booking',
+        destination: '/call-booking',
+      },
     ];
   },
 };

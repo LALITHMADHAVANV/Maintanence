@@ -3,11 +3,16 @@
 import { tenantPreferences } from '@/lib/tenantPreferences';
 import { departmentNavigationChanged, departmentDefaultNavigation } from '@/lib/departmentNavigation';
 import { DepartmentNavigationChecklist } from '@/components/layout/DepartmentNavigationChecklist';
+import { DepartmentSettingsPanel } from '@/components/settings/DepartmentSettingsPanel';
+import { HelpDesk } from '@/components/settings/HelpDesk';
+import { UnitSettingsPanel } from '@/components/settings/UnitSettingsPanel';
+import { UserSettingsPanel } from '@/components/settings/UserSettingsPanel';
+import { UserNavigationSettings } from '@/components/settings/UserNavigationSettings';
+import { PageLoadingIndicator } from '@/components/layout/PageLoadingIndicator';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
-  Settings,
   Users,
   UserPlus,
   Trophy,
@@ -648,6 +653,23 @@ function SettingsContent() {
   };
 
   // ─── Department Handlers ───
+  const createQuickDepartment = async (name: string) => {
+    const cleanName = name.trim();
+    if (!cleanName || departments.some(department => department.name.toLowerCase() === cleanName.toLowerCase())) {
+      showToast('Enter a unique department name.', 'warning');
+      return false;
+    }
+    const department: DepartmentItem = {
+      id: `dept-${crypto.randomUUID()}`, name: cleanName, navigation: departmentDefaultNavigation(cleanName),
+      description: '', userCount: 0,
+      kpi1Name: 'Stage on time', kpi1Type: 'auto - on time', kpi1Weight: 40,
+      kpi2Name: 'Stage completion', kpi2Type: 'auto - completion', kpi2Weight: 30,
+      kpi3Name: 'Quality of work', kpi3Type: 'manual', kpi3Weight: 30,
+    };
+    const saved = await persistDepartment(department.id, department);
+    if (saved) showToast(`Team "${cleanName}" added.`, 'success');
+    return saved;
+  };
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeptName.trim()) {
@@ -787,10 +809,6 @@ function SettingsContent() {
   };
 
   const handleDeleteUnit = (unit: FactoryUnitItem) => {
-    if (factoryUnits.length <= 1) {
-      showToast('At least one factory unit must remain configured', 'error');
-      return;
-    }
     if (!window.confirm(`Are you sure you want to delete unit "${unit.name}" (${unit.code})?`)) {
       return;
     }
@@ -804,7 +822,15 @@ function SettingsContent() {
 
   // ─── Multi-Zone Helpers & Handlers ───
   const getUnitZones = (u: FactoryUnitItem): FactoryUnitZoneItem[] => {
-    if (u.zones && u.zones.length > 0) return u.zones;
+    if (Array.isArray(u.zones)) {
+      const zones = new Map<string, FactoryUnitZoneItem>();
+      for (const zone of u.zones) {
+        const key = /^(?:NETHAJI|NETAJI)(?:\s|$)/i.test(zone.name) ? 'NETHAJI' : zone.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toUpperCase();
+        const previous = zones.get(key);
+        if (!previous || zone.id === key) zones.set(key, { ...zone, name: key === 'NETHAJI' ? key : zone.name });
+      }
+      return [...zones.values()];
+    }
     if (u.code === 'UNIT - 1') {
       return [
         { id: 'NETHAJI', name: 'NETHAJI (Main Sewing Complex)', linesCount: 8, description: 'Sewing lines 01–08' },
@@ -928,10 +954,6 @@ function SettingsContent() {
   const handleDeleteZone = (unit: FactoryUnitItem, zoneId: string) => {
     const currentZones = getUnitZones(unit);
 
-    if (currentZones.length <= 1) {
-      showToast('At least one zone must remain configured for this unit', 'error');
-      return;
-    }
     const targetZone = currentZones.find((z) => z.id === zoneId);
     if (!window.confirm(`Are you sure you want to remove zone "${targetZone?.name || zoneId}" from ${unit.code}?`)) {
       return;
@@ -1332,953 +1354,37 @@ function SettingsContent() {
   }, [workerKpiList, kpiSearchQuery, kpiTradeFilter, kpiSortBy]);
 
   return (
-    <div className="space-y-6">
+    <div className="settings-page space-y-6" data-settings-tab={activeTab}>
+      <h1 className="sr-only">Settings</h1>
       {/* ─────────────────────────────────────────────────────────────────────────
           HEADER SECTION & TABS
       ────────────────────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-[#059669]/10 text-[#059669] flex items-center justify-center shrink-0">
-            <Settings className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Factory System Settings
-              </h1>
-              <span className="px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full">
-                CMMS Admin
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-              Manage departments, multi-campus plant units, floor zones, user provisioning, and staff credentials.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {activeTab === 'DEPARTMENTS' && (
-            <button
-              onClick={() => setIsAddDeptModalOpen(true)}
-              className="px-4 py-2.5 text-xs sm:text-sm font-bold bg-[#059669] hover:bg-[#047857] text-white rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Department</span>
-            </button>
-          )}
-          {activeTab === 'UNITS' && (
-            <button
-              onClick={handleOpenAddUnit}
-              className="px-4 py-2.5 text-xs sm:text-sm font-bold bg-[#059669] hover:bg-[#047857] text-white rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Factory Unit</span>
-            </button>
-          )}
-          {activeTab === 'USERS' && (
-            <button
-              onClick={() => {
-                const initRole = departments.length > 0 ? departments[0].name : '';
-                if (departments.length > 0) {
-                  setNewRole(initRole);
-                  setNewDepartment(initRole);
-                  setNewTitle(`${departments[0].name} Specialist`);
-                }
-                setNewZones([]);
-                setIsNewZoneDropdownOpen(false);
-                if (isMechanicRole(initRole, initRole, '') && factoryUnits.length > 0) {
-                  setNewUnit(factoryUnits[0].code);
-                }
-                setIsAddUserModalOpen(true);
-              }}
-              className="px-4 py-2.5 text-xs sm:text-sm font-bold bg-[#059669] hover:bg-[#047857] text-white rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Add New User</span>
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* ─────────────────────────────────────────────────────────────────────────
           TAB SWITCHER (Departments, Factory Units, Users, KPI)
       ────────────────────────────────────────────────────────────────────────── */}
-      <div className="flex items-center border-b border-slate-200 bg-white rounded-2xl px-2 shadow-xs overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('DEPARTMENTS')}
-          className={`flex items-center gap-2 px-5 py-3.5 text-xs sm:text-sm font-bold border-b-2 transition cursor-pointer shrink-0 ${activeTab === 'DEPARTMENTS'
-              ? 'border-[#059669] text-[#059669] bg-emerald-50/50'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-        >
-          <Building className={`w-4 h-4 ${activeTab === 'DEPARTMENTS' ? 'text-[#059669]' : 'text-slate-400'}`} />
-          <span>Departments</span>
-          <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-100 text-slate-600 font-bold">
-            {departments.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('UNITS')}
-          className={`flex items-center gap-2 px-5 py-3.5 text-xs sm:text-sm font-bold border-b-2 transition cursor-pointer shrink-0 ${activeTab === 'UNITS'
-              ? 'border-[#059669] text-[#059669] bg-emerald-50/50'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-        >
-          <Building2 className={`w-4 h-4 ${activeTab === 'UNITS' ? 'text-[#059669]' : 'text-slate-400'}`} />
-          <span>Factory Units & Zones</span>
-          <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-emerald-100 text-emerald-800 font-bold">
-            {factoryUnits.length} Units
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('USERS')}
-          className={`flex items-center gap-2 px-5 py-3.5 text-xs sm:text-sm font-bold border-b-2 transition cursor-pointer shrink-0 ${activeTab === 'USERS'
-              ? 'border-[#059669] text-[#059669] bg-emerald-50/50'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-        >
-          <Users className={`w-4 h-4 ${activeTab === 'USERS' ? 'text-[#059669]' : 'text-slate-400'}`} />
-          <span>User Accounts & Staff</span>
-          <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-100 text-slate-600 font-bold">
-            {users.length} Users
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('KPI')}
-          className={`flex items-center gap-2 px-5 py-3.5 text-xs sm:text-sm font-bold border-b-2 transition cursor-pointer shrink-0 ${activeTab === 'KPI'
-              ? 'border-[#059669] text-[#059669] bg-emerald-50/50'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-        >
-          <Trophy className="w-4 h-4 text-amber-500" />
-          <span>Technician Scorecards</span>
-          <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-slate-100 text-slate-600 font-bold">
-            {workerKpiList.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('TELEGRAM')}
-          className={`flex items-center gap-2 px-5 py-3.5 text-sm sm:text-base font-bold border-b-2 transition cursor-pointer shrink-0 ${activeTab === 'TELEGRAM'
-              ? 'border-sky-500 text-sky-600 bg-sky-50/50'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-        >
-          <Send className={`w-4 h-4 ${activeTab === 'TELEGRAM' ? 'text-sky-500' : 'text-slate-400'}`} />
-          <span>Telegram Alerts</span>
-          <span className="ml-1.5 px-2.5 py-0.5 text-xs rounded-full bg-sky-100 text-sky-800 font-bold">
-            {serverTelegramConfig?.configured ? 'Configured' : 'Setup required'}
-          </span>
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+      <nav className="settings-reference-tabs" aria-label="Settings sections">
+        {([{ id: 'USERS', label: 'Users (' + users.length + ')' }, { id: 'DEPARTMENTS', label: 'Teams / Departments (' + departments.length + ')' }, { id: 'UNITS', label: 'Units (' + factoryUnits.length + ')' }, { id: 'KPI', label: 'Technician Scorecards' }, { id: 'TELEGRAM', label: 'Telegram Alerts' }] as { id: SettingsTab; label: string }[]).map(tab => <button key={tab.id} type="button" aria-pressed={activeTab === tab.id} className={activeTab === tab.id ? 'is-active' : ''} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}
+      </nav>
+      <div className="flex items-center gap-2 shrink-0">
+        {activeTab === 'DEPARTMENTS' && <button type="button" onClick={() => setIsAddDeptModalOpen(true)} className="settings-primary">Add Department</button>}
+        {activeTab === 'UNITS' && <button type="button" onClick={handleOpenAddUnit} className="settings-primary">Add Factory Unit</button>}
+        {activeTab === 'USERS' && <button type="button" className="settings-primary" onClick={() => { const field = document.getElementById('settings-new-user-name'); field?.scrollIntoView({ behavior: 'smooth', block: 'center' }); field?.focus({ preventScroll: true }); }}>Add new user</button>}
       </div>
-
+      </div>
       {/* ─────────────────────────────────────────────────────────────────────────
           TAB 1: DEPARTMENTS (All dummy data cleared as requested)
       ────────────────────────────────────────────────────────────────────────── */}
-      {activeTab === 'DEPARTMENTS' && (
-        <div className="space-y-4">
-          <div>
-            <span className="text-xs font-semibold text-slate-500">
-              {departments.length} {departments.length === 1 ? 'department' : 'departments'} configured
-            </span>
-          </div>
-
-          {departments.length === 0 ? (
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-12 text-center space-y-3 shadow-2xs">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#059669] flex items-center justify-center mx-auto">
-                <Building className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-sm text-slate-800">No departments configured</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Use &quot;Add Department&quot; in the page header to create a department.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {departments.map((dept) => (
-                <div
-                  key={dept.id}
-                  className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-md transition space-y-3.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-3.5 h-3.5 rounded-xs bg-[#059669] shrink-0 mt-0.5" />
-                      <h3 className="font-bold text-sm text-slate-900 truncate">
-                        {dept.name}
-                      </h3>
-                      {dept.badge && (
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          {dept.badge}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setEditingDept(dept)}
-                        className="text-slate-400 hover:text-slate-700 transition cursor-pointer"
-                        title={`Edit ${dept.name}`}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteDept(dept.id)}
-                        className="text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                        title={`Delete ${dept.name}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-400 font-normal">
-                    {dept.description || 'No description'}
-                  </p>
-
-                  <div>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-[#eef9f5] text-[#047857] border border-[#a7f3d0]">
-                      {dept.userCount} {dept.userCount === 1 ? 'user' : 'users'}
-                    </span>
-                  </div>
-
-                  <div className="border-t border-slate-100 pt-3 space-y-1.5 text-xs select-none">
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span className="font-normal text-slate-700">{dept.kpi1Name || 'Stage on time'}</span>
-                      <span className="text-[11px] text-slate-400 font-mono text-center flex-1 px-2">
-                        {dept.kpi1Type || 'auto - on time'}
-                      </span>
-                      <span className="font-bold text-slate-900 w-10 text-right">
-                        {dept.kpi1Weight || 40}%
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span className="font-normal text-slate-700">{dept.kpi2Name || 'Stage completion'}</span>
-                      <span className="text-[11px] text-slate-400 font-mono text-center flex-1 px-2">
-                        {dept.kpi2Type || 'auto - completion'}
-                      </span>
-                      <span className="font-bold text-slate-900 w-10 text-right">
-                        {dept.kpi2Weight || 30}%
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-slate-700">
-                      <span className="font-normal text-slate-700">{dept.kpi3Name || 'Quality of work'}</span>
-                      <span className="text-[11px] text-slate-400 font-mono text-center flex-1 px-2">
-                        {dept.kpi3Type || 'manual'}
-                      </span>
-                      <span className="font-bold text-slate-900 w-10 text-right">
-                        {dept.kpi3Weight || 30}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────────────────
-          TAB 2: FACTORY UNITS & MULTI-ZONE MANAGER (Option 3)
-      ────────────────────────────────────────────────────────────────────────── */}
-      {/* ─────────────────────────────────────────────────────────────────────────
-          TAB 2: FACTORY UNITS & MULTI-ZONE MANAGER (Option 3)
-      ────────────────────────────────────────────────────────────────────────── */}
-      {activeTab === 'UNITS' && (() => {
-        const selectedUnit = selectedUnitId
-          ? factoryUnits.find((u) => u.id === selectedUnitId || u.code === selectedUnitId) || null
-          : null;
-
-        // If a unit is selected, show Drilldown: Unit Details + Zones
-        if (selectedUnit) {
-          const unitMachines = machines.filter((m) => matchesUnit(m.unit, selectedUnit.code) || matchesUnit(m.unit, selectedUnit.id));
-          const machineCount = unitMachines.length;
-          const olCount = unitMachines.filter((m) => {
-            const combined = `${m.type || ''} ${m.name || ''} ${m.subType || ''}`.toLowerCase();
-            return combined.includes('o/l') || combined.includes('overlock');
-          }).length;
-          const flCount = unitMachines.filter((m) => {
-            const combined = `${m.type || ''} ${m.name || ''} ${m.subType || ''}`.toLowerCase();
-            return combined.includes('f/l') || combined.includes('flatlock');
-          }).length;
-
-          const statusBadgeStyles =
-            selectedUnit.status === 'ACTIVE'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : selectedUnit.status === 'MAINTENANCE'
-                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                : selectedUnit.status === 'EXPANSION'
-                  ? 'bg-blue-50 text-blue-800 border-blue-200'
-                  : 'bg-slate-100 text-slate-700 border-slate-200';
-
-          const statusLabel =
-            selectedUnit.status === 'ACTIVE'
-              ? 'Active Fleet'
-              : selectedUnit.status === 'MAINTENANCE'
-                ? 'In Overhaul'
-                : selectedUnit.status === 'EXPANSION'
-                  ? 'Under Expansion'
-                  : 'Inactive';
-
-          const unitZones = getUnitZones(selectedUnit);
-
-          return (
-            <div className="space-y-6">
-              {/* Breadcrumb Navigation & Top Action Bar */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUnitId(null)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span>Back to All Units</span>
-                  </button>
-                  <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-400">Factory Units</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-bold text-slate-800">{selectedUnit.name}</span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-[#059669] border border-emerald-200">
-                      {selectedUnit.code}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEditUnit(selectedUnit)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition cursor-pointer"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Edit Unit Details</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAddZone(selectedUnit)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Zone</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Unit Details Hero Card */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <span className="w-4 h-4 rounded-xs bg-[#059669] shrink-0" />
-                      <h2 className="text-lg font-bold text-slate-900">{selectedUnit.name}</h2>
-                      <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                        {selectedUnit.code}
-                      </span>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${statusBadgeStyles}`}>
-                        {statusLabel}
-                      </span>
-                    </div>
-
-                    {selectedUnit.campus && (
-                      <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-[#059669] shrink-0" />
-                        <span>{selectedUnit.campus}</span>
-                      </p>
-                    )}
-
-                    <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
-                      {selectedUnit.description || 'Specialized garment sewing floor and plant maintenance facilities.'}
-                    </p>
-                  </div>
-
-                  {(selectedUnit.headOfMaintenance || selectedUnit.contactPhone) && (
-                    <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 shrink-0 text-xs min-w-[220px]">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                        Maintenance Leadership
-                      </div>
-                      <div className="font-bold text-slate-800">{selectedUnit.headOfMaintenance || 'Unassigned Lead'}</div>
-                      {selectedUnit.contactPhone && (
-                        <div className="flex items-center gap-1.5 text-slate-600 font-mono mt-1 text-[11px]">
-                          <Phone className="w-3 h-3 text-[#059669]" />
-                          <span>{selectedUnit.contactPhone}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Metrics Breakdown */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-100">
-                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 text-[10px] block font-medium uppercase tracking-wider">Floor Zones</span>
-                    <span className="font-bold text-slate-900 text-base">{unitZones.length} Zones</span>
-                  </div>
-                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 text-[10px] block font-medium uppercase tracking-wider">Live Machines</span>
-                    <span className="font-bold text-slate-900 text-base">{machineCount} Units</span>
-                  </div>
-                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 text-[10px] block font-medium uppercase tracking-wider">Overlock Fleet</span>
-                    <span className="font-bold text-slate-900 text-base">
-                      {olCount > 0 ? olCount : (selectedUnit.code === 'UNIT - 1' ? 95 : selectedUnit.code === 'UNIT-2' ? 89 : '—')}
-                    </span>
-                  </div>
-                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                    <span className="text-slate-400 text-[10px] block font-medium uppercase tracking-wider">Flatlock Fleet</span>
-                    <span className="font-bold text-slate-900 text-base">
-                      {flCount > 0 ? flCount : (selectedUnit.code === 'UNIT - 1' ? 28 : selectedUnit.code === 'UNIT-2' ? 43 : '—')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Zones Section in Selected Unit */}
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-5 h-5 text-[#059669]" />
-                      <h3 className="font-bold text-sm text-slate-900">
-                        Production Floor Zones in {selectedUnit.code} ({unitZones.length})
-                      </h3>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Configure floor sections, production line counts, and view assigned mechanics for this plant.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAddZone(selectedUnit)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer self-start sm:self-auto"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add New Zone</span>
-                  </button>
-                </div>
-
-                {unitZones.length === 0 ? (
-                  <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center">
-                    <Layers className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                    <h4 className="font-bold text-sm text-slate-700">No Zones Configured</h4>
-                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                      This unit does not have any floor zones defined yet. Click &quot;Add New Zone&quot; to define your first zone.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAddZone(selectedUnit)}
-                      className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add First Zone</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {unitZones.map((z) => {
-                      const assignedMechanics = users.filter((usr) =>
-                        matchesUnit(usr.unit, selectedUnit.code) &&
-                        usr.zones &&
-                        usr.zones.some(
-                          (zn) =>
-                            zn.toLowerCase() === (z.name || '').toLowerCase() ||
-                            zn.toLowerCase() === (z.id || '').toLowerCase()
-                        )
-                      );
-
-                      return (
-                        <div
-                          key={z.id}
-                          className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs hover:shadow-md transition flex flex-col justify-between space-y-4"
-                        >
-                          <div className="space-y-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <h4 className="font-bold text-sm text-slate-900 truncate" title={z.name}>
-                                  {z.name}
-                                </h4>
-                                {z.linesCount && (
-                                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-[#059669] border border-emerald-200">
-                                    {z.linesCount} Production Lines
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditZone(selectedUnit, z)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-[#059669] hover:bg-emerald-50 transition cursor-pointer"
-                                  title="Edit Zone Details"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteZone(selectedUnit, z.id)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                  title="Delete Zone"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-
-                            <p className="text-xs text-slate-600 leading-relaxed min-h-[32px]">
-                              {z.description || `Production zone with line stations 01 through ${(z.linesCount || 8).toString().padStart(2, '0')}.`}
-                            </p>
-
-                            {/* Line Stations Sample Preview */}
-                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                                Configured Lines
-                              </span>
-                              <div className="flex flex-wrap gap-1">
-                                {Array.from({ length: Math.min(z.linesCount || 8, 8) }).map((_, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-50 border border-slate-200 text-slate-600"
-                                  >
-                                    L{String(idx + 1).padStart(2, '0')}
-                                  </span>
-                                ))}
-                                {(z.linesCount || 8) > 8 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-500">
-                                    +{(z.linesCount || 8) - 8} more
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Assigned Mechanics */}
-                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                                Assigned Mechanics ({assignedMechanics.length})
-                              </span>
-                              {assignedMechanics.length > 0 ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {assignedMechanics.map((m) => (
-                                    <span
-                                      key={m.uid || m.email}
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/60"
-                                      title={m.email}
-                                    >
-                                      <Wrench className="w-3 h-3 text-[#059669]" />
-                                      <span>{m.name}</span>
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-[11px] text-slate-400 italic">
-                                  No mechanics assigned to this zone yet.
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditZone(selectedUnit, z)}
-                              className="text-xs font-semibold text-[#059669] hover:underline flex items-center gap-1 cursor-pointer"
-                            >
-                              <span>Edit Zone Details</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-                            {unitZones.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteZone(selectedUnit, z.id)}
-                                className="text-xs text-rose-500 hover:text-rose-700 transition cursor-pointer"
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        }
-
-        // VIEW 1: Overview of All Factory Units
-        return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {factoryUnits.map((u) => {
-                const unitMachines = machines.filter((m) => matchesUnit(m.unit, u.code) || matchesUnit(m.unit, u.id));
-                const machineCount = unitMachines.length;
-                const olCount = unitMachines.filter((m) => {
-                  const combined = `${m.type || ''} ${m.name || ''} ${m.subType || ''}`.toLowerCase();
-                  return combined.includes('o/l') || combined.includes('overlock');
-                }).length;
-                const flCount = unitMachines.filter((m) => {
-                  const combined = `${m.type || ''} ${m.name || ''} ${m.subType || ''}`.toLowerCase();
-                  return combined.includes('f/l') || combined.includes('flatlock');
-                }).length;
-
-                const statusBadgeStyles =
-                  u.status === 'ACTIVE'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : u.status === 'MAINTENANCE'
-                      ? 'bg-amber-50 text-amber-800 border-amber-200'
-                      : u.status === 'EXPANSION'
-                        ? 'bg-blue-50 text-blue-800 border-blue-200'
-                        : 'bg-slate-100 text-slate-700 border-slate-200';
-
-                const statusLabel =
-                  u.status === 'ACTIVE'
-                    ? 'Active Fleet'
-                    : u.status === 'MAINTENANCE'
-                      ? 'In Overhaul'
-                      : u.status === 'EXPANSION'
-                        ? 'Under Expansion'
-                        : 'Inactive';
-
-                const displayZones = getUnitZones(u);
-
-                return (
-                  <div
-                    key={u.id}
-                    onClick={() => setSelectedUnitId(u.id)}
-                    className="bg-white border border-slate-200 hover:border-emerald-500 rounded-2xl p-5 shadow-2xs space-y-4 hover:shadow-md transition flex flex-col justify-between cursor-pointer group"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2.5 min-w-0">
-                          <span className="w-3.5 h-3.5 rounded-xs bg-[#059669] shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-bold text-sm text-slate-900 group-hover:text-[#059669] transition truncate">
-                                {u.name}
-                              </h3>
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                {u.code}
-                              </span>
-                            </div>
-                            {u.campus && (
-                              <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 truncate">
-                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span className="truncate">{u.campus}</span>
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenEditUnit(u);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#059669] hover:bg-emerald-50 transition cursor-pointer"
-                            title="Edit Factory Unit"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteUnit(u);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                            title="Delete Factory Unit"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${statusBadgeStyles}`}>
-                          {statusLabel}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 min-h-[32px]">
-                        {u.description || 'Specialized garment sewing floor and plant maintenance facilities.'}
-                      </p>
-
-                      {/* Zones Summary Preview */}
-                      <div className="pt-2.5 border-t border-slate-100 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <Layers className="w-3.5 h-3.5 text-[#059669]" />
-                            <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                              Configured Zones ({displayZones.length})
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-bold text-[#059669] group-hover:underline">
-                            View All →
-                          </span>
-                        </div>
-
-                        <div className="flex flex-wrap gap-1.5">
-                          {displayZones.map((z) => (
-                            <div
-                              key={z.id}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700"
-                            >
-                              <span className="font-semibold text-slate-800 text-[11px] truncate max-w-[130px]" title={z.name}>
-                                {z.name}
-                              </span>
-                              {z.linesCount && (
-                                <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-white text-slate-500 border border-slate-200">
-                                  {z.linesCount}L
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 pt-2">
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
-                        <div className="p-2 bg-slate-50/70 rounded-xl text-center">
-                          <span className="text-slate-400 text-[10px] block font-medium">Machines</span>
-                          <span className="font-bold text-slate-800 text-sm">{machineCount}</span>
-                        </div>
-                        <div className="p-2 bg-slate-50/70 rounded-xl text-center">
-                          <span className="text-slate-400 text-[10px] block font-medium">Overlocks</span>
-                          <span className="font-bold text-slate-800 text-sm">
-                            {olCount}
-                          </span>
-                        </div>
-                        <div className="p-2 bg-slate-50/70 rounded-xl text-center">
-                          <span className="text-slate-400 text-[10px] block font-medium">Flatlocks</span>
-                          <span className="font-bold text-slate-800 text-sm">
-                            {flCount}
-                          </span>
-                        </div>
-                      </div>
-
-                      {(u.headOfMaintenance || u.contactPhone) && (
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                          <div className="truncate pr-2">
-                            <span className="text-slate-400">Lead: </span>
-                            <span className="font-semibold text-slate-700 truncate">{u.headOfMaintenance || 'Unassigned'}</span>
-                          </div>
-                          {u.contactPhone && (
-                            <div className="flex items-center gap-1 font-mono text-slate-600 shrink-0">
-                              <Phone className="w-3 h-3 text-[#059669]" />
-                              <span>{u.contactPhone}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="pt-2 border-t border-slate-100">
-                        <div className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold text-[#059669] bg-emerald-50 group-hover:bg-[#059669] group-hover:text-white rounded-xl transition cursor-pointer border border-emerald-200/80">
-                          <span>Manage Zones & Unit Details</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
+      {activeTab === 'DEPARTMENTS' && <DepartmentSettingsPanel departments={departments} saving={savingDepartment} onCreate={createQuickDepartment} onSave={department => persistDepartment(department.id, department)} onEdit={setEditingDept} onDelete={handleDeleteDept} />}
+      {activeTab === 'UNITS' && <UnitSettingsPanel units={factoryUnits} machines={machines} repairs={repairs} onAdd={handleOpenAddUnit} onEdit={handleOpenEditUnit} onDelete={handleDeleteUnit} getZones={getUnitZones} onAddZone={handleOpenAddZone} onEditZone={handleOpenEditZone} onDeleteZone={handleDeleteZone} />}
 
       {/* ─────────────────────────────────────────────────────────────────────────
           TAB 3: USER ACCOUNTS & PROVISIONING DESK
       ────────────────────────────────────────────────────────────────────────── */}
-      {activeTab === 'USERS' && (
-        <div className="space-y-6">
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search staff by name, email or employee ID..."
-                value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669] transition"
-              />
-            </div>
+      {activeTab === 'USERS' && <UserSettingsPanel showHeading={false} users={users} departments={departments} units={factoryUnits} companySlug={currentUser?.companySlug} actorRole={currentUser?.role || currentRole} currentUid={currentUser?.uid} loading={isLoadingUsers} onRefresh={fetchUsers} onEdit={handleOpenEditUser} onDelete={handleDeleteUser} onResetPassword={handleOpenResetPassword} onAddDepartment={() => setActiveTab('DEPARTMENTS')} />}
 
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <select
-                value={userRoleFilter}
-                onChange={(e) => setUserRoleFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer max-w-[210px]"
-              >
-                <option value="ALL">All Roles ({users.length})</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.name}>
-                    {d.name}
-                  </option>
-                ))}
+      {activeTab === 'DEPARTMENTS' && <UserNavigationSettings />}
 
-              </select>
-
-              <select
-                value={userUnitFilter}
-                onChange={(e) => setUserUnitFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-              >
-                <option value="ALL">All Plant Units</option>
-                {factoryUnits.map((fu) => (
-                  <option key={fu.id} value={fu.code}>
-                    {fu.code}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-bold text-[11px] uppercase tracking-wider">
-                    <th className="py-3 px-4">Staff Member</th>
-                    <th className="py-3 px-4">Role & Designation</th>
-                    <th className="py-3 px-4">Assigned Unit</th>
-                    <th className="py-3 px-4">Department & Phone</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {isLoadingUsers ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400">
-                        <RefreshCw className="w-6 h-6 mx-auto animate-spin text-[#059669] mb-2" />
-                        <p className="text-xs font-semibold">Loading registered users...</p>
-                      </td>
-                    </tr>
-                  ) : filteredUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400">
-                        <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                        <p className="text-sm font-semibold">No users found matching your filters.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredUsers.map((u) => {
-                      const roleBadgeStyles =
-                        u.role === 'ADMIN'
-                          ? 'bg-purple-50 text-purple-700 border-purple-200'
-                          : u.role === 'CEO'
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : u.role.includes('ELECTRICIAN')
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-                      return (
-                        <tr key={u.uid} className="hover:bg-slate-50/60 transition group">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-[#059669]/10 text-[#059669] font-black text-xs flex items-center justify-center shrink-0">
-                                {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
-                              </div>
-                              <div>
-                                <span className="font-bold text-slate-900 block">{u.name}</span>
-                                <span className="text-[11px] text-slate-400">{u.email}</span>
-                                {u.username && <span className="block text-xs font-semibold text-slate-600">Username: {u.username}</span>}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${roleBadgeStyles}`}>
-                              {u.role}
-                            </span>
-                            <span className="text-[11px] text-slate-500 block mt-0.5">{u.title || 'Staff'}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="space-y-1">
-                              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 inline-block">
-                                {u.unit || 'All Units'}
-                              </span>
-                              {u.zones && u.zones.length > 0 && (
-                                <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                  {u.zones.map((z) => (
-                                    <span
-                                      key={z}
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                      title={`Assigned Zone: ${z}`}
-                                    >
-                                      <span className="w-1 h-1 rounded-full bg-emerald-500"></span>
-                                      {z}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              {isMechanicRole(u.role, u.department, u.title) && (!u.zones || u.zones.length === 0) && (
-                                <span className="text-[10px] text-amber-600 block italic">No zone assigned</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="text-slate-800 text-xs block">{u.department || 'General'}</span>
-                            <span className="text-[11px] text-slate-400">{u.phone || '—'}</span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${u.status === 'INACTIVE' ? 'bg-slate-100 text-slate-600' : 'bg-emerald-50 text-emerald-700'
-                              }`}>
-                              {u.status || 'ACTIVE'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenResetPassword(u)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition cursor-pointer"
-                                title="Reset Password"
-                              >
-                                <KeyRound className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditUser(u)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-[#059669] hover:bg-emerald-50 transition cursor-pointer"
-                                title="Edit Profile"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteUser(u)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                title="Delete User"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────────────────
-          TAB 4: TECHNICIAN SCORECARDS (KPI)
-      ────────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'KPI' && (
         <div className="space-y-6">
           <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
@@ -3002,140 +2108,24 @@ function SettingsContent() {
           MODAL: EDIT FACTORY UNIT
       ────────────────────────────────────────────────────────────────────────── */}
       {editingUnit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-[#059669]" />
-                <span>Edit Plant Unit: {editingUnit.code}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEditingUnit(null)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditUnit} className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Unit Code</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={editUnitCode}
-                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-xl font-mono uppercase font-bold text-slate-500 cursor-not-allowed"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Operational Status</label>
-                  <select
-                    value={editUnitStatus}
-                    onChange={(e) => setEditUnitStatus(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#059669] outline-none"
-                  >
-                    <option value="ACTIVE">ACTIVE (Operational)</option>
-                    <option value="EXPANSION">EXPANSION (Setup Phase)</option>
-                    <option value="MAINTENANCE">MAINTENANCE (Plant Overhaul)</option>
-                    <option value="INACTIVE">INACTIVE</option>
-                  </select>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs" onClick={() => setEditingUnit(null)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="unit-edit-title" className="settings-unit-edit-modal" onClick={event => event.stopPropagation()}>
+            <div className="settings-unit-row"><h3 id="unit-edit-title">Edit {editingUnit.name}</h3><button type="button" aria-label="Close edit unit" onClick={() => setEditingUnit(null)}><X size={18} /></button></div>
+            <form onSubmit={handleSaveEditUnit}>
+              <div className="settings-unit-edit-grid">
+                <label>Unit Name *<input required value={editUnitName} onChange={event => setEditUnitName(event.target.value)} autoFocus /></label>
+                <label>Unit Code / ID<input value={editUnitCode} readOnly title="Unit code is the permanent identifier used by machines and users" /></label>
+                <label>Location / Address<input value={editUnitCampus} onChange={event => setEditUnitCampus(event.target.value)} /></label>
+                <label>Sewing Lines<input type="number" min="0" value={editUnitLines} onChange={event => setEditUnitLines(Number(event.target.value))} /></label>
+                <label>Contact Person<input value={editUnitHead} onChange={event => setEditUnitHead(event.target.value)} /></label>
+                <label>Machine Capacity<input type="number" min="0" value={editUnitMachines} onChange={event => setEditUnitMachines(Number(event.target.value))} /></label>
+                <label>Mobile Number<input type="tel" value={editUnitPhone} onChange={event => setEditUnitPhone(event.target.value)} /></label>
+                <label>Status<select value={editUnitStatus} onChange={event => setEditUnitStatus(event.target.value as FactoryUnitItem['status'])}><option value="ACTIVE">Active</option><option value="MAINTENANCE">Maintenance</option><option value="EXPANSION">Expansion</option><option value="INACTIVE">Inactive</option></select></label>
+                <label className="settings-unit-edit-description">Description<textarea rows={2} value={editUnitDesc} onChange={event => setEditUnitDesc(event.target.value)} /></label>
               </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Plant Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={editUnitName}
-                  onChange={(e) => setEditUnitName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-[#059669] outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Campus Location</label>
-                <input
-                  type="text"
-                  value={editUnitCampus}
-                  onChange={(e) => setEditUnitCampus(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#059669] outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Machine Capacity</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editUnitMachines}
-                    onChange={(e) => setEditUnitMachines(parseInt(e.target.value, 10) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-[#059669] outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Active Sewing Lines</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editUnitLines}
-                    onChange={(e) => setEditUnitLines(parseInt(e.target.value, 10) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-[#059669] outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Maintenance In-Charge</label>
-                  <input
-                    type="text"
-                    value={editUnitHead}
-                    onChange={(e) => setEditUnitHead(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#059669] outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Contact Phone</label>
-                  <input
-                    type="text"
-                    value={editUnitPhone}
-                    onChange={(e) => setEditUnitPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-[#059669] outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Description / Scope</label>
-                <textarea
-                  rows={2}
-                  value={editUnitDesc}
-                  onChange={(e) => setEditUnitDesc(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#059669] outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingUnit(null)}
-                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 font-bold text-white bg-[#059669] hover:bg-[#047857] rounded-xl shadow-xs transition cursor-pointer"
-                >
-                  Save Changes
-                </button>
-              </div>
+              <div className="settings-unit-edit-actions"><button type="submit" className="settings-primary">Update Unit</button><button type="button" onClick={() => setEditingUnit(null)}>Cancel</button></div>
             </form>
-          </div>
+          </section>
         </div>
       )}
 
@@ -3683,7 +2673,7 @@ function SettingsContent() {
                   <label htmlFor="edit-user-role" className="block font-bold text-slate-700 mb-1">Role</label>
                   <select id="edit-user-role" value={editRole} onChange={(event) => setEditRole(event.target.value as UserRole)}
                     className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-bold">
-                    {[...new Set([editRole, 'ADMIN', 'ASSET_MANAGER', 'CEO', 'SENIOR_MECHANIC', 'MECHANIC', 'SENIOR_ELECTRICIAN', 'ELECTRICIAN', 'STORE_PERSON'])].filter(Boolean).map((value) => (
+                    {[...new Set([editRole, 'ADMIN', 'ASSET_MANAGER', 'CEO', 'HEAD_MECHANIC_MANAGER', 'SERVICE_MECHANIC', 'SENIOR_MECHANIC', 'MECHANIC', 'SENIOR_ELECTRICIAN', 'ELECTRICIAN', 'STORE_PERSON'])].filter(Boolean).map((value) => (
                       <option key={value} value={value}>{value.replace(/_/g, ' ')}</option>
                     ))}
                   </select>
@@ -4006,23 +2996,14 @@ function SettingsContent() {
       {/* ─────────────────────────────────────────────────────────────────────────
           FLOATING HELPDESK CHAT BUTTON
       ────────────────────────────────────────────────────────────────────────── */}
-      <div className="fixed bottom-6 right-6 z-40">
-        <button
-          type="button"
-          onClick={() => showToast('Helpdesk & WhatsApp line active for Sahana Garments Maintenance Team', 'info')}
-          className="w-12 h-12 rounded-full bg-[#16a34a] hover:bg-[#15803d] text-white shadow-lg flex items-center justify-center cursor-pointer transition-transform hover:scale-105 active:scale-95"
-          title="Need Help? Chat with Operations Desk"
-        >
-          <MessageCircle className="w-6 h-6 fill-white" />
-        </button>
-      </div>
+      <HelpDesk companySlug={currentUser?.companySlug} />
     </div>
   );
 }
 
 export default function AdminSettingsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading settings...</div>}>
+    <Suspense fallback={<PageLoadingIndicator label="Loading settings…" />}>
       <SettingsContent />
     </Suspense>
   );

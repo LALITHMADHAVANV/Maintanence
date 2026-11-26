@@ -11,9 +11,7 @@ import {
   TrendingUp,
   BarChart3,
   Filter,
-  ArrowUpRight,
   ShieldCheck,
-  Zap,
   Plus,
 } from 'lucide-react';
 import { Machine } from '@/types/cmms';
@@ -23,7 +21,6 @@ import {
   computeAvailabilityReport,
   PlantAvailabilityReport,
   ZoneAvailabilityReport,
-  LineAvailabilityReport,
 } from '@/lib/services/assetLogService';
 
 interface LineAvailabilityWidgetProps {
@@ -43,7 +40,7 @@ export function LineAvailabilityWidget({
   onAddExtraMachine,
 }: LineAvailabilityWidgetProps) {
   const [requestedZone, setActiveZone] = useState<ClientZone | 'ALL'>(propZone);
-  const [viewMode, setViewMode] = useState<'CARDS' | 'MATRIX'>('CARDS');
+  const [viewMode, setViewMode] = useState<'CARDS' | 'MATRIX'>('MATRIX');
 
   // Compute 8-zone x 8-line report
   const report: PlantAvailabilityReport = useMemo(() => {
@@ -60,9 +57,7 @@ export function LineAvailabilityWidget({
 
   const handleZoneSelect = (zone: ClientZone | 'ALL') => {
     setActiveZone(zone);
-    if (onSelectZoneLine) {
-      onSelectZoneLine(zone, 'ALL');
-    }
+    setViewMode('CARDS');
   };
 
   const handleLineClick = (line: ClientLine) => {
@@ -211,6 +206,7 @@ export function LineAvailabilityWidget({
                 key={zone}
                 type="button"
                 onClick={() => handleZoneSelect(zone)}
+                aria-pressed={isSelected}
                 className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border ${
                   isSelected
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30'
@@ -219,13 +215,8 @@ export function LineAvailabilityWidget({
               >
                 <span>{zone}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                    isSelected
-                      ? 'bg-white/20 text-white'
-                      : rate >= 85
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}
+                  className="zone-availability-badge text-[10px] px-1.5 rounded-full font-black"
+                  data-risk={rate < 85}
                 >
                   {rate}%
                 </span>
@@ -244,8 +235,8 @@ export function LineAvailabilityWidget({
                 {/* Zone Summary Banner */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-3.5 rounded-xl">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center font-black text-indigo-300 text-sm">
-                      {currentZoneReport.zone.replace('Zone ', 'Z0')}
+                    <div className="w-9 h-9 shrink-0 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center font-black text-indigo-300 text-sm" aria-hidden="true">
+                      {currentZoneReport.zone.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">

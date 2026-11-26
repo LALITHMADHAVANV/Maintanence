@@ -9,9 +9,9 @@ export const importDefinitions = {
   },
   parts: {
     label: 'Stock', collection: 'spare_parts', key: 'partId',
-    columns: ['partId', 'sku', 'name', 'category', 'stock', 'minStock', 'monthlyAllowance', 'unitCost', 'unit', 'compat', 'machineType', 'shelfLocation', 'vendor'],
+    columns: ['partId', 'sku', 'name', 'category', 'stock', 'minStock', 'monthlyAllowance', 'unitCost', 'unit', 'compat', 'machineType', 'shelfLocation', 'vendor', 'purchaseDate'],
     required: ['partId', 'sku', 'name', 'stock', 'unitCost', 'unit'],
-    example: ['SP-001', 'NEEDLE-001', 'Sewing needle', 'Needles', '100', '20', '50', '10', 'pcs', 'Single needle machines', 'SNLS', 'Rack A-01', ''],
+    example: ['SP-001', 'NEEDLE-001', 'Sewing needle', 'Needles', '100', '20', '50', '10', 'pcs', 'Single needle machines', 'SNLS', 'Rack A-01', '', '2026-11-23'],
   },
   indents: {
     label: 'Store Indents', collection: 'part_requisitions', key: 'id',
@@ -22,9 +22,9 @@ export const importDefinitions = {
 } as const;
 
 export const stockImportTemplate = {
-  columns: ['S.No', 'Spare Name', 'Machine Type', 'Cost', 'Quantity', 'Vendor'],
+  columns: ['S.No', 'Spare Name', 'Machine Type', 'Cost', 'Quantity', 'Vendor', 'Purchase Date'],
   required: ['S.No', 'Spare Name', 'Machine Type', 'Cost', 'Quantity'],
-  example: ['1', 'Sewing needle', 'SNLS', '10', '100', ''],
+  example: ['1', 'Sewing needle', 'SNLS', '10', '100', '', '2026-11-23'],
 };
 
 const stockHeaderAliases: Record<string, string> = {
@@ -130,7 +130,7 @@ export function buildImportRecords(kind: ImportKind, rows: Record<string, string
         const status = row.status?.toUpperCase() || 'ACTIVE';
         const category = row.category?.toUpperCase() || 'MACHINE';
         if (!['ACTIVE', 'IDLE', 'BUFFER', 'BREAKDOWN', 'UNDER_MAINTENANCE', 'SCRAP'].includes(status)) throw new ImportValidationError('Invalid asset status.');
-        if (!['MACHINE', 'FURNITURE', 'TABLE', 'CHAIR', 'VEHICLE', 'UTILITY', 'LIGHT', 'FAN'].includes(category)) throw new ImportValidationError('Invalid asset category.');
+        if (!['MACHINE', 'FURNITURE', 'TABLE', 'CHAIR', 'VEHICLE', 'UTILITY', 'LIGHT', 'FAN', 'APPLIANCE'].includes(category)) throw new ImportValidationError('Invalid asset category.');
         if (row.purchaseDate) {
           const date = new Date(row.purchaseDate);
           if (!/^\d{4}-\d{2}-\d{2}$/.test(row.purchaseDate) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== row.purchaseDate) {
@@ -143,10 +143,16 @@ export function buildImportRecords(kind: ImportKind, rows: Record<string, string
           stationNo: row.stationNo || '', purchaseDate: row.purchaseDate || '', cost: numberValue(row, 'cost'),
           status: status as Machine['status'], totalDowntimeMinutes: 0 });
       } else if (kind === 'parts') {
+        if (row.purchaseDate) {
+          const date = new Date(row.purchaseDate);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(row.purchaseDate) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== row.purchaseDate) {
+            throw new ImportValidationError('purchaseDate must be a valid YYYY-MM-DD date.');
+          }
+        }
         records.push({ ...(row.sNo ? { sNo: Number(row.sNo) } : {}), partId: id, sku: row.sku, name: row.name, category: row.category || 'General',
           stock: numberValue(row, 'stock'), minStock: numberValue(row, 'minStock'), monthlyAllowance: numberValue(row, 'monthlyAllowance'),
           unitCost: numberValue(row, 'unitCost'), unit: row.unit, compat: row.compat || '', machineType: row.machineType || 'GENERAL',
-          compatibleTypes: row.machineType ? [row.machineType] : [], shelfLocation: row.shelfLocation || '', vendor: row.vendor || '' });
+          compatibleTypes: row.machineType ? [row.machineType] : [], shelfLocation: row.shelfLocation || '', vendor: row.vendor || '', purchaseDate: row.purchaseDate || '' });
       } else {
         const type = row.type.toUpperCase();
         if (!['MONTHLY_INDENT', 'URGENT_NEED', 'CRITICAL_CEO'].includes(type)) throw new ImportValidationError('type must be MONTHLY_INDENT, URGENT_NEED or CRITICAL_CEO.');

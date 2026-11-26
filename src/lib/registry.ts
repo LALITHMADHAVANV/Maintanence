@@ -83,7 +83,24 @@ export async function ensureRegistryInitialized(client: MongoClient): Promise<vo
 /**
  * Fetches all registered companies from MongoDB (with TTL cache)
  */
+const registryLoads = new WeakMap<MongoClient, Promise<CompanyRecord[]>>();
+
 export async function getAllCompanies(client: MongoClient): Promise<CompanyRecord[]> {
+  if (memoryCache && memoryCache.expiresAt > Date.now()) {
+    return Array.from(memoryCache.data.values());
+  }
+  const pending = registryLoads.get(client);
+  if (pending) return pending;
+  const load = loadAllCompanies(client);
+  registryLoads.set(client, load);
+  try {
+    return await load;
+  } finally {
+    registryLoads.delete(client);
+  }
+}
+
+async function loadAllCompanies(client: MongoClient): Promise<CompanyRecord[]> {
   const now = Date.now();
   if (memoryCache && memoryCache.expiresAt > now) {
     return Array.from(memoryCache.data.values());

@@ -64,6 +64,7 @@ export default function MachinesPage() {
 
   // Asset Form State
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('MACHINE');
+  const [ownershipType, setOwnershipType] = useState<'OWNED' | 'LEASED'>('OWNED');
 
   // User's assigned enterprise company from authenticated session
   const userCompany = useMemo(() => {
@@ -88,15 +89,7 @@ export default function MachinesPage() {
     return 'Sahana Garments Ltd';
   }, [user]);
 
-  const [mCompany, setMCompany] = useState<string>(() => userCompany);
   const isTexplusUser = userCompany.toLowerCase().includes('texplus');
-
-  // Sync company if user auth session loads asynchronously
-  useEffect(() => {
-    if (userCompany && (!mCompany || mCompany === 'Sahana Garments Ltd')) {
-      setMCompany(userCompany);
-    }
-  }, [userCompany]);
 
   const [mId, setMId] = useState('');
   const [mBrand, setMBrand] = useState('');
@@ -304,7 +297,7 @@ export default function MachinesPage() {
 
   // Clear / Reset all inputs
   const handleResetForm = () => {
-    setMCompany(userCompany);
+    setOwnershipType('OWNED');
     setMId('');
     setMBrand('');
     setMType('');
@@ -331,11 +324,6 @@ export default function MachinesPage() {
     const cleanId = mId.trim();
     if (!cleanId) {
       showToast('Please enter an Asset ID', 'warning');
-      return;
-    }
-
-    if (!mCompany.trim()) {
-      showToast('Please enter a Company / Facility Name', 'warning');
       return;
     }
 
@@ -418,10 +406,11 @@ export default function MachinesPage() {
     const newAsset: Machine = {
       id: cleanId,
       name: `${finalBrand} ${finalTypeName}${mModel.trim() ? ` (${mModel.trim()})` : ''}`,
-      company: mCompany.trim() || userCompany,
+      company: userCompany,
       brand: finalBrand,
       model: mModel.trim() || 'Standard Model',
       category: selectedCategory,
+      ownershipType: selectedCategory === 'MACHINE' ? ownershipType : undefined,
       machineClass:
         selectedCategory === 'MACHINE'
           ? mType && mType.startsWith('OVERLOCK')
@@ -486,7 +475,7 @@ export default function MachinesPage() {
     return {
       id: mId || 'ASSET-NEW',
       name: `${activeBrand} ${mModel}`.trim() || 'New Asset',
-      company: mCompany.trim(),
+      company: userCompany,
       brand: activeBrand || 'Unassigned Brand',
       model: mModel || 'Standard',
       type: (mType || 'OVERLOCK_4_THREAD') as MachineType,
@@ -500,6 +489,7 @@ export default function MachinesPage() {
       purchaseDate: mDate,
       status: existing?.status || 'ACTIVE',
       category: selectedCategory,
+      ownershipType: selectedCategory === 'MACHINE' ? ownershipType : undefined,
       department: userDept,
       operator: existing?.operator || 'Plant Operator',
       previousLine: existing?.previousLine,
@@ -513,7 +503,7 @@ export default function MachinesPage() {
     };
   }, [
     mId,
-    mCompany,
+    userCompany,
     mBrand,
     mModel,
     mType,
@@ -525,6 +515,7 @@ export default function MachinesPage() {
     mDate,
     machines,
     selectedCategory,
+    ownershipType,
     isCustomBrand,
     customBrandInput,
     isCustomType,
@@ -552,7 +543,7 @@ export default function MachinesPage() {
 
     const params = new URLSearchParams({
       id: mId || '',
-      company: mCompany.trim() || '',
+      company: userCompany || '',
       brand: activeBrand || '',
       model: mModel || '',
       type: mType || '',
@@ -568,7 +559,7 @@ export default function MachinesPage() {
   }, [
     origin,
     mId,
-    mCompany,
+    userCompany,
     mBrand,
     mModel,
     mType,
@@ -676,28 +667,8 @@ export default function MachinesPage() {
           </h3>
 
           <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
-            {/* Company / Enterprise Name & Category */}
+            {/* Category and ownership */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-600">
-                    Company / Organization Name *
-                  </label>
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                    Assigned from Login
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={mCompany}
-                  onChange={(e) => setMCompany(e.target.value)}
-                  placeholder="e.g. Sahana Garments Ltd"
-                  autoComplete="off"
-                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none text-slate-800 font-semibold"
-                />
-              </div>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
                   Category *
@@ -719,6 +690,27 @@ export default function MachinesPage() {
                   </div>
                 </div>
               </div>
+              {selectedCategory === 'MACHINE' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Ownership Type *
+                  </label>
+                  <div className="relative">
+                    <select
+                      required
+                      value={ownershipType}
+                      onChange={(event) => setOwnershipType(event.target.value as 'OWNED' | 'LEASED')}
+                      className="w-full appearance-none rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 pr-10 text-sm font-bold text-slate-900 outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="OWNED">Owned</option>
+                      <option value="LEASED">Leased</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-500">
+                      <ChevronDown className="h-4 w-4" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Subtype and Brand Selection with Custom Entry Support */}
@@ -1224,7 +1216,7 @@ export default function MachinesPage() {
                         Company / Unit / ID
                       </div>
                       <div className="text-xs sm:text-sm print:text-[9pt] font-black uppercase tracking-wider text-slate-800 truncate flex items-center gap-1">
-                        <span>{mCompany.trim() || userCompany || 'sahana'}</span>
+                        <span>{userCompany || 'sahana'}</span>
                         <span className="text-slate-400">/</span>
                         <span>{mUnit.trim() || 'Unit'}</span>
                         <span className="text-slate-400">/</span>

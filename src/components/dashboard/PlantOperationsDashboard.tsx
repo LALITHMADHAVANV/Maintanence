@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { AssetHistoryModal } from '@/components/scan/AssetHistoryModal';
 import {
   TrendingUp,
-  Plus,
   X,
   CheckCircle2,
   XCircle,
@@ -49,8 +48,11 @@ import { LineAvailabilityWidget } from './LineAvailabilityWidget';
 import { MaintenanceMilestonesAndTasks } from './MaintenanceMilestonesAndTasks';
 import { SupervisorFloorWorkspace } from './SupervisorFloorWorkspace';
 import { useAuth } from '@/context/AuthContext';
+import { useNav } from '@/context/NavContext';
+import { MaintenanceReminderCenter } from './MaintenanceReminderCenter';
 import { useToast } from '@/context/ToastContext';
 import { completePPMTask } from '@/lib/services/cmmsService';
+import { isUserAdmin } from '@/lib/constants/units';
 
 interface WorkflowStage {
   key: string;
@@ -137,7 +139,7 @@ export function PlantOperationsDashboard({
   onRefresh,
   isLoading = false,
 }: PlantOperationsDashboardProps) {
-  const [ticketDate, setTicketDate] = useState('');
+  const { ticketDate } = useNav();
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
   }), []);
@@ -152,7 +154,6 @@ export function PlantOperationsDashboard({
   const { user, role } = useAuth();
   const { showToast } = useToast();
   const companySlug = (user?.companySlug || 'sahana').toLowerCase();
-  const [isLogBreakdownModalOpen, setIsLogBreakdownModalOpen] = useState(false);
   const [inspectedMachineId, setInspectedMachineId] = useState<string | null>(null);
   const inspectedMachine = machines.find((machine) => machine.id === inspectedMachineId);
 
@@ -683,64 +684,17 @@ export function PlantOperationsDashboard({
 
   return (
     <div className="space-y-4 pb-12 animate-fade-in">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
-        <label htmlFor="ticket-date" className="text-xs font-semibold text-slate-700">Ticket reported date (IST)</label>
-        <input id="ticket-date" type="date" value={ticketDate} onChange={(event) => setTicketDate(event.target.value)}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs" />
-        <button type="button" onClick={() => setTicketDate(dateFormatter.format(new Date()))}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white">Today</button>
-        <button type="button" onClick={() => setTicketDate('')} aria-pressed={!ticketDate}
-          className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">All dates</button>
-        <span className="text-xs text-slate-500" aria-live="polite">{repairs.length} tickets{ticketDate ? ' reported on ' + ticketDate : ' across all dates'}</span>
-      </div>
       {/* ================================================================= */}
       {/* 1. TOP HEADER & FILTER BAR                                       */}
       {/* ================================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-transparent py-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
-            <Gauge className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">Keep the floor flowing.</h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live Sync
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              Your equipment, maintenance, and team performance at a glance.
-            </p>
-          </div>
-        </div>
+      <MaintenanceReminderCenter machines={machines} repairs={allRepairs} ppmSchedules={ppmSchedules} parts={parts} requisitions={requisitions} onRefresh={onRefresh} isLoading={isLoading} />
 
-        <div className="flex items-center gap-2 shrink-0">
 
-          <button
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer disabled:opacity-50"
-            title="Refresh dashboard data"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>{lastRefresh ? lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Refresh'}</span>
-          </button>
-
-          <button
-            onClick={() => setIsLogBreakdownModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition shadow-xs cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Log Breakdown</span>
-          </button>
-        </div>
-      </div>
 
       {/* ================================================================= */}
       {/* 2. TOP METRIC CARDS ROW (6 COLUMNS)                              */}
       {/* ================================================================= */}
-      <div className="overview-metrics grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-3.5">
+      <div className="overview-metrics compact-overview-metrics grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-3.5">
         {/* Open Work Orders */}
         <div
           onClick={() => openDrillDown('open_tickets', 'Open Maintenance Tickets & Work Orders')}
@@ -855,14 +809,16 @@ export function PlantOperationsDashboard({
       {/* ================================================================= */}
       {/* 2.5 SENIOR SUPERVISOR ADD-ONS: LINE AVAILABILITY, WORK ORDERS & ROSTER */}
       {/* ================================================================= */}
+      <LineAvailabilityWidget
+        machines={machines}
+        onSelectZoneLine={(zone, line) => {
+          router.push(`/${companySlug}/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
+        }}
+      />
+
       <div className="space-y-4">
         {/* 8-Zone × 8-Line Machine Availability & Floor Status */}
-        <LineAvailabilityWidget
-          machines={machines}
-          onSelectZoneLine={(zone, line) => {
-            router.push(`/${companySlug}/dashboard/asset-log?zone=${encodeURIComponent(zone)}&line=${encodeURIComponent(line)}`);
-          }}
-        />
+
 
         {/* Milestones & Task Dispatch Grid */}
         <MaintenanceMilestonesAndTasks
@@ -888,8 +844,6 @@ export function PlantOperationsDashboard({
           userName={user?.name || 'Plant Administrator'}
           role={role || 'ADMIN'}
           onRefresh={onRefresh}
-          isExternalNewTicketOpen={isLogBreakdownModalOpen}
-          onCloseExternalNewTicket={() => setIsLogBreakdownModalOpen(false)}
         />
       </div>
 
@@ -1059,6 +1013,7 @@ export function PlantOperationsDashboard({
         </div>
       </div>
 
+      {!isUserAdmin(role) && <>
       {/* ================================================================= */}
       {/* 4. WORKFLOW PIPELINE (EXPANDABLE)                                */}
       {/* ================================================================= */}
@@ -1104,6 +1059,7 @@ export function PlantOperationsDashboard({
           </div>
         )}
       </div>
+      </>}
 
       {/* ================================================================= */}
       {/* 5. LIVE MACHINES STATUS TABLE (WITH CRITICAL BREAKDOWNS FIRST)    */}

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDatabase, TenantError } from '@/lib/mongodb';
 import { PartRequisition } from '@/types/cmms';
 import { sendTelegramAlert } from '@/lib/services/telegramService';
+import { normalizeRole } from '@/lib/constants/roles';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,6 +34,10 @@ export async function POST(req: Request) {
     }
 
     const db = await getDatabase(req);
+    const role = normalizeRole(db.sessionUser?.role);
+    if (role === 'ADMIN' || role === 'ASSET_MANAGER') {
+      throw new TenantError('Admin stock access is read-only. Mechanics submit part requisitions.', 403);
+    }
     (requisition as any).company = db.companyName;
     (requisition as any).companySlug = db.tenant;
     await db.collection('part_requisitions').updateOne(
@@ -59,6 +64,10 @@ export async function PATCH(req: Request) {
     }
 
     const db = await getDatabase(req);
+    const role = normalizeRole(db.sessionUser?.role);
+    if (['ORDERED', 'FULFILLED'].includes(updates.status) && role !== 'STORE_PERSON') {
+      throw new TenantError('Only Store users can receive or dispatch requisition stock.', 403);
+    }
     await db.collection('part_requisitions').updateOne(
       { id },
       { $set: { ...updates, company: db.companyName, companySlug: db.tenant } }

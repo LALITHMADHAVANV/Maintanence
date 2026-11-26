@@ -1,0 +1,236 @@
+[
+  {
+    "slide": 1,
+    "section": "Overview",
+    "title": "Maintenance, connected",
+    "subtitle": "Project review & future implementation roadmap",
+    "body": "<div class=\"cover\"><div><p class=\"lead\">A garment-factory CMMS connecting machines, maintenance teams, spare parts and management.</p><p class=\"stamp\">WORKING-TREE REVIEW / 21 NOVEMBER 2026</p><p class=\"small\">Current capabilities, architecture, findings and a proposed implementation plan.</p></div><div class=\"factory\"><div>MAINTENANCE MODULE <b>CMMS</b></div><div class=\"machines\"><i></i><i></i><i></i><i></i><span>01</span><span>02</span><span>03</span><span>04</span></div><footer>ASSET → WORK ORDER → REPAIR → HISTORY</footer></div></div>",
+    "source": "README.md · package.json · src/app/dashboard/page.tsx",
+    "notes": "Review includes uncommitted work. No live deployment, customer counts, business savings or security certification were established. Illustrations are conceptual, not screenshots."
+  },
+  {
+    "slide": 2,
+    "section": "Overview",
+    "title": "One operational record for the floor",
+    "subtitle": "Three needs connect the project",
+    "body": "<div class=\"blocks\"><article><span class=\"num\">01</span><h3>Locate the asset</h3><p>Track machine identity, unit, zone, production line and station.</p></article><article><span class=\"num\">02</span><h3>Organize the work</h3><p>Report faults, assign technicians, schedule PPM and follow workshop repairs.</p></article><article><span class=\"num\">03</span><h3>Explain the outcome</h3><p>Connect repair activity, parts used, recorded costs and maintenance history.</p></article></div>",
+    "source": "src/types/cmms.ts · src/components/dashboard/*",
+    "notes": "Faster reporting, clearer ownership and better traceability are intended benefits. No measured downtime or cost reduction was supplied."
+  },
+  {
+    "slide": 3,
+    "section": "Overview",
+    "title": "The project at a glance",
+    "subtitle": "One application, separate company databases",
+    "body": "<div class=\"metrics\"><div><strong>2</strong><span>Enabled company configurations</span></div><div><strong>5</strong><span>Dashboard component families</span></div><div><strong>3</strong><span>PPM frequency types</span></div></div><div class=\"blocks\"><article><span class=\"num\">01</span><h3>Manufacturing focus</h3><p>Sewing machines plus furniture, transport and utility assets.</p></article><article><span class=\"num\">02</span><h3>Multiple workspaces</h3><p>Sahana and Texplus are enabled in the company route configuration.</p></article><article><span class=\"num\">03</span><h3>Evidence boundary</h3><p>These are code facts, not live usage or production fleet totals.</p></article></div>",
+    "source": "src/config/company-routes.ts · src/app/dashboard/page.tsx · src/types/cmms.ts",
+    "notes": "Five dashboard families: executive, plant operations, senior technician, mechanic desk and store. PPM types: Weekly, Monthly and 6-Month. Historical fleet totals in handover notes are excluded."
+  },
+  {
+    "slide": 4,
+    "section": "Current system",
+    "title": "The functional map",
+    "subtitle": "Modules span the full maintenance cycle",
+    "body": "<table><thead><tr><th>Foundation</th><th>Daily operations</th><th>Control & reporting</th></tr></thead><tbody><tr><td>Company login and staff roles</td><td>Machine registry and QR labels</td><td>Asset history and status logs</td></tr><tr><td>Units, zones and lines</td><td>Breakdown queue and assignments</td><td>T&A reports and exports</td></tr><tr><td>Asset catalog and imports</td><td>PPM scheduler and service station</td><td>Reminders and recorded costs</td></tr><tr><td>Company settings</td><td>Spare inventory and requisitions</td><td>Maintenance record management</td></tr></tbody></table>",
+    "source": "src/app/dashboard/* · src/components/dashboard/* · src/app/api/*",
+    "notes": "Permissions depend on role and department configuration. T&A combines breakdown and PPM activity; payroll or attendance integration is not inferred."
+  },
+  {
+    "slide": 5,
+    "section": "Current system",
+    "title": "Different desks for different roles",
+    "subtitle": "The interface adapts to the person doing the work",
+    "body": "<table><thead><tr><th>Role group</th><th>Workspace</th><th>Main responsibility</th></tr></thead><tbody><tr><td>CEO</td><td>Executive dashboard</td><td>Review operational and maintenance summaries</td></tr><tr><td>Admin / Asset Manager</td><td>Administration / plant views</td><td>Manage assets, staff and permitted configuration</td></tr><tr><td>Head Mechanic Manager</td><td>Plant operations</td><td>Coordinate teams and units; no Settings access</td></tr><tr><td>Senior Mechanic / Electrician</td><td>Supervisor desk</td><td>Team work and service follow-up</td></tr><tr><td>Mechanic / Service Mechanic / Electrician</td><td>Mechanic desk</td><td>Attend assigned repairs and preventive tasks</td></tr><tr><td>Store personnel</td><td>Store dashboard</td><td>Track stock, indents and fulfillment</td></tr></tbody></table>",
+    "source": "src/app/dashboard/page.tsx · src/lib/constants/roles.ts · docs/maintenance-roles.md",
+    "notes": "All Units is a visibility scope, not administrator authority. Browser menu restrictions do not establish equivalent API enforcement."
+  },
+  {
+    "slide": 6,
+    "section": "Current system",
+    "title": "The machine is the anchor record",
+    "subtitle": "Physical location and maintenance history stay connected",
+    "body": "<div class=\"split\"><div class=\"asset\"><small>ILLUSTRATIVE MACHINE RECORD</small><h3>MC-EXAMPLE-001</h3><p>Brand · model · machine type</p><hr><p>Company → Unit → Zone → Line → Station</p><div class=\"stamp\">IDENTITY / LOCATION / HISTORY</div></div><div><h3>Register and classify</h3><p>Capture specifications, category, purchase details and current location.</p><h3>Track changes</h3><p>Record status changes, relocations and workshop handovers.</p><h3>Retrieve the dossier</h3><p>Review machine information, maintenance history and parts activity.</p></div></div>",
+    "source": "src/types/cmms.ts · src/app/dashboard/machines/page.tsx · src/components/asset/AssetCommandCentre.tsx",
+    "notes": "Conceptual example, not a customer asset. Categories extend beyond sewing machinery."
+  },
+  {
+    "slide": 7,
+    "section": "Current system",
+    "title": "Breakdown to repair completion",
+    "subtitle": "Ticket state connects reporting, ownership and recovery",
+    "body": "<div class=\"flow\"><article><span class=\"num\">01</span><h3>Report</h3><p>Machine, fault details and urgency</p></article><article><span class=\"num\">02</span><h3>Assign</h3><p>Technician and dispatch</p></article><article><span class=\"num\">03</span><h3>Attend</h3><p>Start work and record repair activity</p></article><article><span class=\"num\">04</span><h3>Complete</h3><p>Action, parts, duration and proof</p></article></div><p class=\"callout\"><b>PENDING → ASSIGNED → IN_PROGRESS → COMPLETED</b><br>REJECTED is also supported.</p>",
+    "source": "src/app/api/repairs/route.ts · src/lib/services/cmmsService.ts · src/types/cmms.ts",
+    "notes": "The client also supports stopping work. Completion can set a machine ACTIVE. Physical workshop return uses the machine movement workflow."
+  },
+  {
+    "slide": 8,
+    "section": "Current system",
+    "title": "Service-station handover is transactional",
+    "subtitle": "A strong pattern exists for coordinated updates",
+    "body": "<div class=\"transaction\"><p class=\"stamp\">ONE MONGODB TRANSACTION</p><div class=\"blocks\"><article><span class=\"num\">01</span><h3>Repair ticket</h3><p>Save the service mechanic, due date and handover instructions.</p></article><article><span class=\"num\">02</span><h3>Machine location</h3><p>Move into the workshop and set UNDER_MAINTENANCE.</p></article><article><span class=\"num\">03</span><h3>Asset log</h3><p>Record the actor, time, destination and repair context.</p></article></div></div><p class=\"callout\">Concurrent ticket or machine changes reject the handover rather than leaving a partial transfer.</p>",
+    "source": "src/lib/services/serviceRepairService.ts · src/lib/serviceRepairs.ts",
+    "notes": "Requires Atlas or a MongoDB replica set. Default repair due date is ten calendar days ahead in India. The transaction guarantee applies to service transfer, not all stock and repair operations."
+  },
+  {
+    "slide": 9,
+    "section": "Current system",
+    "title": "PPM scheduling is already implemented",
+    "subtitle": "Schedules represent planned and completed preventive work",
+    "body": "<div class=\"blocks\"><article><span class=\"num\">01</span><h3>Plan</h3><p>Weekly, Monthly and 6-Month types; configurable interval, due date and assignee.</p></article><article><span class=\"num\">02</span><h3>Execute</h3><p>Start, stop and complete tasks with duration, technician notes and optional proof.</p></article><article><span class=\"num\">03</span><h3>Review</h3><p>Filter by due state, machine, line, category and technician.</p></article></div><p class=\"callout\">Gap: task-level scheduling is not a structured per-check monthly inspection history.</p>",
+    "source": "src/app/dashboard/ppm-scheduler/page.tsx · src/lib/services/cmmsService.ts · src/types/cmms.ts",
+    "notes": "Completion updates lastServiced and nextDue. Test recurring tasks and due-state handling end to end: a record can retain COMPLETED while a future nextDue is stored."
+  },
+  {
+    "slide": 10,
+    "section": "Current system",
+    "title": "Stores connect maintenance to materials",
+    "subtitle": "Parts and requisitions have separate operational records",
+    "body": "<div class=\"flow\"><article><span class=\"num\">01</span><h3>Inventory</h3><p>SKU, stock, minimum stock and unit cost</p></article><article><span class=\"num\">02</span><h3>Request</h3><p>Monthly, urgent or critical needs</p></article><article><span class=\"num\">03</span><h3>Review</h3><p>Approval / rejection workflow</p></article><article><span class=\"num\">04</span><h3>Issue</h3><p>Fulfillment and recorded parts use</p></article></div><p class=\"callout\"><b>Mapped asset and stock imports</b><br>Import utilities and APIs validate fields and identifiers.</p>",
+    "source": "src/app/dashboard/inventory/page.tsx · src/app/api/{parts,requisitions,import}/route.ts · src/lib/imports.ts",
+    "notes": "Requisition workflows exist in UI/services. Central server transition checks and concurrency-safe stock writes remain hardening priorities."
+  },
+  {
+    "slide": 11,
+    "section": "Current system",
+    "title": "Reports make activity reviewable",
+    "subtitle": "History, T&A and reminders serve different needs",
+    "body": "<div class=\"blocks\"><article><span class=\"num\">01</span><h3>History and costs</h3><p>Machine dossiers, personnel records, status activity and recorded maintenance spending.</p></article><article><span class=\"num\">02</span><h3>T&A reporting</h3><p>Combined breakdown and PPM views for today, week, month or custom dates; PDF and Excel exports.</p></article><article><span class=\"num\">03</span><h3>Reminder center</h3><p>Breakdowns, overdue PPM, overdue service repairs, stock needs and other pending work.</p></article></div><p class=\"callout\">Reminder popups run in the browser. They are not an always-on background escalation service.</p>",
+    "source": "src/lib/{tna,tnaExport,maintenanceReminders,recordedMaintenanceCosts}.ts · src/components/dashboard/MaintenanceReminderCenter.tsx",
+    "notes": "Reports include IST timestamps, technician, location, status and downtime. Exports use jsPDF/autotable and xlsx. No financial or utilization gains are claimed."
+  },
+  {
+    "slide": 12,
+    "section": "Architecture",
+    "title": "How the application is assembled",
+    "subtitle": "A full-stack TypeScript application",
+    "body": "<div class=\"architecture\"><div class=\"layer\"><b>INTERFACE</b><span>React 19 · Next.js App Router · Tailwind CSS v4</span></div><div class=\"connector\">↓</div><div class=\"layer\"><b>CLIENT SERVICES</b><span>AuthContext · tenant preferences · cached data · API fetch</span></div><div class=\"connector\">↓</div><div class=\"layer\"><b>SERVER</b><span>Route handlers · authentication · tenant resolution · business operations</span></div><div class=\"connector\">↓</div><div class=\"layer\"><b>DATA & INTEGRATIONS</b><span>MongoDB registry + company databases · Telegram API</span></div></div>",
+    "source": "package.json · src/context/AuthContext.tsx · src/lib/services/cmmsService.ts · src/lib/mongodb.ts",
+    "notes": "Packages declare Next.js 16.3.5 and React 19.2.8. Browser caches and fetch-based refreshes are present; this is not a WebSocket architecture."
+  },
+  {
+    "slide": 13,
+    "section": "Architecture",
+    "title": "Company isolation starts with the session",
+    "subtitle": "The server chooses a database through the registry",
+    "body": "<div class=\"flow\"><article><span class=\"num\">01</span><h3>Sign in</h3><p>Resolve an account and issue a signed session</p></article><article><span class=\"num\">02</span><h3>Check</h3><p>Verify token and requested company</p></article><article><span class=\"num\">03</span><h3>Resolve</h3><p>Load the registered company database</p></article><article><span class=\"num\">04</span><h3>Validate</h3><p>Recheck active status and current role</p></article></div><div class=\"two\"><p class=\"callout\">Implemented: signed sessions, bcrypt support, HttpOnly session cookies and cross-company mismatch rejection.</p><p class=\"callout amber\">Exception: public QR endpoints resolve company + asset without the normal signed session path.</p></div>",
+    "source": "src/lib/auth.ts · src/lib/mongodb.ts · src/app/api/auth/login/route.ts · src/app/api/public/scan/route.ts",
+    "notes": "verifyPassword retains a legacy plaintext fallback. Tokens expire after 30 days. Public QR supports label reads, fault reporting and supported line moves. Its access model needs an explicit threat review; not every API requires login."
+  },
+  {
+    "slide": 14,
+    "section": "Architecture",
+    "title": "The main data relationships",
+    "subtitle": "Machine ID connects the operational documents",
+    "body": "<div class=\"entity-core\">MACHINES <small>identity · location · status</small></div><div class=\"entities\"><div><b>repair_tickets</b><p>Fault, technician, timing, parts and resolution</p></div><div><b>ppm_schedules</b><p>Task, interval, due dates and completion</p></div><div><b>asset_logs</b><p>Movement, status, actor and timestamp</p></div><div><b>spare_parts</b><p>Identity, compatibility, stock and cost</p></div><div><b>part_requisitions</b><p>Requested materials, review and fulfillment</p></div><div><b>users / departments</b><p>People, roles and operational scope</p></div></div>",
+    "source": "src/types/cmms.ts · src/app/api/* · src/lib/registry.ts",
+    "notes": "Application-managed document links are not relational foreign-key guarantees. The central registry maps workspaces to separate databases."
+  },
+  {
+    "slide": 15,
+    "section": "Assessment",
+    "title": "What works well in the design",
+    "subtitle": "The model reflects real maintenance workflows",
+    "body": "<div class=\"blocks\"><article><span class=\"num\">01</span><h3>Operational detail</h3><p>Workshop handovers, custody, due dates, parts use and production locations are represented.</p></article><article><span class=\"num\">02</span><h3>Tenant-aware foundation</h3><p>Dedicated company databases, active account checks and scoped browser preferences support multiple workspaces.</p></article><article><span class=\"num\">03</span><h3>Reviewable records</h3><p>Asset logs, history, reports, imports and focused regression scripts support traceability.</p></article></div><p class=\"callout\">Reuse the service-transfer transaction and focused domain helpers as implementation patterns.</p>",
+    "source": "src/lib/services/serviceRepairService.ts · src/lib/mongodb.ts · scripts/test-*.cjs",
+    "notes": "Architectural strengths inferred from source, not proof that all workflows have passed live user acceptance."
+  },
+  {
+    "slide": 16,
+    "section": "Assessment",
+    "title": "Resolve these gaps before wider rollout",
+    "subtitle": "Specific findings from the current source",
+    "body": "<table><thead><tr><th>Priority</th><th>Finding</th><th>Proposed correction</th></tr></thead><tbody><tr><td>P0</td><td>Broad update objects in general PATCH routes</td><td>Validate fields, actor scope and state transitions on the server</td></tr><tr><td>P0</td><td>Repair, machine and stock writes span requests</td><td>Use transaction-safe completion and stock issue with idempotency</td></tr><tr><td>P1</td><td>Default rates can become stored repair values</td><td>Separate actual costs from estimates; require costing inputs</td></tr><tr><td>P1</td><td>Local changes can precede failed server writes</td><td>Reconcile or roll back; refetch authoritative records</td></tr><tr><td>P1</td><td>Legacy passwords and public QR writes widen exposure</td><td>Migrate old hashes; control and monitor public actions</td></tr></tbody></table>",
+    "source": "src/app/api/{ppm,parts,requisitions,repairs}/route.ts · src/lib/services/cmmsService.ts · src/lib/auth.ts",
+    "notes": "Code findings, not tested exploits. Repair costing includes ₹250 missing-part and ₹350 hourly labor defaults. recordedMaintenanceCosts avoids invented amounts, but saved upstream values may include estimates. Add rate limits and consider signed QR tokens or authenticated writes."
+  },
+  {
+    "slide": 17,
+    "section": "Future roadmap",
+    "title": "Make QR the maintenance entry point",
+    "subtitle": "Proposed: four clear actions after every scan",
+    "body": "<div class=\"qr-layout\"><div class=\"qr-symbol\" aria-hidden=\"true\">▦</div><div class=\"qr-actions\"><div><small>01</small><h3>PPM</h3><p>Machine-specific inspection checklist</p></div><div><small>02</small><h3>Breakdown</h3><p>Fault details and urgency</p></div><div><small>03</small><h3>Line relocation</h3><p>Move within the same unit</p></div><div><small>04</small><h3>Relocate to other unit</h3><p>Transfer with receiving confirmation</p></div></div></div><p class=\"callout\">Acceptance: preserve company and machine identity; retain origin, destination, actor and time for every move.</p>",
+    "source": "Current: src/app/scan/[id]/page.tsx · src/components/scan/ScanModal.tsx · src/app/api/public/scan/route.ts",
+    "notes": "The earlier four-choice component and structured PPM checklist are absent from the current checkout. This QR glyph is decorative. Validate receiving unit, zone, line and actor authority before transfer."
+  },
+  {
+    "slide": 18,
+    "section": "Future roadmap",
+    "title": "Digitize the paper PPM calendar",
+    "subtitle": "Proposed: nine monthly checks and half-year oil service",
+    "body": "<div class=\"checks\"><div><span>01</span>Oil level</div><div><span>02</span>Oil circulation</div><div><span>03</span>Looper / hookset point</div><div><span>04</span>Grease points</div><div><span>05</span>Air leakage</div><div><span>06</span>Safety guard</div><div><span>07</span>Wheel cleaning</div><div><span>08</span>Table cleaning & alignment</div><div><span>09</span>Feed dog cleaning</div></div><p class=\"callout\"><b>OK / Needs attention / N/A</b><br>Mechanic · inspection date · notes · proof · reviewer</p><p class=\"small\">Oil service: January–June and July–December. Use machine-type templates and retain versioned history.</p>",
+    "source": "User-supplied Preventive Maintenance Calendar photo · src/types/cmms.ts PPMSchedule",
+    "notes": "Propose checklist_templates, inspection_runs and inspection_results linked to machineId and scheduleId. Require N/A and failed-check reasons; create linked corrective tickets. Do not mark prior months complete based on the photo."
+  },
+  {
+    "slide": 19,
+    "section": "Future roadmap",
+    "title": "Make server commands authoritative",
+    "subtitle": "Proposed: reliable maintenance updates",
+    "body": "<div class=\"flow\"><article><span class=\"num\">01</span><h3>Validate</h3><p>Role, unit, fields, state and quantity</p></article><article><span class=\"num\">02</span><h3>Commit</h3><p>Ticket + stock + machine + audit together</p></article><article><span class=\"num\">03</span><h3>Publish</h3><p>Queue notifications after the commit</p></article><article><span class=\"num\">04</span><h3>Reconcile</h3><p>Return saved state and refresh the client</p></article></div><p class=\"callout\">Acceptance: two technicians cannot issue the last spare twice; retrying a completion changes the data once.</p>",
+    "source": "Basis: src/lib/services/serviceRepairService.ts · current repair / parts APIs",
+    "notes": "Use idempotency keys, optimistic concurrency/version checks, bounded stock updates and a stock-movement ledger. A transactional outbox supports notification retries and duplicate suppression. These are proposals."
+  },
+  {
+    "slide": 20,
+    "section": "Future roadmap",
+    "title": "Improve floor access and visibility",
+    "subtitle": "Proposed enhancements after consistency work",
+    "body": "<div class=\"blocks\"><article><span class=\"num\">01</span><h3>Offline mobile use</h3><p>A PWA with a limited inspection queue, visible sync state and conflict resolution.</p></article><article><span class=\"num\">02</span><h3>Server reminders</h3><p>Background overdue jobs with retryable alerts and supervisor escalation.</p></article><article><span class=\"num\">03</span><h3>Shared updates</h3><p>Pagination, indexed search and targeted refresh; add SSE/WebSockets where measured latency warrants it.</p></article></div><p class=\"callout\">Acceptance: users see what is saved, queued or conflicted; alerts continue with no dashboard open.</p>",
+    "source": "Basis: src/lib/services/cmmsService.ts · src/components/dashboard/MaintenanceReminderCenter.tsx",
+    "notes": "Do not blindly queue stock deductions or cross-unit transfers offline. Cache only the active tenant’s required data. No delivery date is committed."
+  },
+  {
+    "slide": 21,
+    "section": "Future roadmap",
+    "title": "Build advanced features on trusted records",
+    "subtitle": "Later-stage capabilities and prerequisites",
+    "body": "<table><thead><tr><th>Capability</th><th>Prerequisite</th><th>Success evidence</th></tr></thead><tbody><tr><td>ERP / purchasing integration</td><td>Stable part IDs, suppliers and stock ledger</td><td>Approved requests link to purchases and receipts</td></tr><tr><td>Condition monitoring</td><td>Sensor coverage, timestamps and machine mapping</td><td>Validated thresholds and false-positive rates</td></tr><tr><td>Predictive maintenance</td><td>Reliable failure, runtime and intervention history</td><td>Out-of-sample improvement over simple rules</td></tr><tr><td>Guided troubleshooting</td><td>Reviewed manuals and fault taxonomy</td><td>Sourced suggestions reviewed by technicians</td></tr></tbody></table>",
+    "source": "Proposed future work based on the repository review",
+    "notes": "No AI, IoT, ERP integration or predictive model is claimed as implemented. Start with rule-based monitoring. Payback calculations require measured baseline costs and downtime."
+  },
+  {
+    "slide": 22,
+    "section": "Future roadmap",
+    "title": "Implementation sequence and decision gates",
+    "subtitle": "Suggested phases; timing depends on team capacity",
+    "body": "<div class=\"roadmap\"><article><span class=\"phase\">01</span><h3>Harden foundations</h3><p>Permissions · schemas · transactions · truthful costing</p></article><article><span class=\"phase\">02</span><h3>Complete QR & PPM</h3><p>Four choices · versioned checklists · controlled transfers</p></article><article><span class=\"phase\">03</span><h3>Automate operations</h3><p>Background alerts · outbox retries · reconciliation · mobile pilot</p></article><article><span class=\"phase\">04</span><h3>Extend and optimize</h3><p>Indexes / pagination · ERP pilot · sensors · predictive feasibility</p></article></div><p class=\"callout\">Gate each phase with role-based acceptance tests and a pilot in one unit before expanding.</p>",
+    "source": "Proposed sequencing; no approved budget or delivery dates",
+    "notes": "Phase 1: reject unauthorized transitions and test concurrent stock updates. Phase 2: persist all check results and transfer receipt. Phase 3: test closed-browser escalation and offline conflicts. Phase 4: show measured integration or sensor outcomes."
+  },
+  {
+    "slide": 23,
+    "section": "Future roadmap",
+    "title": "Measure outcomes without inventing results",
+    "subtitle": "Establish a baseline before claiming improvement",
+    "body": "<table><thead><tr><th>Measure</th><th>Definition</th><th>Required data</th></tr></thead><tbody><tr><td>Repair duration / MTTR</td><td>Completed repair duration ÷ completed repairs</td><td>Consistent start / resolution timestamps</td></tr><tr><td>PPM on-time completion</td><td>Completed by due date ÷ tasks due</td><td>Historical due dates and completion events</td></tr><tr><td>Stockout frequency</td><td>Blocked material requests ÷ material requests</td><td>Issue ledger and unfulfilled quantities</td></tr><tr><td>Repeat failures</td><td>Same machine / fault in a defined window</td><td>Normalized faults and ticket links</td></tr><tr><td>Availability / MTBF</td><td>Use planned time and operating exposure</td><td>Production / runtime data, not ticket counts alone</td></tr></tbody></table>",
+    "source": "src/lib/tna.ts · src/types/cmms.ts · proposed measurement definitions",
+    "notes": "Separate repair work time from production downtime. T&A report-to-resolution duration can include waiting. Targets need a baseline and operations agreement; no percentage improvements are asserted."
+  },
+  {
+    "slide": 24,
+    "section": "Validation",
+    "title": "What this review establishes",
+    "subtitle": "Source inspection and local checks, with explicit limits",
+    "body": "<div class=\"two\"><div><h3>Review coverage</h3><ul><li>Routes, dashboards and shared types</li><li>Authentication and database resolution</li><li>Repair, service, PPM and stock flows</li><li>Reminders, imports and reporting helpers</li></ul></div><div><h3>Limits</h3><ul><li>No customer data or production audit</li><li>No live role-by-role acceptance test</li><li>No measured uptime, savings or fleet totals</li><li>Source does not establish deployment status</li></ul></div></div><p class=\"callout\">See accompanying analysis notes for the local regression results.</p>",
+    "source": "Current working tree · scripts/test-*.cjs",
+    "notes": "Uncommitted changes are included. Source takes precedence where README and handover descriptions differ. HTML presentation checks are separate from application validation."
+  },
+  {
+    "slide": 25,
+    "section": "Evidence",
+    "title": "Source guide for the review",
+    "subtitle": "Trace the presentation back to implementation",
+    "body": "<table><thead><tr><th>Area</th><th>Primary repository evidence</th></tr></thead><tbody><tr><td>Structure and technology</td><td>package.json · src/app/dashboard/* · src/types/cmms.ts</td></tr><tr><td>Identity and tenancy</td><td>src/lib/{auth,mongodb,registry}.ts · src/config/company-routes.ts</td></tr><tr><td>Repairs and workshop</td><td>src/app/api/repairs/route.ts · src/lib/services/serviceRepairService.ts</td></tr><tr><td>PPM, inventory and QR</td><td>src/app/api/{ppm,parts,requisitions,public/scan}/route.ts · src/lib/services/cmmsService.ts</td></tr><tr><td>Reporting and reminders</td><td>src/lib/{tna,tnaExport,maintenanceReminders,recordedMaintenanceCosts}.ts</td></tr><tr><td>Operational context</td><td>docs/maintenance-roles.md · docs/company-routes.md · COMPANY-HANDOVER.md</td></tr></tbody></table>",
+    "source": "Repository-relative paths · reviewed 21 November 2026",
+    "notes": "Slides contain source footers and presenter notes. Proposed designs derive from findings and the paper checklist. The HTML does not fetch repository files."
+  },
+  {
+    "slide": 26,
+    "section": "Overview",
+    "title": "The next milestone",
+    "subtitle": "Complete a reliable maintenance cycle in one pilot unit",
+    "body": "<div class=\"closing\"><p class=\"lead\">Scan the machine.<br>Record the work.<br>Trust the result.</p><div><h3>Recommended pilot scope</h3><p>Four QR actions, structured PPM checks, controlled transfers and transaction-safe repair / stock changes.</p><h3>Review before rollout</h3><p>Operations signs off workflows. Stores validates quantities. Supervisors verify history. Engineering proves access and retries.</p><p class=\"stamp\">PROPOSED NEXT MILESTONE</p></div></div>",
+    "source": "Synthesis of source review and implementation roadmap",
+    "notes": "Suggested decision: agree on pilot scope and name an operations owner. This presentation does not implement the proposed application features."
+  }
+]

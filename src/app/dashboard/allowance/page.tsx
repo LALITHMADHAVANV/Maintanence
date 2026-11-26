@@ -107,6 +107,7 @@ interface AssetItem {
 
   // Cost metrics requested by user
   purchasePrice?: number;
+  depreciationCost?: number;
   totalRepairCost?: number;
   recentRepairCost?: number;
   preventiveMaintenancePrice?: number;
@@ -501,13 +502,17 @@ export default function AllowancePage() {
       const preventiveMaintenancePrice = allw.preventiveMaintenancePrice;
       const predictedPreventiveCost = allw.predictedPreventiveCost;
 
+      const purchasePrice = typeof item.cost === 'number' && item.cost > 0 ? item.cost : allw.purchasePrice;
+
       return {
         ...item,
         monthlyAllowance: periodAllowance,
         spentAmount,
         remainingBalance,
         allowanceStatus,
-        purchasePrice: typeof item.cost === 'number' && item.cost > 0 ? item.cost : allw.purchasePrice,
+        purchasePrice,
+        // Annual straight-line depreciation over 10 years with zero salvage value.
+        depreciationCost: Math.max(0, purchasePrice || 0) / 10,
         totalRepairCost,
         recentRepairCost,
         preventiveMaintenancePrice,
@@ -520,6 +525,7 @@ export default function AllowancePage() {
   const costTotals = useMemo(() => {
     return {
       purchasePrice: allItems.reduce((acc, curr) => acc + (curr.purchasePrice || 0), 0),
+      depreciationCost: allItems.reduce((acc, curr) => acc + (curr.depreciationCost || 0), 0),
       totalRepairCost: allItems.reduce((acc, curr) => acc + (curr.totalRepairCost || 0), 0),
       recentRepairCost: allItems.reduce((acc, curr) => acc + (curr.recentRepairCost || 0), 0),
       preventiveMaintenancePrice: allItems.reduce((acc, curr) => acc + (curr.preventiveMaintenancePrice || 0), 0),
@@ -1017,6 +1023,7 @@ export default function AllowancePage() {
   const filteredCostTotals = useMemo(() => {
     return {
       purchasePrice: filteredItems.reduce((acc, curr) => acc + (curr.purchasePrice || 0), 0),
+      depreciationCost: filteredItems.reduce((acc, curr) => acc + (curr.depreciationCost || 0), 0),
       totalRepairCost: filteredItems.reduce((acc, curr) => acc + (curr.totalRepairCost || 0), 0),
       recentRepairCost: filteredItems.reduce((acc, curr) => acc + (curr.recentRepairCost || 0), 0),
       preventiveMaintenancePrice: filteredItems.reduce((acc, curr) => acc + (curr.preventiveMaintenancePrice || 0), 0),
@@ -1259,6 +1266,7 @@ export default function AllowancePage() {
       'Purchase Date',
       'Age',
       'Purchase Price (INR)',
+      'Annual Depreciation Cost (INR)',
       'Total Repair Cost (INR)',
       'Recent Repair Cost (INR)',
       'Preventive Maintenance (INR)',
@@ -1280,6 +1288,7 @@ export default function AllowancePage() {
       item.purchaseDate || '',
       item.age,
       item.purchasePrice || 0,
+      item.depreciationCost || 0,
       item.totalRepairCost || 0,
       item.recentRepairCost || 0,
       item.preventiveMaintenancePrice || 0,
@@ -2359,6 +2368,7 @@ export default function AllowancePage() {
                     <th className="py-2.5 px-3.5 bg-slate-100 border-r border-b border-slate-300 min-w-[210px]">Name</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 w-28 font-mono">Asset ID</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Purchase Price</th>
+                    <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Annual Depreciation</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Total Repair Cost</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Recent Repair Cost</th>
                     <th className="py-2.5 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Preventive Maint.</th>
@@ -2415,6 +2425,10 @@ export default function AllowancePage() {
                         {/* 4. Purchase Price */}
                         <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 border-r border-b border-slate-200 tabular-nums">
                           ₹{(item.purchasePrice || 0).toLocaleString('en-IN')}
+                        </td>
+
+                        <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 border-r border-b border-slate-200 tabular-nums">
+                          ₹{(item.depreciationCost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
 
                         {/* 5. Total Repair Cost */}
@@ -2529,6 +2543,7 @@ export default function AllowancePage() {
                               <th className="py-2 px-3.5 bg-slate-100 border-r border-b border-slate-300 min-w-[200px]">Name</th>
                               <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 w-28 font-mono">Asset ID</th>
                               <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Purchase Price</th>
+                              <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Annual Depreciation</th>
                               <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Total Repair Cost</th>
                               <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Recent Repair Cost</th>
                               <th className="py-2 px-3 bg-slate-100 border-r border-b border-slate-300 text-right font-mono">Preventive Maint.</th>
@@ -2578,6 +2593,9 @@ export default function AllowancePage() {
                                   </td>
                                   <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 border-r border-b border-slate-200 tabular-nums">
                                     ₹{(item.purchasePrice || 0).toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700 border-r border-b border-slate-200 tabular-nums">
+                                    ₹{(item.depreciationCost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </td>
                                   <td className="py-2 px-3 text-right border-r border-b border-slate-200 tabular-nums">
                                     <span className="font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block text-[11px]">

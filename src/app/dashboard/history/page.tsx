@@ -1,5 +1,5 @@
-import { HistoryView } from './HistoryView';
+import { TnaPage } from '@/components/dashboard/TnaPage';
 
 export default function HistoryPage() {
-  return <HistoryView />;
+  return <TnaPage />;
 }

@@ -43,7 +43,7 @@ export interface FactoryZoneOption {
 /**
  * Plant Unit ➔ Categorized Zones & Floor Lines mapping
  * - UNIT - 1: NETHAJI (Main Sewing Complex, Lines 01-08)
- * - UNIT-2: PEACOCK 1, PEACOCK 2, PEACOCK 3, PEACOCK 4 (Lines 01-08)
+ * - UNIT-2: PEACOCK (Lines 01-08)
  */
 export const FACTORY_UNIT_ZONES: Record<string, FactoryZoneOption[]> = {
   'UNIT - 1': [
@@ -129,10 +129,10 @@ export function getFactoryUnitsFromSettings(): DynamicFactoryUnit[] {
     const saved = tenantPreferences.getItem('cmms_settings_factory_units');
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed.map((item: any) => {
           let unitZones: DynamicFactoryZone[] = [];
-          if (Array.isArray(item.zones) && item.zones.length > 0) {
+          if (Array.isArray(item.zones)) {
             unitZones = item.zones;
           } else {
             const norm = normalizeUnit(item.code || item.id);
@@ -152,6 +152,9 @@ export function getFactoryUnitsFromSettings(): DynamicFactoryUnit[] {
             }
           }
 
+          if (normalizeUnit(item.code || item.id) === 'unit2' && unitZones.length > 0 && localStorage.getItem('cmms_active_company') === 'sahana' && unitZones.some(zone => /^zone\s*\d+$/i.test(zone.id))) {
+            unitZones = [{ id: 'PEACOCK', name: 'PEACOCK (Main Sewing Floor)', linesCount: 8, lines: Array.from({ length: 8 }, (_, index) => `Line ${String(index + 1).padStart(2, '0')}`) }];
+          }
           return {
             id: item.code || item.id,
             code: item.code || item.id,
@@ -197,9 +200,14 @@ export function getFactoryUnitsFromSettings(): DynamicFactoryUnit[] {
 /**
  * Returns available zones for a given unit, dynamically linking settings data if custom unit or multi-zone
  */
-export function getZonesForUnit(unit?: string | null): FactoryZoneOption[] {
+export function getZonesForUnit(unit?: string | null, companySlug?: string): FactoryZoneOption[] {
   if (!unit) return FACTORY_UNIT_ZONES['UNIT - 1'];
   const norm = normalizeUnit(unit);
+  let tenant = companySlug || '';
+  if (!tenant && typeof window !== 'undefined') {
+    try { tenant = localStorage.getItem('cmms_active_company') || ''; } catch { /* Use configured defaults when storage is unavailable. */ }
+  }
+
 
   // Check if unit was registered in Settings with customized zones
   const settingsUnits = getFactoryUnitsFromSettings();
@@ -207,7 +215,7 @@ export function getZonesForUnit(unit?: string | null): FactoryZoneOption[] {
     (u) => normalizeUnit(u.code) === norm || normalizeUnit(u.id) === norm
   );
 
-  if (matched?.zones && matched.zones.length > 0) {
+  if (matched && Array.isArray(matched.zones)) {
     return matched.zones.map((z) => {
       const numLines = z.linesCount && z.linesCount > 0 ? z.linesCount : (matched.totalLines || 8);
       const generatedLines = z.lines && z.lines.length > 0

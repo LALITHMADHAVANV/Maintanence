@@ -237,6 +237,17 @@ export interface AssetCategoryMeta {
 
 export const ASSET_CATEGORIES: AssetCategoryMeta[] = [
   {
+    id: 'APPLIANCE', name: 'Appliances', singular: 'Appliance',
+    description: 'Laptops, TVs, printers and other appliances', iconName: 'LayoutGrid',
+    badgeColor: 'bg-sky-100 text-sky-800 border-sky-200', idPrefix: 'APP-',
+    subtypes: [
+      ...['Laptop', 'TV', 'Printer', 'Other Appliance'].map(name => ({
+        id: 'APPLIANCE_' + name.toUpperCase().replaceAll(' ', '_'), name, category: 'APPLIANCE' as AssetCategory,
+        brands: [], defaultBrand: '', defaultModel: '', defaultCost: 0, idPrefix: 'APP-', specs: '',
+      })),
+    ],
+  },
+  {
     id: 'MACHINE',
     name: 'Sewing & Industrial Machinery',
     singular: 'Machine',
@@ -787,6 +798,7 @@ export function getAssetCategoryForType(type: MachineType): AssetCategory {
   const meta = ASSET_SUBTYPE_LOOKUP[type];
   if (meta) return meta.category;
   if (type.startsWith('TABLE_') || type.startsWith('CHAIR_')) return 'FURNITURE';
+  if (type.startsWith('APPLIANCE_')) return 'APPLIANCE';
   if (type.startsWith('VEHICLE_')) return 'VEHICLE';
   if (type.startsWith('LIGHT_') || type.startsWith('FAN_') || type.startsWith('UTILITY_')) return 'UTILITY';
   return 'MACHINE';

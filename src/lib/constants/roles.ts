@@ -65,10 +65,10 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
       '/dashboard',
       '/dashboard/messages',
       '/dashboard/asset-types',
+      '/dashboard/lease-assets',
       '/dashboard/asset-log',
       '/dashboard/history',
       '/dashboard/kpi',
-      '/dashboard/floor-tracker',
     ];
     return ceoAllowed.some((r) => cleanPath === r || cleanPath.startsWith(`${r}/`));
   }
@@ -79,6 +79,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
       '/dashboard/store-inbox',
       '/dashboard/inventory',
       '/dashboard/asset-types',
+      '/dashboard/lease-assets',
       '/dashboard/asset-log',
       '/dashboard/history',
       '/dashboard/messages',
@@ -95,7 +96,7 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
       '/dashboard/messages',
       '/dashboard/asset-log',
       '/dashboard/asset-types',
-      '/dashboard/floor-tracker',
+      '/dashboard/lease-assets',
     ];
     return mechanicAllowed.some((r) => cleanPath === r || cleanPath.startsWith(`${r}/`));
   }
@@ -106,7 +107,6 @@ export function canAccessRoute(rawRole: string | null | undefined, pathname: str
     // but cannot access plant settings or user accounts creation (Admin only).
     const restrictedForSupervisor = [
       '/dashboard/settings',
-      '/dashboard/users',
       '/dashboard/active-tna',
     ];
     return !restrictedForSupervisor.some((r) => cleanPath === r || cleanPath.startsWith(`${r}/`));
